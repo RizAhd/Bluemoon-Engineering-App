@@ -175,13 +175,13 @@ function audit(table: string, rowId: string, action: string, data: unknown) {
  * Insert a new row or update an existing one. Bumps `version`, stamps times,
  * writes the audit log, all in one transaction. Returns the row id.
  */
-export function save(table: DataTable, values: Row & { id?: string }): string {
+export function save(table: DataTable, values: { [k: string]: SQLite.SQLiteBindValue | undefined }): string {
   assertTable(table);
   const d = getDb();
   const cols = columnsOf(table);
   const now = nowIso();
   const dev = deviceId();
-  let id = values.id ?? '';
+  let id = typeof values.id === 'string' ? values.id : '';
 
   tx(() => {
     const existing = id
@@ -202,7 +202,7 @@ export function save(table: DataTable, values: Row & { id?: string }): string {
       audit(table, id, 'update', values);
     } else {
       id = id || newId();
-      const row: Row = { ...values, id, created_at: now, updated_at: now, version: 1, device_id: dev };
+      const row: Row = { ...(values as Row), id, created_at: now, updated_at: now, version: 1, device_id: dev };
       const fields = Object.keys(row).filter((k) => cols.includes(k));
       d.runSync(
         `INSERT INTO ${table} (${fields.join(', ')}) VALUES (${fields.map(() => '?').join(', ')})`,

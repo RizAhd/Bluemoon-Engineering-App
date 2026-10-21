@@ -208,6 +208,15 @@ export const en = {
   version: 'Version',
   records: 'Records',
 
+  // added
+  wages: 'Wages',
+  toolRecords: 'Tool records',
+  projectDocs: 'Drawings & documents',
+  setCurrent: 'Work on this project',
+  cameraOff: 'Camera permission is off. Turn it on in phone Settings.',
+  open: 'Open',
+  includePhotos: 'Include photos',
+
   // validation
   errName: 'Please enter a name',
   errAmount: 'Enter an amount, e.g. 2500',

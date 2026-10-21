@@ -37,7 +37,7 @@ export function PhotoStrip({
     try {
       await addPhotos(ownerTable, ownerId, source);
     } catch (e) {
-      Alert.alert(t('somethingWrong'), e instanceof Error && e.message === 'camera-permission' ? 'Camera permission is off.' : undefined);
+      Alert.alert(t('somethingWrong'), e instanceof Error && e.message === 'camera-permission' ? t('cameraOff') : undefined);
     } finally {
       setBusy(null);
     }
@@ -118,7 +118,7 @@ function Viewer({ att, onClose, onDelete }: { att: Attachment | null; onClose: (
         ) : (
           <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', gap: space.lg, padding: space.xl }}>
             <FileText size={64} color="#fff" />
-            <Button kind="secondary" label="Open" onPress={() => file.preview().catch(() => {})} />
+            <Button kind="secondary" label={t('open')} onPress={() => file.preview().catch(() => {})} />
           </View>
         )}
         <View

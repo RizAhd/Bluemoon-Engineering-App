@@ -1,5 +1,5 @@
 import * as Haptics from 'expo-haptics';
-import { router, useNavigation } from 'expo-router';
+import { router } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
 import { Alert } from 'react-native';
 
@@ -16,17 +16,17 @@ import { discardOrphans } from '@/lib/files';
  */
 export function useRecordForm(table: string, existingId?: string) {
   const t = useT();
-  const navigation = useNavigation();
   const [id] = useState(() => existingId ?? newId());
   const [errors, setErrors] = useState<Record<string, TKey>>({});
   const saved = useRef(!!existingId);
 
+  // Leaving a new form without saving hides any photos already taken for it.
   useEffect(() => {
     if (existingId) return;
-    return navigation.addListener('beforeRemove', () => {
+    return () => {
       if (!saved.current) discardOrphans(table, id);
-    });
-  }, [navigation, existingId, table, id]);
+    };
+  }, [existingId, table, id]);
 
   function err(field: string): string | null {
     return errors[field] ? t(errors[field]) : null;

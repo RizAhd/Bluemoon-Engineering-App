@@ -63,7 +63,7 @@ export default function ExpensesScreen() {
               <Stat label={t('thisMonth')} value={formatLKR(monthTotal)} />
               <Stat label={t('totalCost')} value={formatLKR(allTotal)} />
             </View>
-          ) : null
+          ) : undefined
         }
         ListEmptyComponent={
           <EmptyState
