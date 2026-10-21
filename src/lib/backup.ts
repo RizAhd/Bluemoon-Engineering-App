@@ -88,6 +88,47 @@ export async function makeBackup(onProgress?: (part: number, parts: number) => v
   return out;
 }
 
+/**
+ * All records, no photos, compressed. Used for the daily automatic backup:
+ * small enough to keep 25 days of them and to fit Android's Google backup.
+ */
+export async function dataSnapshot(): Promise<Uint8Array> {
+  const bundle: Bundle = {
+    format: BUNDLE_FORMAT,
+    version: BUNDLE_VERSION,
+    kind: 'backup',
+    exported_at: nowIso(),
+    device_id: deviceId(),
+    tables: collectAll(),
+  };
+  const data = encodeUtf8(JSON.stringify(bundle));
+  const manifest: Manifest = {
+    format: 'bluemoon-backup',
+    version: BUNDLE_VERSION,
+    created_at: bundle.exported_at,
+    device_id: bundle.device_id,
+    part: 1,
+    parts: 1,
+    data_sha256: await sha256Hex(data),
+  };
+  const zip = new JSZip();
+  zip.file(MANIFEST, JSON.stringify(manifest, null, 2));
+  zip.file('data.json', data);
+  return zip.generateAsync({ type: 'uint8array', compression: 'DEFLATE', compressionOptions: { level: 6 } });
+}
+
+/** Re-open a written backup and check its data against the stored SHA-256. */
+export async function verifyBackup(bytes: Uint8Array): Promise<boolean> {
+  try {
+    const zip = await JSZip.loadAsync(bytes);
+    const manifest: Manifest = JSON.parse((await zip.file(MANIFEST)?.async('string')) ?? '{}');
+    const data = await zip.file('data.json')?.async('uint8array');
+    return !!data && (await sha256Hex(data)) === manifest.data_sha256;
+  } catch {
+    return false;
+  }
+}
+
 export function markBackedUp() {
   setSetting('last_backup_at', nowIso());
 }

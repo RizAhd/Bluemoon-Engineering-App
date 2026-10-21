@@ -14,6 +14,7 @@ import { View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
+import { AutoBackupRunner } from '@/components/AutoBackupRunner';
 import { ShareReceiver } from '@/components/ShareReceiver';
 import { ToastHost } from '@/components/ui/feedback';
 import { Txt } from '@/components/ui/Txt';
@@ -84,15 +85,18 @@ function AppStack() {
         ...base,
         colors: { ...base.colors, primary: c.primary, background: c.bg, card: c.card, text: c.text, border: c.border },
       }}>
-      <StatusBar style={scheme === 'dark' ? 'light' : 'dark'} />
+      {/* Every header is blue, so the status bar text is always white. */}
+      <StatusBar style="light" />
       <Stack
         screenOptions={{
-          headerStyle: { backgroundColor: c.bg },
+          headerStyle: { backgroundColor: c.header },
           headerShadowVisible: false,
-          headerTintColor: c.text,
-          headerTitleStyle: { fontFamily: font('bold'), fontSize: 20 },
+          headerTintColor: c.onHeader,
+          headerTitleStyle: { fontFamily: font('bold'), fontSize: 20, color: c.onHeader },
           headerBackButtonDisplayMode: 'minimal',
           contentStyle: { backgroundColor: c.bg },
+          animation: 'slide_from_right',
+          animationDuration: 240,
         }}>
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
         <Stack.Screen
@@ -116,6 +120,7 @@ function AppStack() {
       </Stack>
       <ToastHost />
       <ShareReceiver />
+      <AutoBackupRunner />
     </ThemeProvider>
   );
 }

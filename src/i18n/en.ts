@@ -217,6 +217,20 @@ export const en = {
   open: 'Open',
   includePhotos: 'Include photos',
 
+  autoBackup: 'Daily automatic backup',
+  autoBackupHint: 'Every day the app saves a copy of all records on this phone and keeps the last {days} days. Android also copies them to your Google account, so a new phone gets them back.',
+  autoBackupLast: 'Last automatic backup',
+  autoBackups: 'Automatic backups',
+  autoBackupFailed: 'Automatic backup failed',
+  runNow: 'Run now',
+  fullBackup: 'Full backup with photos',
+  fullBackupHint: 'Photos are kept only on this phone. Once a week, save a full backup to Google Drive.',
+  dataSafe: 'Records backed up today',
+  photosOverdue: 'Photos not saved to Drive for {days} days',
+  olderDeleted: 'Backups older than {days} days are deleted automatically.',
+  on: 'On',
+  off: 'Off',
+
   // validation
   errName: 'Please enter a name',
   errAmount: 'Enter an amount, e.g. 2500',

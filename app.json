@@ -17,7 +17,7 @@
       "versionCode": 1,
       "allowBackup": true,
       "adaptiveIcon": {
-        "backgroundColor": "#0F172A",
+        "backgroundColor": "#1D4ED8",
         "foregroundImage": "./assets/images/android-icon-foreground.png",
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
@@ -40,18 +40,23 @@
         {
           "android": {
             "enabled": true,
-            "singleShareMimeTypes": ["application/pdf", "application/zip"]
+            "singleShareMimeTypes": [
+              "application/pdf",
+              "application/zip"
+            ]
           }
         }
       ],
       [
         "expo-splash-screen",
         {
-          "backgroundColor": "#0F172A",
+          "backgroundColor": "#1D4ED8",
           "image": "./assets/images/splash-icon.png",
           "imageWidth": 120
         }
-      ]
+      ],
+      "expo-background-task",
+      "./plugins/withBackupRules"
     ],
     "experiments": {
       "typedRoutes": true,
