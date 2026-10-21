@@ -18,6 +18,7 @@ import type { Attachment } from '@/db/types';
 import { nowIso } from '@/lib/dates';
 
 import { applyBundle, BUNDLE_FORMAT, BUNDLE_VERSION, collectAll, filesOf, readFileBytes, sha256Hex, type Bundle, type ImportPlan } from './bundle';
+import { decodeUtf8, encodeUtf8 } from './utf8';
 
 const PART_LIMIT = 40 * 1024 * 1024;
 const MANIFEST = 'bluemoon-backup.json';
@@ -42,7 +43,7 @@ export async function makeBackup(onProgress?: (part: number, parts: number) => v
     device_id: deviceId(),
     tables,
   };
-  const data = new TextEncoder().encode(JSON.stringify(bundle));
+  const data = encodeUtf8(JSON.stringify(bundle));
   const dataHash = await sha256Hex(data);
 
   // Split photos into parts by size.
@@ -118,7 +119,7 @@ export async function restorePart(uri: string): Promise<{ plan: ImportPlan; phot
   if (!dataEntry) throw new BackupError('damaged');
   const data = await dataEntry.async('uint8array');
   if ((await sha256Hex(data)) !== manifest.data_sha256) throw new BackupError('damaged');
-  const bundle: Bundle = JSON.parse(new TextDecoder().decode(data));
+  const bundle: Bundle = JSON.parse(decodeUtf8(data));
   const plan = await applyBundle(bundle.tables, files);
   return { plan, photos: files.size, part: manifest.part, parts: manifest.parts };
 }

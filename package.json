@@ -1,5 +1,5 @@
 {
-  "name": "app",
+  "name": "bluemoon-site",
   "version": "1.0.0",
   "main": "expo-router/entry",
   "dependencies": {
@@ -54,11 +54,11 @@
   },
   "scripts": {
     "start": "expo start",
-    "reset-project": "node ./scripts/reset-project.js",
-    "android": "expo start --android",
-    "ios": "expo start --ios",
-    "web": "expo start --web",
-    "lint": "expo lint"
+    "android": "expo run:android",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint src",
+    "check": "tsc --noEmit && eslint src",
+    "build:apk": "eas build -p android --profile preview"
   },
   "private": true
 }

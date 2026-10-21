@@ -30,6 +30,7 @@ import { formatDay, nowIso } from '@/lib/dates';
 import { formatLKR } from '@/lib/money';
 
 import { BUNDLE_FORMAT, BUNDLE_VERSION, collectProject, filesOf, readFileBytes, sha256Hex, type Bundle } from './bundle';
+import { decodeUtf8, encodeUtf8 } from './utf8';
 
 const DATA_NAME = 'bluemoon-data.json';
 const HASH_NAME = 'bluemoon-data.sha256';
@@ -56,14 +57,14 @@ export async function exportProjectPdf(projectId: string, opts: { includePhotos:
   const printed = await Print.printToFileAsync({ html, base64: false });
   const doc = await PDFDocument.load(new File(printed.uri).bytesSync());
 
-  const json = new TextEncoder().encode(JSON.stringify(bundle));
+  const json = encodeUtf8(JSON.stringify(bundle));
   const hash = await sha256Hex(json);
   const now = new Date();
   doc.setTitle(`${project.name} — Bluemoon Engineering`);
   doc.setCreator('Bluemoon Engineering site app');
   doc.setSubject(`${BUNDLE_FORMAT} v${BUNDLE_VERSION}`);
   await doc.attach(json, DATA_NAME, { mimeType: 'application/json', description: 'Bluemoon project data', creationDate: now, modificationDate: now });
-  await doc.attach(new TextEncoder().encode(hash), HASH_NAME, { mimeType: 'text/plain', creationDate: now, modificationDate: now });
+  await doc.attach(encodeUtf8(hash), HASH_NAME, { mimeType: 'text/plain', creationDate: now, modificationDate: now });
 
   if (opts.includePhotos) {
     for (const att of filesOf(tables)) {
@@ -103,11 +104,11 @@ export async function readProjectPdf(bytes: Uint8Array): Promise<PdfReadResult> 
 
   const expected = files.get(HASH_NAME);
   const actual = await sha256Hex(data);
-  if (!expected || new TextDecoder().decode(expected).trim() !== actual) return { status: 'damaged' };
+  if (!expected || decodeUtf8(expected).trim() !== actual) return { status: 'damaged' };
 
   let bundle: Bundle;
   try {
-    bundle = JSON.parse(new TextDecoder().decode(data));
+    bundle = JSON.parse(decodeUtf8(data));
   } catch {
     return { status: 'damaged' };
   }
