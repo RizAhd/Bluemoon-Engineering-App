@@ -1,56 +1,63 @@
-# Welcome to your Expo app 👋
+# Bluemoon Site
 
-This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
+Site management app for **Bluemoon Engineering (Pvt) Ltd**, Welimada. It works
+fully offline on the phone: no server, no internet needed on site, no running
+cost.
 
-## Get started
+## What it does
 
-1. Install dependencies
+- **Expenses** per project, with photos of bills and receipts
+- **Workers**: daily wages, advances and payments, with the balance owed
+- **Tools**: issue and return, who has what and where, with photo proof
+- **Site notes**: daily notes, weather and photos
+- **Project cost summary**: totals by category, labour, contract progress
+- **Sinhala, English and Tamil**, light and dark themes
 
-   ```bash
-   npm install
-   ```
+## How the data stays safe
 
-2. Start the app
+- All data lives in a SQLite database on the phone. Every save is a
+  transaction, every change goes into an audit log, and nothing is ever
+  hard-deleted.
+- **Backup** writes all records and photos to `.zip` files (each checked with
+  SHA-256) that you save to Google Drive from the share sheet. **Restore**
+  merges and never deletes, so it is always safe to run.
+- The Today screen warns when there has been no backup for 3 days.
 
-   ```bash
-   npx expo start
-   ```
+## Sharing a project with a second phone (no internet needed)
 
-In the output, you'll find options to open the app in a
+1. Phone A: open a project, tap **Export PDF**, send it (WhatsApp as a
+   *Document*, Bluetooth or Nearby Share).
+2. Phone B: open the PDF with **Share → Bluemoon Site** or **More → Import PDF**.
 
-- [development build](https://docs.expo.dev/develop/development-builds/introduction/)
-- [Android emulator](https://docs.expo.dev/workflow/android-studio-emulator/)
-- [iOS simulator](https://docs.expo.dev/workflow/ios-simulator/)
-- [Expo Go](https://expo.dev/go), a limited sandbox for trying out app development with Expo
+The PDF is a normal report anyone can read. The full project data and photos are
+embedded inside it as file attachments with a checksum, so the import is exact,
+and importing the same PDF twice changes nothing.
 
-You can start developing by editing the files inside the **src/app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
-
-## Get a fresh project
-
-When you're ready, run:
+## Development
 
 ```bash
-npm run reset-project
+npm install
+npx expo run:android      # development build on a phone or emulator
+npx tsc --noEmit          # typecheck
+npx eslint src            # lint
 ```
 
-This command will move the starter code to the **example** directory and create a blank **src/app** directory where you can start developing.
+Build an installable APK (no Play Store needed):
 
-### Other setup steps
+```bash
+npx eas-cli@latest build -p android --profile preview
+```
 
-- To set up ESLint for linting, run `npx expo lint`, or follow our guide on ["Using ESLint and Prettier"](https://docs.expo.dev/guides/using-eslint/)
-- If you'd like to set up unit testing, follow our guide on ["Unit Testing with Jest"](https://docs.expo.dev/develop/unit-testing/)
-- Learn more about the TypeScript setup in this template in our guide on ["Using TypeScript"](https://docs.expo.dev/guides/typescript/)
+## Project layout
 
-## Learn more
+```
+src/app/         screens (Expo Router)
+src/components/  UI building blocks and design system
+src/db/          SQLite schema, migrations, the single write path, validation
+src/lib/         money, dates, photos, PDF hand-off, backup
+src/i18n/        English, Sinhala, Tamil
+src/theme/       colour, type and spacing tokens
+```
 
-To learn more about developing your project with Expo, look at the following resources:
-
-- [Expo documentation](https://docs.expo.dev/): Learn fundamentals, or go into advanced topics with our [guides](https://docs.expo.dev/guides).
-- [Learn Expo tutorial](https://docs.expo.dev/tutorial/introduction/): Follow a step-by-step tutorial where you'll create a project that runs on Android, iOS, and the web.
-
-## Join the community
-
-Join our community of developers creating universal apps.
-
-- [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
-- [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
+The Sinhala and Tamil text are drafts. Have a native speaker check them
+before rollout.
