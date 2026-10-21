@@ -191,9 +191,9 @@ export const en = {
   backupReady: 'Backup ready — choose Google Drive to save it.',
   backupOverdue: 'No backup for {days} days',
   restore: 'Restore from backup',
-  restoreHint: 'Replaces everything on this phone with a backup file.',
-  restoreWarnTitle: 'Replace all data on this phone?',
-  restoreWarnBody: 'A safety copy of the current data is kept first.',
+  restoreHint: 'Brings back all records and photos from backup files. Nothing on this phone is deleted — newer records are kept.',
+  restoreWarnTitle: 'Restore this backup?',
+  restoreWarnBody: 'Records missing on this phone are added. Nothing is deleted.',
   restoreDone: 'Restore finished',
   backupInvalid: 'This is not a Bluemoon backup file.',
 
