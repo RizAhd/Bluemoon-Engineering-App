@@ -59,7 +59,7 @@ export default function ToolsScreen() {
           ) : undefined
         }
         ListEmptyComponent={
-          rows.length ? null : (
+          rows.length ? undefined : (
             <EmptyState
               icon={Hammer}
               title={t('noTools')}
