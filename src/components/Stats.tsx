@@ -3,7 +3,7 @@ import { Pressable, View } from 'react-native';
 import { Txt } from '@/components/ui/Txt';
 import { useT } from '@/i18n';
 import { formatLKR } from '@/lib/money';
-import { radius, space, useColors } from '@/theme';
+import { motion, radius, space, useColors } from '@/theme';
 
 /** Small tappable number tile. */
 export function Stat({ label, value, onPress, tone = 'text' }: { label: string; value: string; onPress?: () => void; tone?: 'text' | 'danger' | 'success' }) {
@@ -22,6 +22,7 @@ export function Stat({ label, value, onPress, tone = 'text' }: { label: string; 
         borderWidth: 1,
         borderColor: c.border,
         backgroundColor: pressed ? c.muted : c.card,
+        transform: [{ scale: pressed ? motion.pressScale : 1 }],
       })}>
       <Txt variant="caption" color="textMuted" weight="semibold" numberOfLines={2}>
         {label}

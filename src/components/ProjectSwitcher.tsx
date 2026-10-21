@@ -9,10 +9,20 @@ import { PickerSheet } from '@/components/ui/form';
 import { Txt } from '@/components/ui/Txt';
 import { setCurrentProject, useCurrentProjectId, useProjects } from '@/hooks/data';
 import { useT } from '@/i18n';
-import { radius, space, useColors } from '@/theme';
+import { motion, radius, space, useColors } from '@/theme';
 
-/** Top bar for the tab screens: page title plus the current-project pill. */
-export function TabHeader({ title, allowAll = true }: { title: string; allowAll?: boolean }) {
+/** Blue top band for the tab screens: title, optional subtitle, current-project pill. */
+export function TabHeader({
+  title,
+  subtitle,
+  allowAll = true,
+  showProject = true,
+}: {
+  title: string;
+  subtitle?: string;
+  allowAll?: boolean;
+  showProject?: boolean;
+}) {
   const c = useColors();
   const t = useT();
   const insets = useSafeAreaInsets();
@@ -24,15 +34,24 @@ export function TabHeader({ title, allowAll = true }: { title: string; allowAll?
   return (
     <View
       style={{
-        paddingTop: insets.top + space.sm,
+        paddingTop: insets.top + space.md,
         paddingHorizontal: space.lg,
-        paddingBottom: space.md,
-        backgroundColor: c.bg,
+        paddingBottom: space.lg,
+        backgroundColor: c.header,
+        borderBottomLeftRadius: radius.xl,
+        borderBottomRightRadius: radius.xl,
         gap: space.sm,
+        marginBottom: space.lg,
       }}>
-      <Txt variant="heading" weight="bold" accessibilityRole="header">
+      {subtitle ? (
+        <Txt variant="caption" weight="semibold" style={{ color: c.onHeaderMuted }}>
+          {subtitle}
+        </Txt>
+      ) : null}
+      <Txt variant="heading" weight="bold" accessibilityRole="header" style={{ color: c.onHeader }}>
         {title}
       </Txt>
+      {showProject ? (
       <Pressable
         accessibilityRole="button"
         accessibilityLabel={`${t('chooseProject')}: ${name}`}
@@ -46,16 +65,17 @@ export function TabHeader({ title, allowAll = true }: { title: string; allowAll?
           maxWidth: '100%',
           paddingHorizontal: space.md,
           borderRadius: radius.pill,
-          backgroundColor: pressed ? c.muted : c.card,
-          borderWidth: 1,
-          borderColor: c.borderStrong,
+          backgroundColor: c.headerSoft,
+          opacity: pressed ? 0.75 : 1,
+          transform: [{ scale: pressed ? motion.pressScale : 1 }],
         })}>
-        <Building2 size={18} color={c.primary} />
-        <Txt weight="semibold" numberOfLines={1} style={{ flexShrink: 1 }}>
+        <Building2 size={18} color={c.onHeader} />
+        <Txt weight="semibold" numberOfLines={1} style={{ flexShrink: 1, color: c.onHeader }}>
           {name}
         </Txt>
-        <ChevronDown size={18} color={c.textMuted} />
+        <ChevronDown size={18} color={c.onHeader} />
       </Pressable>
+      ) : null}
 
       <PickerSheet
         visible={open}

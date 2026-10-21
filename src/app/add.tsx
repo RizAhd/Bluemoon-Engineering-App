@@ -8,7 +8,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { IconButton } from '@/components/ui/Button';
 import { Txt } from '@/components/ui/Txt';
 import { useT, type TKey } from '@/i18n';
-import { radius, space, useColors } from '@/theme';
+import { motion, radius, space, useColors } from '@/theme';
 
 const ITEMS: { icon: LucideIcon; label: TKey; href: Href; tone: 'primary' | 'slate' }[] = [
   { icon: Receipt, label: 'newExpense', href: '/expense/form', tone: 'primary' },
@@ -60,6 +60,7 @@ export default function AddSheet() {
                 borderWidth: 1.5,
                 borderColor: it.tone === 'primary' ? c.primary : c.border,
                 backgroundColor: pressed ? c.muted : it.tone === 'primary' ? c.primarySoft : c.card,
+                transform: [{ scale: pressed ? motion.pressScale : 1 }],
                 padding: space.md,
                 justifyContent: 'space-between',
                 gap: space.sm,

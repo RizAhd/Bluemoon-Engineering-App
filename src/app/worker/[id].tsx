@@ -3,7 +3,7 @@ import { Banknote, CalendarCheck, HandCoins, Pencil, Phone } from 'lucide-react-
 import { Alert, Linking, View } from 'react-native';
 
 import { Stat } from '@/components/Stats';
-import { Button, IconButton } from '@/components/ui/Button';
+import { Button, HeaderButton } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/feedback';
 import { Card, ListCard, ListRow, Screen, SectionTitle } from '@/components/ui/layout';
 import { Txt } from '@/components/ui/Txt';
@@ -52,7 +52,7 @@ export default function WorkerDetail() {
       <Stack.Screen
         options={{
           title: worker.name,
-          headerRight: () => <IconButton icon={Pencil} label={t('editWorker')} onPress={() => router.push(`/worker/form?id=${worker.id}`)} />,
+          headerRight: () => <HeaderButton icon={Pencil} label={t('editWorker')} onPress={() => router.push(`/worker/form?id=${worker.id}`)} />,
         }}
       />
       <Screen>

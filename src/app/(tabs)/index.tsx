@@ -1,6 +1,7 @@
 import { router } from 'expo-router';
-import { Building2, CloudOff, Hammer, HardHat, NotebookPen, Plus, Receipt, ShieldCheck } from 'lucide-react-native';
-import { ScrollView, View } from 'react-native';
+import type { LucideIcon } from 'lucide-react-native';
+import { AlertTriangle, Building2, CloudOff, Hammer, HardHat, NotebookPen, Plus, Receipt, ShieldCheck } from 'lucide-react-native';
+import { Pressable, ScrollView, View } from 'react-native';
 
 import { TabHeader } from '@/components/ProjectSwitcher';
 import { ContractBar, Stat } from '@/components/Stats';
@@ -68,14 +69,19 @@ export default function TodayScreen() {
     pid ? [pid, pid, pid, pid] : [],
   );
 
-  const lastBackup = useSetting('last_backup_at');
-  const daysSinceBackup = daysSince(lastBackup);
-  const hasData = recent.length > 0;
+  const lastFull = useSetting('last_backup_at');
+  const autoAt = useSetting('auto_backup_at');
+  const autoError = useSetting('auto_backup_error');
+  const photoCount = useFirst<{ n: number }>('SELECT COUNT(*) AS n FROM attachments WHERE deleted_at IS NULL')?.n ?? 0;
+  const autoToday = autoAt?.slice(0, 10) === td;
+  const fullDays = daysSince(lastFull);
+  const photosStale = photoCount > 0 && (fullDays == null || fullDays >= 7);
+  const subtitle = formatDay(td);
 
   if (!projects.length) {
     return (
       <View style={{ flex: 1 }}>
-        <TabHeader title={t(greetingKey())} />
+        <TabHeader title={t(greetingKey())} subtitle={subtitle} showProject={false} />
         <EmptyState
           icon={Building2}
           title={t('noProjects')}
@@ -93,20 +99,28 @@ export default function TodayScreen() {
 
   return (
     <View style={{ flex: 1 }}>
-      <TabHeader title={t(greetingKey())} />
+      <TabHeader title={t(greetingKey())} subtitle={subtitle} />
       <ScrollView contentContainerStyle={{ padding: space.lg, paddingTop: 0, gap: space.lg, paddingBottom: 140 }}>
-        {hasData && (daysSinceBackup == null || daysSinceBackup >= 3) ? (
-          <Card tone="warningSoft" style={{ borderColor: 'transparent' }}>
-            <View style={{ flexDirection: 'row', gap: space.md, alignItems: 'center' }}>
-              <CloudOff size={26} color={c.warning} />
-              <View style={{ flex: 1 }}>
-                <Txt weight="bold" color="warning">
-                  {daysSinceBackup == null ? `${t('lastBackup')}: ${t('never')}` : t('backupOverdue', { days: daysSinceBackup })}
-                </Txt>
-              </View>
-            </View>
-            <Button icon={ShieldCheck} label={t('backupNow')} onPress={() => router.push('/backup')} />
-          </Card>
+        {/* Data safety: red if the daily backup failed, amber if photos need a Drive copy, else a quiet green line. */}
+        {autoError && !autoToday ? (
+          <SafetyCard tone="danger" icon={AlertTriangle} text={t('autoBackupFailed')} action={t('runNow')} />
+        ) : photosStale ? (
+          <SafetyCard
+            tone="warning"
+            icon={CloudOff}
+            text={fullDays == null ? `${t('fullBackup')}: ${t('never')}` : t('photosOverdue', { days: fullDays })}
+            action={t('backupNow')}
+          />
+        ) : autoToday ? (
+          <Pressable
+            accessibilityRole="button"
+            onPress={() => router.push('/backup')}
+            style={{ flexDirection: 'row', alignItems: 'center', gap: space.sm, alignSelf: 'flex-start' }}>
+            <ShieldCheck size={18} color={c.success} />
+            <Txt variant="caption" weight="semibold" color="success">
+              {t('dataSafe')} · {new Date(autoAt!).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+            </Txt>
+          </Pressable>
         ) : null}
 
         <View style={{ flexDirection: 'row', gap: space.md }}>
@@ -184,3 +198,18 @@ function ActivityRow({ a }: { a: Activity }) {
   }
 }
 
+
+function SafetyCard({ tone, icon: Icon, text, action }: { tone: 'danger' | 'warning'; icon: LucideIcon; text: string; action: string }) {
+  const c = useColors();
+  return (
+    <Card tone={tone === 'danger' ? 'dangerSoft' : 'warningSoft'} style={{ borderColor: 'transparent' }}>
+      <View style={{ flexDirection: 'row', gap: space.md, alignItems: 'center' }}>
+        <Icon size={26} color={c[tone]} />
+        <Txt weight="bold" color={tone} style={{ flex: 1 }}>
+          {text}
+        </Txt>
+      </View>
+      <Button icon={ShieldCheck} label={action} onPress={() => router.push('/backup')} />
+    </Card>
+  );
+}

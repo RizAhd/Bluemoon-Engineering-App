@@ -3,7 +3,7 @@ import { ArrowDownToLine, ArrowUpFromLine, Camera, Pencil } from 'lucide-react-n
 import { Alert } from 'react-native';
 
 import { PhotoStrip } from '@/components/PhotoStrip';
-import { Button, IconButton } from '@/components/ui/Button';
+import { Button, HeaderButton } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/feedback';
 import { Card, ListCard, ListRow, Screen, SectionTitle } from '@/components/ui/layout';
 import { Txt } from '@/components/ui/Txt';
@@ -41,7 +41,7 @@ export default function ToolDetail() {
       <Stack.Screen
         options={{
           title: tool.name,
-          headerRight: () => <IconButton icon={Pencil} label={t('editTool')} onPress={() => router.push(`/tool/form?id=${tool.id}`)} />,
+          headerRight: () => <HeaderButton icon={Pencil} label={t('editTool')} onPress={() => router.push(`/tool/form?id=${tool.id}`)} />,
         }}
       />
       <Screen>

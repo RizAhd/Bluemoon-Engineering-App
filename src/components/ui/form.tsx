@@ -6,7 +6,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useT } from '@/i18n';
 import { addDays, formatDay, toDay, today } from '@/lib/dates';
-import { FONT_MAP, radius, space, touch, type, useColors, useFont } from '@/theme';
+import { FONT_MAP, motion, radius, space, touch, type, useColors, useFont } from '@/theme';
 
 import { IconButton } from './Button';
 import { Txt } from './Txt';
@@ -179,6 +179,7 @@ export function Chips<T extends string>({
                 borderWidth: 1.5,
                 borderColor: on ? c.primary : c.borderStrong,
                 backgroundColor: on ? c.primarySoft : pressed ? c.muted : c.card,
+                transform: [{ scale: pressed ? motion.pressScale : 1 }],
                 flexDirection: 'row',
                 alignItems: 'center',
                 gap: space.xs,

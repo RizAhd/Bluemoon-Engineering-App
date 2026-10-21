@@ -6,7 +6,7 @@ import { Alert, Switch, View } from 'react-native';
 
 import { PhotoStrip } from '@/components/PhotoStrip';
 import { CategoryBars, ContractBar, Stat } from '@/components/Stats';
-import { Button, IconButton } from '@/components/ui/Button';
+import { Button, HeaderButton } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/feedback';
 import { Card, Screen, SectionTitle } from '@/components/ui/layout';
 import { Txt } from '@/components/ui/Txt';
@@ -53,7 +53,7 @@ export default function ProjectDetail() {
       <Stack.Screen
         options={{
           title: project.name,
-          headerRight: () => <IconButton icon={Pencil} label={t('editProject')} onPress={() => router.push(`/project/form?id=${project.id}`)} />,
+          headerRight: () => <HeaderButton icon={Pencil} label={t('editProject')} onPress={() => router.push(`/project/form?id=${project.id}`)} />,
         }}
       />
       <Screen>

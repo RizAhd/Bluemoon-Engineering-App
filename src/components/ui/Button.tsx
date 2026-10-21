@@ -2,7 +2,7 @@ import * as Haptics from 'expo-haptics';
 import type { LucideIcon } from 'lucide-react-native';
 import { ActivityIndicator, Pressable, View, type StyleProp, type ViewStyle } from 'react-native';
 
-import { radius, space, touch, useColors } from '@/theme';
+import { motion, radius, space, touch, useColors } from '@/theme';
 
 import { Txt } from './Txt';
 
@@ -54,6 +54,7 @@ export function Button({ label, onPress, kind = 'primary', icon: Icon, loading, 
           gap: space.sm,
           opacity: disabled ? 0.45 : 1,
           alignSelf: full ? 'stretch' : 'auto',
+          transform: [{ scale: pressed && !off ? motion.pressScale : 1 }],
         },
         style,
       ]}>
@@ -101,6 +102,28 @@ export function IconButton({
         backgroundColor: pressed ? c.muted : 'transparent',
       })}>
       <Icon size={24} color={c.text} strokeWidth={2} />
+    </Pressable>
+  );
+}
+
+/** White icon button for the blue screen headers. */
+export function HeaderButton({ icon: Icon, label, onPress }: { icon: LucideIcon; label: string; onPress: () => void }) {
+  const c = useColors();
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      hitSlop={8}
+      onPress={onPress}
+      style={({ pressed }) => ({
+        width: 44,
+        height: 44,
+        borderRadius: 22,
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: pressed ? c.headerSoft : 'transparent',
+      })}>
+      <Icon size={22} color={c.onHeader} strokeWidth={2.2} />
     </Pressable>
   );
 }
