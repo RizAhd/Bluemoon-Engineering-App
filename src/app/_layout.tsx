@@ -14,6 +14,7 @@ import { View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
+import { ShareReceiver } from '@/components/ShareReceiver';
 import { ToastHost } from '@/components/ui/feedback';
 import { Txt } from '@/components/ui/Txt';
 import { getDb } from '@/db';
@@ -34,17 +35,16 @@ export default function RootLayout() {
     NotoSansTamil_600SemiBold,
     NotoSansTamil_700Bold,
   });
-  const [dbError, setDbError] = useState<string | null>(null);
-  const [dbReady, setDbReady] = useState(false);
-
-  useEffect(() => {
+  // Open the database (and run migrations) once, before the first screen renders.
+  const [dbError] = useState<string | null>(() => {
     try {
       getDb();
-      setDbReady(true);
+      return null;
     } catch (e) {
-      setDbError(e instanceof Error ? e.message : String(e));
+      return e instanceof Error ? e.message : String(e);
     }
-  }, []);
+  });
+  const dbReady = !dbError;
 
   useEffect(() => {
     if ((fontsLoaded && dbReady) || dbError) SplashScreen.hideAsync();
@@ -115,6 +115,7 @@ function AppStack() {
         <Stack.Screen name="backup" options={{ title: t('backup') }} />
       </Stack>
       <ToastHost />
+      <ShareReceiver />
     </ThemeProvider>
   );
 }

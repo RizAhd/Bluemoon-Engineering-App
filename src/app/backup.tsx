@@ -1,7 +1,8 @@
 import { File } from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
 import { CloudUpload, History, ShieldCheck } from 'lucide-react-native';
-import { useState } from 'react';
+import { useLocalSearchParams } from 'expo-router';
+import { useEffect, useState } from 'react';
 import { Alert, View } from 'react-native';
 
 import { Button } from '@/components/ui/Button';
@@ -11,12 +12,13 @@ import { Txt } from '@/components/ui/Txt';
 import { useFirst, useSetting } from '@/db';
 import { useT } from '@/i18n';
 import { BackupError, makeBackup, markBackedUp, restorePart } from '@/lib/backup';
-import { formatDay } from '@/lib/dates';
+import { daysSince, formatDay } from '@/lib/dates';
 import { space, useColors } from '@/theme';
 
 export default function BackupScreen() {
   const t = useT();
   const c = useColors();
+  const params = useLocalSearchParams<{ uri?: string }>();
   const last = useSetting('last_backup_at');
   const stats = useFirst<{ records: number; photos: number; bytes: number }>(
     `SELECT
@@ -52,6 +54,10 @@ export default function BackupScreen() {
   async function restore() {
     const res = await File.pickFileAsync({ mimeTypes: ['application/zip', 'application/octet-stream'], multipleFiles: true });
     if (res.canceled) return;
+    confirmRestore(res.result.map((f) => f.uri));
+  }
+
+  function confirmRestore(uris: string[]) {
     Alert.alert(t('restoreWarnTitle'), t('restoreWarnBody'), [
       { text: t('cancel'), style: 'cancel' },
       {
@@ -62,8 +68,8 @@ export default function BackupScreen() {
           let updated = 0;
           let photos = 0;
           try {
-            for (const f of res.result) {
-              const r = await restorePart(f.uri);
+            for (const uri of uris) {
+              const r = await restorePart(uri);
               added += r.plan.counts.inserted;
               updated += r.plan.counts.updated;
               photos += r.photos;
@@ -81,9 +87,15 @@ export default function BackupScreen() {
     ]);
   }
 
+  // A backup .zip shared into the app ("Share to Bluemoon") lands here.
+  useEffect(() => {
+    if (params.uri) confirmRestore([params.uri]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [params.uri]);
+
   const mb = ((stats?.bytes ?? 0) / 1024 / 1024).toFixed(1);
   const lastText = last ? `${formatDay(last.slice(0, 10))} ${new Date(last).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : t('never');
-  const stale = !last || Date.now() - Date.parse(last) > 3 * 86400000;
+  const stale = (daysSince(last) ?? Infinity) >= 3;
 
   return (
     <Screen>

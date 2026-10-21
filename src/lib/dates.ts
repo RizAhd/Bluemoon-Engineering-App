@@ -15,6 +15,12 @@ export function nowIso(): string {
   return new Date().toISOString();
 }
 
+/** Whole days since an ISO timestamp, or null if there is none. */
+export function daysSince(iso: string | null): number | null {
+  if (!iso) return null;
+  return Math.floor((Date.now() - Date.parse(iso)) / 86400000);
+}
+
 export function addDays(day: string, n: number): string {
   const [y, m, d] = day.split('-').map(Number);
   return toDay(new Date(y, m - 1, d + n));

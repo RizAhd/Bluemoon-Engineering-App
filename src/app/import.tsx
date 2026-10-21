@@ -42,32 +42,20 @@ export default function ImportScreen() {
   const c = useColors();
   const params = useLocalSearchParams<{ uri?: string }>();
   const projects = useProjects();
-  const [state, setState] = useState<State>({ step: 'pick' });
+  const [state, setState] = useState<State>(params.uri ? { step: 'reading' } : { step: 'pick' });
   const [busy, setBusy] = useState(false);
   const [attachOpen, setAttachOpen] = useState(false);
 
-  async function read(uri: string) {
-    setState({ step: 'reading' });
-    try {
-      const bytes = await new File(uri).bytes();
-      const res = await readProjectPdf(bytes);
-      if (res.status === 'ok') setState({ step: 'preview', bundle: res.bundle, files: res.files, plan: planImport(res.bundle.tables) });
-      else if (res.status === 'not-ours') setState({ step: 'foreign', uri });
-      else setState({ step: 'error', key: res.status === 'newer' ? 'pdfNewer' : 'pdfDamaged' });
-    } catch {
-      setState({ step: 'error', key: 'somethingWrong' });
-    }
-  }
-
   // Opened from "Share to Bluemoon" with a file already chosen.
   useEffect(() => {
-    if (params.uri) read(params.uri);
+    if (params.uri) analyze(params.uri).then(setState);
   }, [params.uri]);
 
   async function pick() {
     const res = await File.pickFileAsync({ mimeTypes: 'application/pdf' });
     if (res.canceled) return;
-    await read(res.result.uri);
+    setState({ step: 'reading' });
+    setState(await analyze(res.result.uri));
   }
 
   async function doImport() {
@@ -200,6 +188,19 @@ export default function ImportScreen() {
       ) : null}
     </Screen>
   );
+}
+
+/** Read a PDF and decide which screen to show. Never throws. */
+async function analyze(uri: string): Promise<State> {
+  try {
+    const bytes = await new File(uri).bytes();
+    const res = await readProjectPdf(bytes);
+    if (res.status === 'ok') return { step: 'preview', bundle: res.bundle, files: res.files, plan: planImport(res.bundle.tables) };
+    if (res.status === 'not-ours') return { step: 'foreign', uri };
+    return { step: 'error', key: res.status === 'newer' ? 'pdfNewer' : 'pdfDamaged' };
+  } catch {
+    return { step: 'error', key: 'somethingWrong' };
+  }
 }
 
 function summary(plan: ImportPlan, t: (k: TKey) => string): string {

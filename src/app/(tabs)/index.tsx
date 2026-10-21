@@ -12,7 +12,7 @@ import { useFirst, useQuery, useSetting } from '@/db';
 import type { ProjectCost } from '@/db/types';
 import { useCurrentProjectId, useProjects } from '@/hooks/data';
 import { useT, type TKey } from '@/i18n';
-import { formatDay, today } from '@/lib/dates';
+import { daysSince, formatDay, today } from '@/lib/dates';
 import { formatLKR } from '@/lib/money';
 import { space, useColors } from '@/theme';
 
@@ -69,7 +69,7 @@ export default function TodayScreen() {
   );
 
   const lastBackup = useSetting('last_backup_at');
-  const daysSinceBackup = lastBackup ? Math.floor((Date.now() - Date.parse(lastBackup)) / 86400000) : null;
+  const daysSinceBackup = daysSince(lastBackup);
   const hasData = recent.length > 0;
 
   if (!projects.length) {
