@@ -41,7 +41,7 @@ export default function NotesScreen() {
         contentContainerStyle={{ padding: space.lg, gap: space.md, paddingBottom: 120 }}
         ListHeaderComponent={
           notes.length ? (
-            <Button icon={Plus} label={t('newNote')} onPress={() => router.push(`/note/form${pid ? `?projectId=${pid}` : ''}`)} />
+            <Button icon={Plus} label={t('newNote')} onPress={() => router.push({ pathname: '/note/form', params: pid ? { projectId: pid } : {} })} />
           ) : undefined
         }
         ListEmptyComponent={
@@ -49,7 +49,7 @@ export default function NotesScreen() {
             icon={NotebookPen}
             title={t('noNotes')}
             hint={t('noNotesHint')}
-            action={<Button icon={Plus} label={t('newNote')} onPress={() => router.push(`/note/form${pid ? `?projectId=${pid}` : ''}`)} full />}
+            action={<Button icon={Plus} label={t('newNote')} onPress={() => router.push({ pathname: '/note/form', params: pid ? { projectId: pid } : {} })} full />}
           />
         }
         renderItem={({ item }) => {

@@ -245,10 +245,11 @@ export function DateField({ label, value, onChange }: { label: string; value: st
           value={new Date(y, (m || 1) - 1, d || 1)}
           mode="date"
           maximumDate={new Date(2100, 0, 1)}
-          onChange={(e, date) => {
+          onValueChange={(_e, date) => {
             setOpen(false);
-            if (e.type === 'set' && date) onChange(toDay(date));
+            onChange(toDay(date));
           }}
+          onDismiss={() => setOpen(false)}
         />
       ) : null}
     </View>
