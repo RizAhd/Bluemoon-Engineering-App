@@ -7,11 +7,10 @@ import { Button, IconButton } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/feedback';
 import { DateField, Field, SelectField } from '@/components/ui/form';
 import { ListCard, ListRow, Screen } from '@/components/ui/layout';
-import { Txt } from '@/components/ui/Txt';
 import { useFirst, useQuery } from '@/db';
 import { deleteRecord, moveTool, ValidationError } from '@/db/repo';
-import type { ToolMovement, ToolStatus } from '@/db/types';
-import { useCurrentProjectId, useProjects, useProjectWorkers, useWorkers } from '@/hooks/data';
+import type { ToolMovement, ToolStatus, Worker } from '@/db/types';
+import { useCurrentProjectId, useProjects, useProjectWorkers, useTools, useWorkers } from '@/hooks/data';
 import { useRecordForm } from '@/hooks/form';
 import { useT } from '@/i18n';
 import { formatDay, today } from '@/lib/dates';
@@ -76,8 +75,9 @@ function Inner({ params }: { params: Params }) {
   const t = useT();
   const form = useRecordForm('tool_movements');
   const current = useCurrentProjectId();
-  const projects = useProjects(false);
+  const allProjects = useProjects();
   const allWorkers = useWorkers(true);
+  const toolCount = useTools().length;
   const kind: Kind = params.kind === 'return' ? 'return' : 'issue';
   const tools = useQuery<ToolStatus>('SELECT * FROM v_tool_status WHERE is_out = ? ORDER BY name COLLATE NOCASE', [kind === 'issue' ? 0 : 1]);
 
@@ -102,18 +102,30 @@ function Inner({ params }: { params: Params }) {
     setTakenBy(s.taken_by ?? '');
   }
 
+  // Project picker: completed projects are not offered for new movements, but the one this form opened on
+  // (or the one the returning tool is on) stays listed, so the field never shows a blank over a saved id.
+  const [openedOn] = useState(projectId);
+  const projectItems = useMemo(
+    () =>
+      allProjects
+        .filter((p) => p.status !== 'completed' || p.id === openedOn || p.id === projectId || p.id === status?.project_id)
+        .map((p) => ({ id: p.id, title: p.name, icon: Building2, subtitle: p.location ?? undefined })),
+    [allProjects, openedOn, projectId, status?.project_id],
+  );
+
   // Worker picker: the project's roster when a project is chosen and has one, else every active worker.
+  // The selected worker is always listed, even one who has since left (not in the active list).
   const roster = useProjectWorkers(projectId);
+  const selectedWorker = useFirst<Worker>('SELECT * FROM workers WHERE id = ?', [workerId ?? '']);
   const workerItems = useMemo(() => {
     const base = roster.length
       ? roster.map((w) => ({ id: w.worker_id, title: w.name, subtitle: w.trade ?? undefined }))
       : allWorkers.map((w) => ({ id: w.id, title: w.name, subtitle: w.trade ?? undefined }));
-    if (workerId && !base.some((i) => i.id === workerId)) {
-      const w = allWorkers.find((x) => x.id === workerId);
-      if (w) base.unshift({ id: w.id, title: w.name, subtitle: w.trade ?? undefined });
+    if (workerId && selectedWorker && !base.some((i) => i.id === workerId)) {
+      base.unshift({ id: selectedWorker.id, title: selectedWorker.name, subtitle: selectedWorker.trade ?? undefined });
     }
     return base;
-  }, [roster, allWorkers, workerId]);
+  }, [roster, allWorkers, workerId, selectedWorker]);
 
   // Make sure a tool passed in the URL is listed even if its status changed.
   const toolItems = useMemo(() => {
@@ -121,6 +133,9 @@ function Inner({ params }: { params: Params }) {
     if (toolId && status && !items.some((i) => i.id === toolId)) items.unshift({ id: toolId, title: status.code ? `${status.name} · ${status.code}` : status.name });
     return items;
   }, [tools, toolId, status]);
+
+  // Why the tool list is empty: no tools at all, every tool is already out (issue), or none are out (return).
+  const emptyToolsText = t(toolCount === 0 ? 'noTools' : kind === 'issue' ? 'toolsOut' : 'inStore');
 
   const save = () =>
     form.submit(() => {
@@ -140,11 +155,11 @@ function Inner({ params }: { params: Params }) {
           onChange={pickTool}
           error={form.err('tool_id')}
           placeholder={t('tool')}
-          hint={toolItems.length === 0 ? t('noneAvailable') : undefined}
+          hint={toolItems.length === 0 ? emptyToolsText : undefined}
         />
         <SelectField
           label={t('project')}
-          items={projects.map((p) => ({ id: p.id, title: p.name, icon: Building2, subtitle: p.location ?? undefined }))}
+          items={projectItems}
           value={projectId}
           onChange={(id) => {
             setProjectId(id);
@@ -187,11 +202,6 @@ function Inner({ params }: { params: Params }) {
         {/* PhotoStrip wraps capture in try/catch + showError (camera-off → settings / gallery). */}
         <PhotoStrip ownerTable="tool_movements" ownerId={form.id} label={t('photoProof')} />
         <Field label={t('note')} optional value={note} onChangeText={setNote} multiline />
-        {toolItems.length === 0 ? (
-          <Txt variant="caption" color="textMuted">
-            {t(kind === 'issue' ? 'noTools' : 'inStore')}
-          </Txt>
-        ) : null}
       </Screen>
     </>
   );

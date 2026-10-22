@@ -13,7 +13,7 @@ import { assignWorker, saveWorker, setProjectWorkerRate, unassignWorker, Validat
 import { setCurrentProject, useCurrentProjectId, useProject, useProjects, useProjectWorkers, useWorkers } from '@/hooks/data';
 import { useRecordForm } from '@/hooks/form';
 import { useT } from '@/i18n';
-import { centsToInput, parseCents } from '@/lib/money';
+import { centsToInput, formatLKR, parseCents } from '@/lib/money';
 import { showError } from '@/lib/errors';
 
 type Mode = 'existing' | 'new';
@@ -125,16 +125,23 @@ function Inner({ projectId, workerId }: { projectId: string; workerId?: string }
         assignWorker({ project_id: projectId, worker_id: picked, rate_cents: cents });
         return;
       }
+      // A stable id makes a repeated Save an update of the same worker and assignment, not a second one.
       tx(() => {
-        const id = saveWorker({ name, trade, phone, daily_rate_cents: cents });
+        const id = saveWorker({ id: form.id, name, trade, phone, daily_rate_cents: cents });
         assignWorker({ project_id: projectId, worker_id: id, rate_cents: cents });
       });
     });
   }
 
   function onRemove() {
-    Alert.alert(t('removeFromProject'), t('removeFromProjectBody'), [
+    // Off the project, the balance leaves every project total: say so, and offer to settle it first.
+    const owed = edit?.balance_cents ?? 0;
+    const body = owed ? `${t(owed > 0 ? 'weOwe' : 'workerOwes')}: ${formatLKR(Math.abs(owed))}\n${t('removeFromProjectBody')}` : t('removeFromProjectBody');
+    Alert.alert(t('removeFromProject'), body, [
       { text: t('cancel'), style: 'cancel' },
+      ...(owed > 0
+        ? [{ text: t('payNow'), onPress: () => router.push(`/wage/form?workerId=${workerId}&kind=payment&projectId=${projectId}&amount=${owed}`) }]
+        : []),
       {
         text: t('removeFromProject'),
         style: 'destructive',

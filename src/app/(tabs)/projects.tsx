@@ -10,7 +10,7 @@ import { Chips, SearchField } from '@/components/ui/form';
 import { GroupLabel, ListCard, ListRow, Screen } from '@/components/ui/layout';
 import { useQuery } from '@/db';
 import type { ProjectCost, ProjectStatus } from '@/db/types';
-import { setCurrentProject, useCurrentProjectId } from '@/hooks/data';
+import { useCurrentProjectId } from '@/hooks/data';
 import { useT } from '@/i18n';
 import { formatLKR } from '@/lib/money';
 import { radius, space, useColors } from '@/theme';
@@ -19,7 +19,8 @@ type Row = ProjectCost & { location: string | null; client: string | null };
 type Filter = 'all' | ProjectStatus;
 
 const STATUSES: ProjectStatus[] = ['active', 'on_hold', 'completed'];
-const SEARCH_FROM = 8;
+/** The search box appears above this many projects (FLOWS section 2). */
+const SEARCH_FROM = 5;
 
 function total(p: Row) {
   return p.expense_cents + p.labour_cents;
@@ -40,7 +41,7 @@ function MiniBar({ spent, contract }: { spent: number; contract: number }) {
   );
 }
 
-/** Projects tab: the full list. Tapping a row makes it the current project and opens its hub. */
+/** Projects tab: the full list. Tapping a row opens its hub and does not change the current project; the hub's actions do. */
 export default function ProjectsScreen() {
   const t = useT();
   const c = useColors();
@@ -53,21 +54,22 @@ export default function ProjectsScreen() {
   );
 
   const goNew = () => router.push('/project/form');
-  const query = q.trim().toLowerCase();
+  // The search text only applies while its field is on screen, so it can never filter the list invisibly.
+  const query = rows.length > SEARCH_FROM ? q.trim().toLowerCase() : '';
 
-  const { counts, visible } = useMemo(() => {
+  const { counts, visible, activeFilter } = useMemo(() => {
     const counts: Record<ProjectStatus, number> = { active: 0, on_hold: 0, completed: 0 };
     rows.forEach((r) => {
       counts[r.status] += 1;
     });
+    // A chip whose count dropped to 0 is disabled: fall back to All instead of an empty list behind a dead chip.
+    const activeFilter: Filter = filter !== 'all' && counts[filter] === 0 ? 'all' : filter;
     const matches = (r: Row) => !query || [r.name, r.client, r.location].some((s) => (s ?? '').toLowerCase().includes(query));
-    return { counts, visible: rows.filter((r) => matches(r) && (filter === 'all' || r.status === filter)) };
+    return { counts, activeFilter, visible: rows.filter((r) => matches(r) && (activeFilter === 'all' || r.status === activeFilter)) };
   }, [rows, query, filter]);
 
-  const open = (p: Row) => {
-    setCurrentProject(p.project_id);
-    router.push(`/project/${p.project_id}`);
-  };
+  // Opening a project to look at it must not move the app's current project; the hub's actions do that.
+  const open = (p: Row) => router.push(`/project/${p.project_id}`);
 
   const renderRow = (p: Row) => {
     const current = p.project_id === pid;
@@ -103,7 +105,7 @@ export default function ProjectsScreen() {
           <>
             {rows.length > SEARCH_FROM ? <SearchField value={q} onChangeText={setQ} placeholder={t('search')} /> : null}
             <Chips
-              value={filter}
+              value={activeFilter}
               onChange={setFilter}
               options={[
                 { value: 'all', label: t('all') },
@@ -112,7 +114,7 @@ export default function ProjectsScreen() {
             />
             {visible.length === 0 ? (
               <EmptyState icon={Search} title={`0 ${t('projects')}`} hint={query ? `"${q.trim()}"` : undefined} />
-            ) : filter === 'all' ? (
+            ) : activeFilter === 'all' ? (
               STATUSES.map((s) => {
                 const group = visible.filter((r) => r.status === s);
                 if (!group.length) return null;

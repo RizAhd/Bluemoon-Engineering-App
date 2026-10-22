@@ -13,7 +13,7 @@ import type { DataTable } from '@/db/schema';
 import { setCurrentProject, useProjects } from '@/hooks/data';
 import { useT, type TKey } from '@/i18n';
 import { applyBundle, planImport, type Bundle, type ImportPlan } from '@/lib/bundle';
-import { formatDay } from '@/lib/dates';
+import { formatDay, toDay } from '@/lib/dates';
 import { guard, reportError } from '@/lib/errors';
 import { addFile } from '@/lib/files';
 import { readProjectPdf } from '@/lib/pdf';
@@ -160,7 +160,7 @@ export default function ImportScreen() {
           {bundle.project_name ?? '—'}
         </Txt>
         <Txt variant="caption" color="textMuted" numeric>
-          {`${t('fromPhone')}: ${formatDay(bundle.exported_at.slice(0, 10))}`}
+          {`${t('fromPhone')}: ${formatDay(toDay(new Date(bundle.exported_at)))}`}
         </Txt>
       </Card>
 

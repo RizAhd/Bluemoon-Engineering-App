@@ -1,9 +1,11 @@
-import { Stack, useLocalSearchParams } from 'expo-router';
+import { router, Stack, useLocalSearchParams } from 'expo-router';
 import { Trash2 } from 'lucide-react-native';
 import { useState } from 'react';
+import { Alert } from 'react-native';
 
 import { PhotoStrip } from '@/components/PhotoStrip';
 import { Button, IconButton } from '@/components/ui/Button';
+import { toast } from '@/components/ui/feedback';
 import { Field } from '@/components/ui/form';
 import { Screen } from '@/components/ui/layout';
 import { useFirst } from '@/db';
@@ -11,6 +13,7 @@ import { deleteRecord, saveTool } from '@/db/repo';
 import type { Tool } from '@/db/types';
 import { useRecordForm } from '@/hooks/form';
 import { useT } from '@/i18n';
+import { showError } from '@/lib/errors';
 import { space } from '@/theme';
 
 export default function ToolForm() {
@@ -29,6 +32,27 @@ function Inner({ existing }: { existing: Tool | null }) {
 
   const save = () => form.submit(() => saveTool({ id: form.id, name, code, notes }));
 
+  // Not form.confirmDelete: that goes back one screen, which is this tool's own page, and it has nothing left to show.
+  // Edit is only reachable from that page, so leave both and land where the user came from.
+  const remove = () =>
+    Alert.alert(t('confirmDelete'), t('confirmDeleteBody'), [
+      { text: t('cancel'), style: 'cancel' },
+      {
+        text: t('delete'),
+        style: 'destructive',
+        onPress: () => {
+          try {
+            deleteRecord('tools', form.id);
+          } catch (e) {
+            showError(e, 'delete', t, { table: 'tools', id: form.id });
+            return;
+          }
+          toast(t('deleted'));
+          router.dismiss(2);
+        },
+      },
+    ]);
+
   return (
     <>
       <Stack.Screen
@@ -37,7 +61,7 @@ function Inner({ existing }: { existing: Tool | null }) {
           headerRight: form.isNew
             ? undefined
             : () => (
-                <IconButton icon={Trash2} label={t('delete')} size={44} tone="danger" pressedBg="headerDeep" onPress={() => form.confirmDelete(() => deleteRecord('tools', form.id))} />
+                <IconButton icon={Trash2} label={t('delete')} size={44} tone="danger" pressedBg="headerDeep" onPress={remove} />
               ),
         }}
       />

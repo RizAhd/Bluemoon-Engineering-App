@@ -58,6 +58,8 @@ export default function ProjectDetail() {
   );
   const noteCount = useFirst<{ n: number }>('SELECT COUNT(*) AS n FROM site_notes WHERE project_id = ? AND deleted_at IS NULL', [id ?? ''])?.n ?? 0;
   const workers = useProjectWorkers(id ?? null);
+  // "Mark inactive" only changes workers.active, and the roster view reports project_workers.active, so ask for the worker's own flag too.
+  const inactiveWorkerIds = useQuery<{ id: string }>('SELECT id FROM workers WHERE active = 0 AND deleted_at IS NULL');
   const toolsOut = useQuery<ToolStatus & { worker_name: string | null }>(
     `SELECT s.*, w.name AS worker_name FROM v_tool_status s LEFT JOIN workers w ON w.id = s.worker_id
      WHERE s.is_out = 1 AND s.project_id = ? ORDER BY s.name COLLATE NOCASE`,
@@ -80,7 +82,8 @@ export default function ProjectDetail() {
   }
   const pr = project;
   const total = cost.expense_cents + cost.labour_cents;
-  const activeWorkers = workers.filter((w) => w.active);
+  const inactive = new Set(inactiveWorkerIds.map((r) => r.id));
+  const activeWorkers = workers.filter((w) => w.active && !inactive.has(w.worker_id));
 
   function work(path: '/(tabs)/expenses' | '/(tabs)/workers' | '/(tabs)/tools') {
     setCurrentProject(pr.id);

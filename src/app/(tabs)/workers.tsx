@@ -1,5 +1,5 @@
 import { router } from 'expo-router';
-import { Building2, ChevronRight, ClipboardCheck, HardHat, UserPlus } from 'lucide-react-native';
+import { Building2, ChevronRight, ClipboardCheck, HardHat, Plus, UserPlus } from 'lucide-react-native';
 import { useState } from 'react';
 import { View } from 'react-native';
 
@@ -64,16 +64,28 @@ export default function WorkersScreen() {
   const all = useQuery<WorkerBalance>('SELECT * FROM v_worker_balance ORDER BY active DESC, name COLLATE NOCASE');
   const [picking, setPicking] = useState(false);
 
+  // A worker marked as left (workers.active = 0) is inactive on every roster, whatever the assignment says.
+  const workerActive = new Map(all.map((w) => [w.worker_id, !!w.active]));
   const rows: { id: string; name: string; trade: string | null; rate: number; balance: number; active: boolean }[] = pid
-    ? roster.map((r: ProjectWorkerBalance) => ({ id: r.worker_id, name: r.name, trade: r.trade, rate: r.rate_cents, balance: r.balance_cents, active: !!r.active }))
+    ? roster.map((r: ProjectWorkerBalance) => ({
+        id: r.worker_id,
+        name: r.name,
+        trade: r.trade,
+        rate: r.rate_cents,
+        balance: r.balance_cents,
+        active: !!r.active && (workerActive.get(r.worker_id) ?? true),
+      }))
     : all.map((r) => ({ id: r.worker_id, name: r.name, trade: r.trade, rate: r.daily_rate_cents, balance: r.balance_cents, active: !!r.active }));
   const active = rows.filter((r) => r.active);
   const inactive = rows.filter((r) => !r.active);
   const weOwe = rows.reduce((s, r) => s + Math.max(0, r.balance), 0);
   const workerOwes = rows.reduce((s, r) => s + Math.max(0, -r.balance), 0);
 
-  const worked = dayRows.filter((r) => r.days != null).length;
-  const toPayToday = dayRows.reduce((s, r) => s + Math.max(0, (r.work_cents ?? 0) - (r.paid_cents ?? 0)), 0);
+  // Same population as the wage sheet: only workers on the roster (a removed worker's day rows stay in v_wage_day).
+  const onRoster = new Set(roster.map((r) => r.worker_id));
+  const dayOnRoster = dayRows.filter((r) => onRoster.has(r.worker_id));
+  const worked = dayOnRoster.filter((r) => r.days != null).length;
+  const toPayToday = dayOnRoster.reduce((s, r) => s + Math.max(0, (r.work_cents ?? 0) - (r.paid_cents ?? 0)), 0);
   const workPaySubtitle = pid
     ? roster.length === 0
       ? t('noWorkersOnProject')
@@ -96,7 +108,12 @@ export default function WorkersScreen() {
       title={r.name}
       subtitle={[r.trade, r.rate ? `${formatLKR(r.rate)} / ${t('day')}` : null].filter(Boolean).join(' · ')}
       value={r.balance ? formatLKR(Math.abs(r.balance)) : undefined}
-      badge={r.active ? <BalanceBadge balance={r.balance} /> : <Badge label={t('inactive')} />}
+      badge={
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: space.xs }}>
+          {!r.active ? <Badge label={t('inactive')} /> : null}
+          {r.active || r.balance ? <BalanceBadge balance={r.balance} /> : null}
+        </View>
+      }
       onPress={() => router.push(`/worker/${r.id}`)}
     />
   );
@@ -192,6 +209,17 @@ export default function WorkersScreen() {
           subtitle: [p.location, t(`status_${p.status}`)].filter(Boolean).join(' · '),
         }))}
         onClose={() => setPicking(false)}
+        footer={
+          <Button
+            kind="secondary"
+            icon={Plus}
+            label={t('newProject')}
+            onPress={() => {
+              setPicking(false);
+              router.push('/project/form');
+            }}
+          />
+        }
         onPick={(id) => {
           setPicking(false);
           if (!id) return;

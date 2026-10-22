@@ -1,9 +1,10 @@
-import { Stack, useLocalSearchParams } from 'expo-router';
+import { router, Stack, useLocalSearchParams } from 'expo-router';
 import { useState } from 'react';
-import { View } from 'react-native';
+import { Alert, View } from 'react-native';
 import { Trash2 } from 'lucide-react-native';
 
 import { Button, HeaderButton } from '@/components/ui/Button';
+import { toast } from '@/components/ui/feedback';
 import { AmountField, Field, Segmented } from '@/components/ui/form';
 import { Screen } from '@/components/ui/layout';
 import { useFirst } from '@/db';
@@ -12,6 +13,7 @@ import type { Project, ProjectStatus } from '@/db/types';
 import { setCurrentProject } from '@/hooks/data';
 import { useRecordForm } from '@/hooks/form';
 import { useT } from '@/i18n';
+import { showError } from '@/lib/errors';
 import { centsToInput, parseCents } from '@/lib/money';
 import { space } from '@/theme';
 
@@ -57,14 +59,34 @@ function Inner({ existing }: { existing: Project | null }) {
     });
   }
 
+  // Same confirm as form.confirmDelete, but it leaves two screens: this form is only opened from the
+  // project's hub, and once the project is deleted the hub has nothing left to show.
+  function onDelete() {
+    Alert.alert(t('confirmDelete'), t('confirmDeleteBody'), [
+      { text: t('cancel'), style: 'cancel' },
+      {
+        text: t('delete'),
+        style: 'destructive',
+        onPress: () => {
+          try {
+            deleteRecord('projects', form.id);
+          } catch (e) {
+            showError(e, 'delete', t, { table: 'projects', id: form.id });
+            return;
+          }
+          toast(t('deleted'));
+          router.dismiss(2);
+        },
+      },
+    ]);
+  }
+
   return (
     <>
       <Stack.Screen
         options={{
           title: t(form.isNew ? 'newProject' : 'editProject'),
-          headerRight: form.isNew
-            ? undefined
-            : () => <HeaderButton icon={Trash2} tone="danger" label={t('delete')} onPress={() => form.confirmDelete(() => deleteRecord('projects', form.id))} />,
+          headerRight: form.isNew ? undefined : () => <HeaderButton icon={Trash2} tone="danger" label={t('delete')} onPress={onDelete} />,
         }}
       />
       <Screen footer={<Button label={t('save')} onPress={onSave} full />}>

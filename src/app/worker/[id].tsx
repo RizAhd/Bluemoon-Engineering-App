@@ -1,6 +1,6 @@
-import { router, Stack, useLocalSearchParams } from 'expo-router';
+import { router, Stack, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { Banknote, Building2, CalendarCheck, HandCoins, Pencil, Phone, Trash2, UserX } from 'lucide-react-native';
-import { useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { Alert, Linking, View } from 'react-native';
 
 import { Stat, Tiles } from '@/components/Stats';
@@ -55,6 +55,14 @@ export default function WorkerDetail() {
     return [...seen.entries()].map(([pId, name]) => ({ id: pId, name }));
   }, [entries]);
 
+  // The worker was deleted (from the edit form on top of this screen): leave instead of showing an empty shell.
+  const gone = !!id && (!worker || !bal);
+  useFocusEffect(
+    useCallback(() => {
+      if (gone && router.canGoBack()) router.back();
+    }, [gone]),
+  );
+
   if (!worker || !bal) {
     return (
       <>
@@ -69,7 +77,11 @@ export default function WorkerDetail() {
   const b = bal.balance_cents;
   const tone = b > 0 ? 'dangerSoft' : b < 0 ? 'warningSoft' : 'successSoft';
   const toneText = b > 0 ? 'danger' : b < 0 ? 'warning' : 'success';
-  const activeFilter = filter ?? (pid && historyProjects.some((p) => p.id === pid) ? pid : ALL);
+  // The chosen filter only counts while that project is still in the history; otherwise fall back to the default.
+  const filterValid = filter === ALL || (filter != null && historyProjects.some((p) => p.id === filter));
+  const activeFilter = filterValid && filter ? filter : pid && historyProjects.some((p) => p.id === pid) ? pid : ALL;
+  const hasUnassigned = entries.some((e) => !e.project_id || !e.project_name);
+  const showChips = historyProjects.length > 1 || (historyProjects.length >= 1 && hasUnassigned);
   const shown = activeFilter === ALL ? entries : entries.filter((e) => e.project_id === activeFilter);
   const onCurrent = !!pid && wp.some((p) => p.project_id === pid);
 
@@ -137,8 +149,12 @@ export default function WorkerDetail() {
 
   function removeFromCurrent() {
     if (!pid) return;
-    Alert.alert(t('removeFromProject'), t('removeFromProjectBody'), [
+    // Off the project, the balance leaves every project total: say so, and offer to settle it first.
+    const owed = wp.find((p) => p.project_id === pid)?.balance_cents ?? 0;
+    const body = owed ? `${t(owed > 0 ? 'weOwe' : 'workerOwes')}: ${formatLKR(Math.abs(owed))}\n${t('removeFromProjectBody')}` : t('removeFromProjectBody');
+    Alert.alert(t('removeFromProject'), body, [
       { text: t('cancel'), style: 'cancel' },
+      ...(owed > 0 ? [{ text: t('payNow'), onPress: () => go('payment', pid) }] : []),
       {
         text: t('removeFromProject'),
         style: 'destructive',
@@ -221,7 +237,7 @@ export default function WorkerDetail() {
         ) : null}
 
         <SectionTitle title={t('history')} count={entries.length || undefined} />
-        {historyProjects.length > 1 ? (
+        {showChips ? (
           <Chips
             value={activeFilter}
             onChange={setFilter}

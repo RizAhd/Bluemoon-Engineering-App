@@ -1,7 +1,7 @@
 import { router } from 'expo-router';
 import { Camera, Plus, Receipt } from 'lucide-react-native';
-import { useMemo } from 'react';
-import { View } from 'react-native';
+import { useEffect, useMemo, useState } from 'react';
+import { AppState, View } from 'react-native';
 
 import { TabHeader } from '@/components/ProjectSwitcher';
 import { Stat, Tiles } from '@/components/Stats';
@@ -19,20 +19,48 @@ import { space, useColors } from '@/theme';
 type Row = Expense & { project_name: string };
 type Group = { day: string; total: number; rows: Row[] };
 
+/** How many expenses the list loads at first; "Show all" lifts the cap. */
+const PAGE = 500;
+
+/** Today's date, kept current: it changes at local midnight and when the app comes back to the front. */
+function useToday(): string {
+  const [day, setDay] = useState(today);
+  useEffect(() => {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const refresh = () => {
+      setDay(today());
+      clearTimeout(timer);
+      const now = new Date();
+      const midnight = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1, 0, 0, 1);
+      timer = setTimeout(refresh, Math.max(1000, midnight.getTime() - now.getTime()));
+    };
+    refresh();
+    const sub = AppState.addEventListener('change', (s) => {
+      if (s === 'active') refresh();
+    });
+    return () => {
+      clearTimeout(timer);
+      sub.remove();
+    };
+  }, []);
+  return day;
+}
+
 /** Expenses tab: month and total tiles, then one card per day with the day total beside its label. */
 export default function ExpensesScreen() {
   const t = useT();
   const c = useColors();
   const pid = useCurrentProjectId();
-  const td = today();
+  const td = useToday();
   const month = td.slice(0, 7);
+  const [limit, setLimit] = useState(PAGE); // -1 = no cap
   const where = pid ? 'AND e.project_id = ?' : '';
   const args = pid ? [pid] : [];
 
   const rows = useQuery<Row>(
     `SELECT e.*, p.name AS project_name FROM expenses e JOIN projects p ON p.id = e.project_id
-     WHERE e.deleted_at IS NULL ${where} ORDER BY e.day DESC, e.created_at DESC LIMIT 500`,
-    args,
+     WHERE e.deleted_at IS NULL ${where} ORDER BY e.day DESC, e.created_at DESC LIMIT ?`,
+    [...args, limit],
   );
   const monthTotal =
     useFirst<{ s: number }>(
@@ -41,9 +69,16 @@ export default function ExpensesScreen() {
     )?.s ?? 0;
   const allTotal =
     useFirst<{ s: number }>(`SELECT COALESCE(SUM(amount_cents),0) AS s FROM expenses e WHERE deleted_at IS NULL ${where}`, args)?.s ?? 0;
+  // Day totals come from the database, so a day cut off by the cap still shows its full total.
+  const dayTotals = useQuery<{ day: string; s: number }>(
+    `SELECT day, COALESCE(SUM(amount_cents),0) AS s FROM expenses e WHERE deleted_at IS NULL ${where} GROUP BY day`,
+    args,
+  );
   const photos = useAttachmentCounts('expenses');
+  const capped = limit > 0 && rows.length >= limit;
 
   const groups = useMemo(() => {
+    const totalByDay = new Map(dayTotals.map((r) => [r.day, r.s]));
     const out: Group[] = [];
     for (const r of rows) {
       const last = out[out.length - 1];
@@ -52,8 +87,8 @@ export default function ExpensesScreen() {
         last.total += r.amount_cents;
       } else out.push({ day: r.day, total: r.amount_cents, rows: [r] });
     }
-    return out;
-  }, [rows]);
+    return out.map((g) => ({ ...g, total: totalByDay.get(g.day) ?? g.total }));
+  }, [rows, dayTotals]);
 
   const yesterday = useMemo(() => {
     const [y, m, d] = td.split('-').map(Number);
@@ -98,6 +133,7 @@ export default function ExpensesScreen() {
                 </ListCard>
               </View>
             ))}
+            {capped ? <Button kind="secondary" label={t('showAll')} onPress={() => setLimit(-1)} full /> : null}
           </>
         )}
       </Screen>

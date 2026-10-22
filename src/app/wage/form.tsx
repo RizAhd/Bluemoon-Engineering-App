@@ -31,13 +31,16 @@ export default function WageForm() {
 function Inner({ existing, params }: { existing: WageEntry | null; params: { workerId?: string; kind?: WageKind; amount?: string; projectId?: string } }) {
   const t = useT();
   const form = useRecordForm('wage_entries', existing?.id);
-  const allWorkers = useWorkers(!existing);
-  const projects = useProjects(false);
+  const everyone = useWorkers(false);
+  const allProjects = useProjects();
   const current = useCurrentProjectId();
 
   const kind: WageKind = existing?.kind ?? params.kind ?? 'work';
   const [workerId, setWorkerId] = useState<string | null>(existing?.worker_id ?? params.workerId ?? null);
-  const [projectId, setProjectId] = useState<string | null>(existing?.project_id ?? params.projectId ?? current);
+  // An existing entry keeps the project it was written on (an old one without a project must be given one);
+  // only a new entry starts on the project that was chosen.
+  const [startProjectId] = useState<string | null>(existing ? existing.project_id : (params.projectId ?? current));
+  const [projectId, setProjectId] = useState<string | null>(startProjectId);
   const [day, setDay] = useState(existing?.day ?? today());
   const [days, setDays] = useState(existing?.days != null ? String(existing.days) : '1');
   const [amount, setAmount] = useState(
@@ -45,17 +48,30 @@ function Inner({ existing, params }: { existing: WageEntry | null; params: { wor
   );
   const [note, setNote] = useState(existing?.note ?? '');
 
+  // Completed projects are not offered for new work, but the one this form opened on always is,
+  // so the field shows what will be saved.
+  const projectItems = allProjects
+    .filter((p) => p.status !== 'completed' || p.id === startProjectId)
+    .map((p) => ({ id: p.id, title: p.name, icon: Building2, subtitle: p.location ?? undefined }));
+  const projectValue = projectItems.some((i) => i.id === projectId) ? projectId : null;
+
   // Prefer the project's own roster (with its rates); fall back to every worker.
-  const roster = useProjectWorkers(projectId);
-  const rosterRows = existing ? roster : roster.filter((r) => r.active);
+  // "Mark as left" only changes the worker, so a new entry skips workers who left, except the one it was opened for.
+  const roster = useProjectWorkers(projectValue);
+  const activeIds = new Set(everyone.filter((w) => w.active).map((w) => w.id));
+  const rosterRows = existing ? roster : roster.filter((r) => (r.active && activeIds.has(r.worker_id)) || r.worker_id === params.workerId);
   const useRoster = rosterRows.length > 0;
-  const items = useRoster
+  const fallback = existing ? everyone : everyone.filter((w) => w.active || w.id === params.workerId);
+  const listed = useRoster
     ? rosterRows.map((r) => ({ id: r.worker_id, title: r.name, subtitle: r.trade ?? undefined }))
-    : allWorkers.map((w) => ({ id: w.id, title: w.name, subtitle: w.trade ?? undefined }));
+    : fallback.map((w) => ({ id: w.id, title: w.name, subtitle: w.trade ?? undefined }));
+  // An entry's own worker stays in the list after being taken off the project, so editing it never has to reassign the wages.
+  const owner = existing ? everyone.find((w) => w.id === existing.worker_id) : undefined;
+  const items = owner && !listed.some((i) => i.id === owner.id) ? [{ id: owner.id, title: owner.name, subtitle: owner.trade ?? undefined }, ...listed] : listed;
   const workerValue = items.some((i) => i.id === workerId) ? workerId : null;
 
   const rosterRow = rosterRows.find((r) => r.worker_id === workerValue);
-  const worker = allWorkers.find((w) => w.id === workerValue);
+  const worker = everyone.find((w) => w.id === workerValue);
   const rate = rosterRow?.rate_cents || worker?.daily_rate_cents || 0;
 
   // For work, the amount follows days × rate unless the user types their own.
@@ -69,7 +85,7 @@ function Inner({ existing, params }: { existing: WageEntry | null; params: { wor
       saveWageEntry({
         id: form.id,
         worker_id: workerValue,
-        project_id: projectId,
+        project_id: projectValue,
         day,
         kind,
         days: kind === 'work' ? nDays : null,
@@ -101,8 +117,8 @@ function Inner({ existing, params }: { existing: WageEntry | null; params: { wor
       <Screen gap={20} footer={<Button label={t('save')} onPress={onSave} />}>
         <SelectField
           label={t('project')}
-          items={projects.map((p) => ({ id: p.id, title: p.name, icon: Building2, subtitle: p.location ?? undefined }))}
-          value={projectId}
+          items={projectItems}
+          value={projectValue}
           onChange={(id) => {
             setProjectId(id);
             form.clearError('project_id');
@@ -151,7 +167,8 @@ function Inner({ existing, params }: { existing: WageEntry | null; params: { wor
           label={t('amount')}
           value={shownAmount}
           onChangeText={(s) => {
-            setAmountTouched(true);
+            // The box re-formats itself when it loses focus. That is not an edit, so the amount keeps following days × rate.
+            if (amountTouched || autoAmount == null || parseCents(s) !== autoAmount) setAmountTouched(true);
             setAmount(s);
             form.clearError('amount');
           }}

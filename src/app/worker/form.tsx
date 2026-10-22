@@ -5,9 +5,10 @@ import { useState } from 'react';
 import { Button, HeaderButton } from '@/components/ui/Button';
 import { AmountField, Field } from '@/components/ui/form';
 import { Screen } from '@/components/ui/layout';
-import { useFirst } from '@/db';
-import { deleteRecord, saveWorker } from '@/db/repo';
+import { tx, useFirst } from '@/db';
+import { assignWorker, deleteRecord, saveWorker } from '@/db/repo';
 import type { Worker } from '@/db/types';
+import { useCurrentProjectId } from '@/hooks/data';
 import { useRecordForm } from '@/hooks/form';
 import { useT } from '@/i18n';
 import { centsToInput, parseCents } from '@/lib/money';
@@ -22,6 +23,7 @@ export default function WorkerForm() {
 function Inner({ existing }: { existing: Worker | null }) {
   const t = useT();
   const form = useRecordForm('workers', existing?.id);
+  const pid = useCurrentProjectId();
   const [name, setName] = useState(existing?.name ?? '');
   const [trade, setTrade] = useState(existing?.trade ?? '');
   const [phone, setPhone] = useState(existing?.phone ?? '');
@@ -34,7 +36,13 @@ function Inner({ existing }: { existing: Worker | null }) {
       setRateError(t('errAmount'));
       return;
     }
-    form.submit(() => saveWorker({ id: form.id, name, trade, phone, daily_rate_cents: cents, active: existing ? !!existing.active : true }));
+    form.submit(() =>
+      tx(() => {
+        const id = saveWorker({ id: form.id, name, trade, phone, daily_rate_cents: cents, active: existing ? !!existing.active : true });
+        // A new worker made while a project is selected goes on that project, or every project-scoped list would hide them.
+        if (form.isNew && pid) assignWorker({ project_id: pid, worker_id: id, rate_cents: cents });
+      }),
+    );
   }
 
   return (

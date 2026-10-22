@@ -13,7 +13,7 @@ import { setSetting, useFirst, useSetting } from '@/db';
 import { useT, type TKey } from '@/i18n';
 import { KEEP_DAYS, listAutoBackups, runAutoBackupIfDue } from '@/lib/autoBackup';
 import { BackupError, makeBackup, markBackedUp, restorePart } from '@/lib/backup';
-import { daysSince, formatDay, today } from '@/lib/dates';
+import { daysSince, formatDay, toDay, today } from '@/lib/dates';
 import { guard, reportError, showError } from '@/lib/errors';
 import { space, touchMin, useColors } from '@/theme';
 
@@ -137,14 +137,15 @@ export default function BackupScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [params.uri]);
 
-  const autoToday = autoAt?.slice(0, 10) === today() || autos[0]?.day === today();
+  // Timestamps are UTC; "today" is the local calendar day (a 1 am backup in Sri Lanka is on the previous UTC day).
+  const autoToday = (!!autoAt && toDay(new Date(autoAt)) === today()) || autos[0]?.day === today();
   const autoFailed = !!autoError && !autoToday;
   const fullDays = daysSince(lastFull);
   const fullStale = (stats?.photos ?? 0) > 0 && (fullDays == null || fullDays >= 7);
   const autoTone: 'danger' | 'success' | 'warning' = autoFailed ? 'danger' : autoToday ? 'success' : 'warning';
   const autoSoft: 'dangerSoft' | 'successSoft' | 'warningSoft' = `${autoTone}Soft`;
   const AutoIcon = autoFailed ? AlertTriangle : ShieldCheck;
-  const autoWord = autoFailed ? t('autoBackupFailed') : autoToday ? t('dataSafe') : `${t('autoBackupLast')}: ${autoAt ? `${formatDay(autoAt.slice(0, 10))} ${timeOf(autoAt)}` : t('never')}`;
+  const autoWord = autoFailed ? t('autoBackupFailed') : autoToday ? t('dataSafe') : `${t('autoBackupLast')}: ${autoAt ? `${formatDay(toDay(new Date(autoAt)))} ${timeOf(autoAt)}` : t('never')}`;
 
   return (
     <Screen footer={<Button icon={CloudUpload} label={progress ?? t('backupNow')} loading={busy === 'full'} disabled={!!busy && busy !== 'full'} onPress={() => void fullBackup()} full />}>
@@ -212,7 +213,7 @@ export default function BackupScreen() {
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.md }}>
           {fullStale ? <AlertTriangle size={24} color={c.warning} strokeWidth={2} /> : <CloudUpload size={24} color={c.textMuted} strokeWidth={2} />}
           <Txt weight="semibold" color={fullStale ? 'warning' : 'text'} style={{ flex: 1 }}>
-            {fullStale && fullDays != null ? t('photosOverdue', { days: fullDays }) : `${t('lastBackup')}: ${lastFull ? `${formatDay(lastFull.slice(0, 10))} ${timeOf(lastFull)}` : t('never')}`}
+            {fullStale && fullDays != null ? t('photosOverdue', { days: fullDays }) : `${t('lastBackup')}: ${lastFull ? `${formatDay(toDay(new Date(lastFull)))} ${timeOf(lastFull)}` : t('never')}`}
           </Txt>
         </View>
         <Txt variant="caption" color="textMuted" numeric>

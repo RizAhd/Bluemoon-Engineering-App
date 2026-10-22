@@ -1,6 +1,6 @@
 import { Stack, useLocalSearchParams } from 'expo-router';
 import { Building2, Cloud, CloudRain, Sun, Trash2 } from 'lucide-react-native';
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 
 import { PhotoStrip } from '@/components/PhotoStrip';
 import { Button, IconButton } from '@/components/ui/Button';
@@ -28,9 +28,20 @@ function Inner({ existing, projectParam }: { existing: SiteNote | null; projectP
   const t = useT();
   const c = useColors();
   const form = useRecordForm('site_notes', existing?.id);
-  const projects = useProjects(false);
+  const allProjects = useProjects();
+  const openProjects = allProjects.filter((p) => p.status !== 'completed');
   const current = useCurrentProjectId();
-  const [projectId, setProjectId] = useState<string | null>(existing?.project_id ?? projectParam ?? current ?? (projects.length === 1 ? projects[0].id : null));
+  const [projectId, setProjectId] = useState<string | null>(existing?.project_id ?? projectParam ?? current ?? (openProjects.length === 1 ? openProjects[0].id : null));
+  // Completed projects are not offered for new notes, but the one this form opened on (a project hub, the
+  // current project, or the note's own) stays in the list, so the field never shows "Choose project" over a saved id.
+  const [openedOn] = useState(projectId);
+  const projectItems = useMemo(
+    () =>
+      allProjects
+        .filter((p) => p.status !== 'completed' || p.id === openedOn || p.id === projectId)
+        .map((p) => ({ id: p.id, title: p.name, icon: Building2, subtitle: [p.location, t(`status_${p.status}`)].filter(Boolean).join(' · ') })),
+    [allProjects, openedOn, projectId, t],
+  );
   const [day, setDay] = useState(existing?.day ?? today());
   const [body, setBody] = useState(existing?.body ?? '');
   const [weather, setWeather] = useState<Weather | null>((existing?.weather as Weather) ?? null);
@@ -59,7 +70,7 @@ function Inner({ existing, projectParam }: { existing: SiteNote | null; projectP
       <Screen footer={<Button label={t('save')} onPress={() => form.submit(() => saveNote({ id: form.id, project_id: projectId, day, body, weather }))} full />}>
         <SelectField
           label={t('project')}
-          items={projects.map((p) => ({ id: p.id, title: p.name, icon: Building2, subtitle: [p.location, t(`status_${p.status}`)].filter(Boolean).join(' · ') }))}
+          items={projectItems}
           value={projectId}
           onChange={(id) => {
             setProjectId(id);

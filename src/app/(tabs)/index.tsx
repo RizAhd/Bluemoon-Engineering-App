@@ -29,7 +29,7 @@ import { useFirst, useQuery, useSetting } from '@/db';
 import type { ProjectCost } from '@/db/types';
 import { setCurrentProject, useCurrentProjectId, useProjects, useProjectWorkers, useWageDay } from '@/hooks/data';
 import { useT, type TKey } from '@/i18n';
-import { daysSince, formatDay, today } from '@/lib/dates';
+import { daysSince, formatDay, toDay, today } from '@/lib/dates';
 import { formatLKR } from '@/lib/money';
 import { hairline, radius, space, useColors } from '@/theme';
 
@@ -63,7 +63,9 @@ export default function TodayScreen() {
 
   const spentToday =
     useFirst<{ s: number }>(
-      `SELECT COALESCE(SUM(amount_cents),0) AS s FROM expenses WHERE deleted_at IS NULL AND day = ? ${scope}`,
+      // Same rule as the project totals: only expenses of projects that still exist.
+      `SELECT COALESCE(SUM(e.amount_cents),0) AS s FROM expenses e JOIN projects p ON p.id = e.project_id AND p.deleted_at IS NULL
+       WHERE e.deleted_at IS NULL AND e.day = ? ${pid ? 'AND e.project_id = ?' : ''}`,
       [td, ...args],
     )?.s ?? 0;
   const roster = useProjectWorkers(pid);
@@ -80,18 +82,20 @@ export default function TodayScreen() {
   const recent = useQuery<Activity>(
     `SELECT * FROM (
        SELECT 'expense' AS kind, e.id, e.category AS title, e.paid_to AS sub, e.amount_cents, e.day, e.created_at, e.id AS ref, p.name AS project_name
-         FROM expenses e LEFT JOIN projects p ON p.id = e.project_id WHERE e.deleted_at IS NULL ${pid ? 'AND e.project_id = ?' : ''}
+         FROM expenses e LEFT JOIN projects p ON p.id = e.project_id
+         WHERE e.deleted_at IS NULL AND p.deleted_at IS NULL ${pid ? 'AND e.project_id = ?' : ''}
        UNION ALL
        SELECT 'wage', w.id, w.kind, wk.name, w.amount_cents, w.day, w.created_at, w.worker_id, p.name
          FROM wage_entries w JOIN workers wk ON wk.id = w.worker_id LEFT JOIN projects p ON p.id = w.project_id
-         WHERE w.deleted_at IS NULL ${pid ? 'AND w.project_id = ?' : ''}
+         WHERE w.deleted_at IS NULL AND wk.deleted_at IS NULL AND p.deleted_at IS NULL ${pid ? 'AND w.project_id = ?' : ''}
        UNION ALL
        SELECT 'tool', m.id, m.kind, tl.name, NULL, m.day, m.created_at, m.tool_id, p.name
          FROM tool_movements m JOIN tools tl ON tl.id = m.tool_id LEFT JOIN projects p ON p.id = m.project_id
-         WHERE m.deleted_at IS NULL ${pid ? 'AND m.project_id = ?' : ''}
+         WHERE m.deleted_at IS NULL AND tl.deleted_at IS NULL AND p.deleted_at IS NULL ${pid ? 'AND m.project_id = ?' : ''}
        UNION ALL
        SELECT 'note', n.id, 'note', n.body, NULL, n.day, n.created_at, n.id, p.name
-         FROM site_notes n LEFT JOIN projects p ON p.id = n.project_id WHERE n.deleted_at IS NULL ${pid ? 'AND n.project_id = ?' : ''}
+         FROM site_notes n LEFT JOIN projects p ON p.id = n.project_id
+         WHERE n.deleted_at IS NULL AND p.deleted_at IS NULL ${pid ? 'AND n.project_id = ?' : ''}
      ) ORDER BY created_at DESC LIMIT 8`,
     pid ? [pid, pid, pid, pid] : [],
   );
@@ -100,7 +104,8 @@ export default function TodayScreen() {
   const autoAt = useSetting('auto_backup_at');
   const autoError = useSetting('auto_backup_error');
   const photoCount = useFirst<{ n: number }>('SELECT COUNT(*) AS n FROM attachments WHERE deleted_at IS NULL')?.n ?? 0;
-  const autoToday = autoAt?.slice(0, 10) === td;
+  // auto_backup_at is a UTC timestamp, td a local day: compare local days, or a backup made before 05:30 in Sri Lanka is "yesterday".
+  const autoToday = !!autoAt && toDay(new Date(autoAt)) === td;
   const fullDays = daysSince(lastFull);
   const photosStale = photoCount > 0 && (fullDays == null || fullDays >= 7);
   const subtitle = formatDay(td);

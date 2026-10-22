@@ -45,6 +45,9 @@ export default function ToolsScreen() {
     };
   }, [rows, pid]);
 
+  // A selected chip whose group has emptied (the last tool was returned, issued or deleted) falls back to All, never a blank list.
+  const active: Filter = (filter === 'out' && out.length === 0) || (filter === 'in' && inStore.length === 0) ? 'all' : filter;
+
   const goNew = () => router.push('/tool/form');
 
   const renderRow = (item: Row, muted = false) => (
@@ -66,8 +69,8 @@ export default function ToolsScreen() {
     />
   );
 
-  const showOut = filter !== 'in';
-  const showIn = filter !== 'out';
+  const showOut = active !== 'in';
+  const showIn = active !== 'out';
 
   return (
     <View style={{ flex: 1, backgroundColor: c.bg }}>
@@ -78,7 +81,7 @@ export default function ToolsScreen() {
         ) : (
           <>
             <Chips
-              value={filter}
+              value={active}
               onChange={setFilter}
               options={[
                 { value: 'all', label: t('all') },
