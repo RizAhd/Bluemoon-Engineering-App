@@ -6,6 +6,10 @@ name: Android APK
 # Download the APK from the finished run: Actions > Android APK > the run > Artifacts.
 # The APK is signed with the standard Android debug key. That is fine for testing on your own
 # phones. Sign the final handover build with your own release key (see docs/OWNER-GUIDE.md).
+#
+# When the run ends it also pushes the result (status, the error excerpt if it failed, and the
+# APK) to a branch called ci-result, so the developer can read it without opening GitHub.
+# That branch is replaced on every run and can be deleted at any time.
 
 on:
   workflow_dispatch:
@@ -19,6 +23,9 @@ on:
 concurrency:
   group: android-apk
   cancel-in-progress: false
+
+permissions:
+  contents: write
 
 jobs:
   apk:
@@ -42,9 +49,11 @@ jobs:
           java-version: '17'
 
       - name: Install packages
-        run: npm ci --no-audit --no-fund
+        id: install
+        run: npm ci --no-audit --no-fund 2>&1 | tee -a "$RUNNER_TEMP/build.log"
 
       - name: Prepare the Android SDK
+        id: sdk
         run: |
           SDKM="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
           (yes | "$SDKM" --licenses > /dev/null) || true
@@ -52,7 +61,8 @@ jobs:
           ("$SDKM" "platforms;android-37" "ndk;27.1.12297006" > /dev/null) || true
 
       - name: Generate the Android project
-        run: npx expo prebuild --platform android --no-install
+        id: prebuild
+        run: npx expo prebuild --platform android --no-install 2>&1 | tee -a "$RUNNER_TEMP/build.log"
 
       - name: Tune Gradle for a test build
         run: |
@@ -64,8 +74,9 @@ jobs:
           } >> android/gradle.properties
 
       - name: Build the release APK
+        id: gradle
         working-directory: android
-        run: ./gradlew assembleRelease -PreactNativeArchitectures="$ABIS" --console=plain --stacktrace
+        run: ./gradlew assembleRelease -PreactNativeArchitectures="$ABIS" --console=plain --stacktrace 2>&1 | tee -a "$RUNNER_TEMP/build.log"
 
       - name: Name the APK
         run: |
@@ -79,3 +90,32 @@ jobs:
           path: dist/*.apk
           retention-days: 30
           if-no-files-found: error
+
+      - name: Publish the result to the ci-result branch
+        if: always()
+        env:
+          TOKEN: ${{ github.token }}
+          OUTCOMES: 'install=${{ steps.install.outcome }} sdk=${{ steps.sdk.outcome }} prebuild=${{ steps.prebuild.outcome }} gradle=${{ steps.gradle.outcome }}'
+          JOB: ${{ job.status }}
+        run: |
+          set +e
+          out="$RUNNER_TEMP/result"; rm -rf "$out"; mkdir -p "$out"
+          {
+            echo "job: $JOB"
+            echo "steps: $OUTCOMES"
+            echo "commit: $GITHUB_SHA"
+            echo "run: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+            echo "finished: $(date -u +%FT%TZ)"
+          } > "$out/status.txt"
+          tail -n 400 "$RUNNER_TEMP/build.log" > "$out/build-tail.txt" 2>/dev/null
+          grep -nE "FAILURE|What went wrong|error:|ERROR|Exception" -A6 "$RUNNER_TEMP/build.log" 2>/dev/null | head -150 > "$out/errors.txt"
+          apk=$(ls dist/*.apk 2>/dev/null | head -1)
+          if [ -n "$apk" ] && [ "$(stat -c%s "$apk")" -lt 95000000 ]; then cp "$apk" "$out/"; fi
+          cd "$out" || exit 0
+          git init -q -b ci-result
+          git config user.name "github-actions"
+          git config user.email "actions@users.noreply.github.com"
+          git add -A
+          git commit -q -m "Build result for run $GITHUB_RUN_ID"
+          git push -q -f "https://x-access-token:${TOKEN}@github.com/${GITHUB_REPOSITORY}.git" HEAD:refs/heads/ci-result
+          exit 0
