@@ -1,15 +1,16 @@
 import { router } from 'expo-router';
 import { Building2, ChevronRight, ClipboardCheck, HardHat, Plus, Search, UserPlus } from 'lucide-react-native';
-import { useState } from 'react';
+import { memo, useState } from 'react';
 import { View } from 'react-native';
 
 import { ListControls, oneOf, useListPrefs } from '@/components/ListControls';
 import { HeaderAction, TabHeader } from '@/components/ProjectSwitcher';
 import { Stat, Tiles } from '@/components/Stats';
 import { Button } from '@/components/ui/Button';
+import { CardList } from '@/components/ui/CardList';
 import { Badge, EmptyState } from '@/components/ui/feedback';
 import { Chips, PickerSheet } from '@/components/ui/form';
-import { Card, GroupLabel, ListCard, ListRow, Screen } from '@/components/ui/layout';
+import { Card, ListRow, Screen } from '@/components/ui/layout';
 import { Txt } from '@/components/ui/Txt';
 import {
   BALANCE_FILTERS,
@@ -43,6 +44,29 @@ function BalanceBadge({ balance }: { balance: number }) {
   if (balance < 0) return <Badge tone="warning" label={t('workerOwes')} />;
   return <Badge tone="success" label={t('settled')} />;
 }
+
+const workerKey = (r: WorkerListRow) => r.id;
+
+/** One worker: initials, trade and rate (and days when sorted by days), balance with its badge. */
+const WorkerRow = memo(function WorkerRow({ r, showDays }: { r: WorkerListRow; showDays: boolean }) {
+  const t = useT();
+  return (
+    <ListRow
+      avatar={r.name}
+      muted={!r.active}
+      title={r.name}
+      subtitle={[r.trade, r.rate ? `${formatLKR(r.rate)} / ${t('day')}` : null, showDays ? t('daysCount', { n: r.days }) : null].filter(Boolean).join(' · ')}
+      value={r.balance ? formatLKR(Math.abs(r.balance)) : undefined}
+      badge={
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: space.xs }}>
+          {!r.active ? <Badge label={t('inactive')} /> : null}
+          {r.active || r.balance ? <BalanceBadge balance={r.balance} /> : null}
+        </View>
+      }
+      onPress={() => router.push(`/worker/${r.id}`)}
+    />
+  );
+});
 
 /** Entry card to "Today's work & pay": icon slot, title, one-line status, chevron. */
 function WorkPayCard({ subtitle, onPress }: { subtitle: string; onPress: () => void }) {
@@ -116,23 +140,7 @@ export default function WorkersScreen() {
     else router.push('/wage/today');
   };
 
-  const renderRow = (r: WorkerListRow) => (
-    <ListRow
-      key={r.id}
-      avatar={r.name}
-      muted={!r.active}
-      title={r.name}
-      subtitle={[r.trade, r.rate ? `${formatLKR(r.rate)} / ${t('day')}` : null, sort === 'days' ? t('daysCount', { n: r.days }) : null].filter(Boolean).join(' · ')}
-      value={r.balance ? formatLKR(Math.abs(r.balance)) : undefined}
-      badge={
-        <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: space.xs }}>
-          {!r.active ? <Badge label={t('inactive')} /> : null}
-          {r.active || r.balance ? <BalanceBadge balance={r.balance} /> : null}
-        </View>
-      }
-      onPress={() => router.push(`/worker/${r.id}`)}
-    />
-  );
+  const renderRow = (r: WorkerListRow) => <WorkerRow r={r} showDays={sort === 'days'} />;
 
   const noProjects = projects.length === 0;
   const empty = list.total === 0;
@@ -155,99 +163,100 @@ export default function WorkersScreen() {
           )
         }
       />
-      <Screen hairlineTop={false} gap={space.md}>
-        {noProjects && empty ? (
-          // Nothing can be recorded for a worker before there is a project: one empty state, one action.
-          <EmptyState icon={Building2} title={t('addProjectFirst')} hint={t('addProjectFirstHint')} action={<Button icon={Plus} label={t('newProject')} onPress={newProject} full />} />
-        ) : (
-          <>
-            {!pid && !noProjects ? (
-              <Card tone="warningSoft">
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.md }}>
-                  <Building2 size={24} color={c.warning} strokeWidth={2} />
-                  <View style={{ flex: 1, gap: 2 }}>
-                    <Txt weight="semibold" color="warning">
-                      {t('noProjectSelected')}
-                    </Txt>
-                    <Txt variant="caption" color="textMuted">
-                      {t('chooseProjectFirstHint')}
-                    </Txt>
-                  </View>
-                </View>
-                <Button kind="secondary" compact icon={Building2} label={t('chooseProject')} onPress={() => setPicking(true)} />
-              </Card>
-            ) : null}
-
-            {!noProjects && (!pid || !empty) ? <WorkPayCard subtitle={workPaySubtitle} onPress={openWorkPay} /> : null}
-
-            {empty ? (
-              pid ? (
-                <EmptyState
-                  icon={HardHat}
-                  title={t('noWorkersOnProject')}
-                  hint={t('noWorkersOnProjectHint')}
-                  action={<Button icon={UserPlus} label={t('addWorkerToProject')} onPress={addToProject} full />}
-                />
-              ) : (
-                <EmptyState icon={HardHat} title={t('noWorkers')} hint={t('noWorkersHint')} action={<Button icon={UserPlus} label={t('newWorker')} onPress={newWorker} full />} />
-              )
+      <Screen hairlineTop={false} scroll={false}>
+        <CardList
+          keyOf={workerKey}
+          renderRow={renderRow}
+          inset
+          sections={
+            noProjects && empty
+              ? []
+              : [
+                  { key: 'active', label: `${pid ? t('projectWorkers') : t('allWorkers')} (${active.length})`, rows: active },
+                  { key: 'inactive', label: `${t('inactive')} (${inactive.length})`, rows: inactive },
+                ]
+          }
+          header={
+            noProjects && empty ? (
+              // Nothing can be recorded for a worker before there is a project: one empty state, one action.
+              <EmptyState icon={Building2} title={t('addProjectFirst')} hint={t('addProjectFirstHint')} action={<Button icon={Plus} label={t('newProject')} onPress={newProject} full />} />
             ) : (
-              <>
-                <ListControls
-                  quick={{
-                    value: balance,
-                    onChange: (v) => set('balance', v),
-                    options: [
-                      { value: 'all', label: t('all') },
-                      { value: 'pay', label: t('weOwe'), count: list.counts.pay, disabled: !list.counts.pay && balance !== 'pay' },
-                      { value: 'advance', label: t('workerOwes'), count: list.counts.advance, disabled: !list.counts.advance && balance !== 'advance' },
-                      { value: 'settled', label: t('settled'), count: list.counts.settled, disabled: !list.counts.settled && balance !== 'settled' },
-                    ],
-                  }}
-                  sort={{ value: sort, onChange: (v) => set('sort', v), options: WORKER_SORTS.map((s) => ({ value: s, label: t(`sort_${s}`) })) }}
-                  sheetCount={sheetCount}
-                  applied={applied}
-                  onClear={reset}>
-                  <Chips<WorkerStatusFilter>
-                    label={t('status')}
-                    value={status}
-                    onChange={(v) => set('status', v)}
-                    options={WORKER_STATUS_FILTERS.map((s) => ({ value: s, label: s === 'all' ? t('all') : t(STATUS_LABEL[s]) }))}
-                  />
-                </ListControls>
-
-                <Tiles>
-                  <Stat label={t('weOwe')} value={formatLKR(weOwe)} tone={weOwe > 0 ? 'danger' : 'text'} />
-                  <Stat label={t('workerOwes')} value={formatLKR(workerOwes)} caption={`${active.length} ${t('workers')}`} />
-                </Tiles>
-
-                {!pid ? (
-                  <Txt variant="caption" color="textMuted">
-                    {t('balanceAllProjects')}
-                  </Txt>
+              <View style={{ gap: space.md }}>
+                {!pid && !noProjects ? (
+                  <Card tone="warningSoft">
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.md }}>
+                      <Building2 size={24} color={c.warning} strokeWidth={2} />
+                      <View style={{ flex: 1, gap: 2 }}>
+                        <Txt weight="semibold" color="warning">
+                          {t('noProjectSelected')}
+                        </Txt>
+                        <Txt variant="caption" color="textMuted">
+                          {t('chooseProjectFirstHint')}
+                        </Txt>
+                      </View>
+                    </View>
+                    <Button kind="secondary" compact icon={Building2} label={t('chooseProject')} onPress={() => setPicking(true)} />
+                  </Card>
                 ) : null}
 
-                {rows.length === 0 ? (
-                  <EmptyState icon={Search} title={t('noMatches')} hint={t('noMatchesHint')} action={<Button kind="secondary" compact label={t('clearFilters')} onPress={reset} />} compact />
-                ) : null}
+                {!noProjects && (!pid || !empty) ? <WorkPayCard subtitle={workPaySubtitle} onPress={openWorkPay} /> : null}
 
-                {active.length ? (
-                  <View style={{ gap: space.sm }}>
-                    <GroupLabel label={`${pid ? t('projectWorkers') : t('allWorkers')} (${active.length})`} />
-                    <ListCard inset>{active.map(renderRow)}</ListCard>
-                  </View>
-                ) : null}
+                {empty ? (
+                  pid ? (
+                    <EmptyState
+                      icon={HardHat}
+                      title={t('noWorkersOnProject')}
+                      hint={t('noWorkersOnProjectHint')}
+                      action={<Button icon={UserPlus} label={t('addWorkerToProject')} onPress={addToProject} full />}
+                    />
+                  ) : (
+                    <EmptyState icon={HardHat} title={t('noWorkers')} hint={t('noWorkersHint')} action={<Button icon={UserPlus} label={t('newWorker')} onPress={newWorker} full />} />
+                  )
+                ) : (
+                  <>
+                    <ListControls
+                      quick={{
+                        value: balance,
+                        onChange: (v) => set('balance', v),
+                        options: [
+                          { value: 'all', label: t('all') },
+                          { value: 'pay', label: t('weOwe'), count: list.counts.pay, disabled: !list.counts.pay && balance !== 'pay' },
+                          { value: 'advance', label: t('workerOwes'), count: list.counts.advance, disabled: !list.counts.advance && balance !== 'advance' },
+                          { value: 'settled', label: t('settled'), count: list.counts.settled, disabled: !list.counts.settled && balance !== 'settled' },
+                        ],
+                      }}
+                      sort={{ value: sort, onChange: (v) => set('sort', v), options: WORKER_SORTS.map((s) => ({ value: s, label: t(`sort_${s}`) })) }}
+                      sheetCount={sheetCount}
+                      applied={applied}
+                      onClear={reset}>
+                      <Chips<WorkerStatusFilter>
+                        label={t('status')}
+                        value={status}
+                        onChange={(v) => set('status', v)}
+                        options={WORKER_STATUS_FILTERS.map((s) => ({ value: s, label: s === 'all' ? t('all') : t(STATUS_LABEL[s]) }))}
+                      />
+                    </ListControls>
 
-                {inactive.length ? (
-                  <View style={{ gap: space.sm }}>
-                    <GroupLabel label={`${t('inactive')} (${inactive.length})`} />
-                    <ListCard inset>{inactive.map(renderRow)}</ListCard>
-                  </View>
-                ) : null}
-              </>
-            )}
-          </>
-        )}
+                    <Tiles>
+                      <Stat label={t('weOwe')} value={formatLKR(weOwe)} tone={weOwe > 0 ? 'danger' : 'text'} />
+                      <Stat label={t('workerOwes')} value={formatLKR(workerOwes)} caption={`${active.length} ${t('workers')}`} />
+                    </Tiles>
+
+                    {!pid ? (
+                      <Txt variant="caption" color="textMuted">
+                        {t('balanceAllProjects')}
+                      </Txt>
+                    ) : null}
+
+                    {rows.length === 0 ? (
+                      <EmptyState icon={Search} title={t('noMatches')} hint={t('noMatchesHint')} action={<Button kind="secondary" compact label={t('clearFilters')} onPress={reset} />} compact />
+                    ) : null}
+                  </>
+                )}
+              </View>
+            )
+          }
+        />
       </Screen>
 
       <PickerSheet

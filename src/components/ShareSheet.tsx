@@ -22,12 +22,11 @@
 import type { LucideIcon } from 'lucide-react-native';
 import { FileText, MessageCircle, Share2 } from 'lucide-react-native';
 import { useRef, useState, type ReactElement } from 'react';
-import { ActivityIndicator, Modal, Pressable, ScrollView, View } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { ActivityIndicator, ScrollView, View } from 'react-native';
 
 import { HeaderButton } from '@/components/ui/Button';
 import { toast } from '@/components/ui/feedback';
-import { SheetHeader } from '@/components/ui/form';
+import { BottomSheet, SheetHeader } from '@/components/ui/form';
 import { ListCard, ListRow } from '@/components/ui/layout';
 import { Txt } from '@/components/ui/Txt';
 import { LANG_NAMES, useLang, useT, type Lang } from '@/i18n';
@@ -111,7 +110,6 @@ export interface ShareSheetProps {
 export function ShareSheet({ visible, message, lang, kind, pdf, onClose }: ShareSheetProps) {
   const c = useColors();
   const t = useT();
-  const insets = useSafeAreaInsets();
   const [busy, setBusy] = useState<Busy | null>(null);
   // A ref as well as the state: a second tap in the same frame sees the lock before the state is drawn.
   const lock = useRef(false);
@@ -153,36 +151,24 @@ export function ShareSheet({ visible, message, lang, kind, pdf, onClose }: Share
     });
 
   return (
-    <Modal visible={visible} transparent animationType="slide" onRequestClose={close} statusBarTranslucent navigationBarTranslucent>
-      <Pressable style={{ flex: 1, backgroundColor: c.overlay }} onPress={close} accessibilityRole="button" accessibilityLabel={t('close')} />
-      <View
-        style={{
-          maxHeight: '85%',
-          backgroundColor: c.surface3,
-          borderTopLeftRadius: radius.xl,
-          borderTopRightRadius: radius.xl,
-          borderTopWidth: hairline,
-          borderTopColor: c.border,
-          paddingBottom: insets.bottom + space.lg,
-        }}>
-        <SheetHeader title={t('shareTitle')} onClose={close} caption={t('sharePreview', { lang: LANG_NAMES[lang] })} />
-        <ScrollView contentContainerStyle={{ paddingHorizontal: space.lg, gap: space.lg }}>
-          {/* what goes out: the first lines, as the chat will show them */}
-          <View
-            accessibilityLabel={`${t('sharePreview', { lang: LANG_NAMES[lang] })}: ${previewOf(message)}`}
-            style={{ backgroundColor: c.surface2, borderRadius: radius.md, borderWidth: hairline, borderColor: c.border, padding: space.md }}>
-            <Txt color="textMuted" numberOfLines={PREVIEW_LINES} testID="share-preview">
-              {previewOf(message)}
-            </Txt>
-          </View>
-          <ListCard inset>
-            <ShareRow which="whatsapp" busy={busy} icon={MessageCircle} title={t('viaWhatsApp')} subtitle={t('viaWhatsAppHint')} onPress={() => void toWhatsApp()} />
-            <ShareRow which="other" busy={busy} icon={Share2} title={t('otherApps')} subtitle={t('otherAppsHint')} onPress={() => void toOtherApps()} />
-            {pdf ? <ShareRow which="pdf" busy={busy} icon={FileText} title={t('sharePdf')} subtitle={pdf.hint || t('sharePdfHint')} onPress={() => void toPdf()} /> : null}
-          </ListCard>
-        </ScrollView>
-      </View>
-    </Modal>
+    <BottomSheet visible={visible} onClose={close}>
+      <SheetHeader title={t('shareTitle')} onClose={close} caption={t('sharePreview', { lang: LANG_NAMES[lang] })} />
+      <ScrollView contentContainerStyle={{ paddingHorizontal: space.lg, gap: space.lg }}>
+        {/* what goes out: the first lines, as the chat will show them */}
+        <View
+          accessibilityLabel={`${t('sharePreview', { lang: LANG_NAMES[lang] })}: ${previewOf(message)}`}
+          style={{ backgroundColor: c.surface2, borderRadius: radius.md, borderWidth: hairline, borderColor: c.border, padding: space.md }}>
+          <Txt color="textMuted" numberOfLines={PREVIEW_LINES} testID="share-preview">
+            {previewOf(message)}
+          </Txt>
+        </View>
+        <ListCard inset>
+          <ShareRow which="whatsapp" busy={busy} icon={MessageCircle} title={t('viaWhatsApp')} subtitle={t('viaWhatsAppHint')} onPress={() => void toWhatsApp()} />
+          <ShareRow which="other" busy={busy} icon={Share2} title={t('otherApps')} subtitle={t('otherAppsHint')} onPress={() => void toOtherApps()} />
+          {pdf ? <ShareRow which="pdf" busy={busy} icon={FileText} title={t('sharePdf')} subtitle={pdf.hint || t('sharePdfHint')} onPress={() => void toPdf()} /> : null}
+        </ListCard>
+      </ScrollView>
+    </BottomSheet>
   );
 }
 

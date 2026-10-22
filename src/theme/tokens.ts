@@ -111,6 +111,15 @@ export const hairline = 1;
 /** Screen gutter: 16, or 24 when the window is at least 600 wide. */
 export const gutter = { base: 16, wide: 24, wideFrom: 600, contentMax: 640 } as const;
 
+/**
+ * Android window size classes (dp): compact under 600, medium 600 to 839, expanded from 840.
+ * A window under `shortBelow` tall (landscape phone, split screen) lets sticky footers scroll with the content.
+ */
+export const windowClass = { mediumFrom: 600, expandedFrom: 840, shortBelow: 480 } as const;
+
+/** FlatList / SectionList settings for lists that can grow (reactnative.dev "Optimizing FlatList configuration"). */
+export const listTuning = { initialNumToRender: 12, maxToRenderPerBatch: 8, windowSize: 9 } as const;
+
 export const type = {
   caption: 13,
   body: 15,
@@ -162,8 +171,11 @@ export const tabLabel = { size: 12, lineHeight: 16 } as const;
 
 export type Weight = 'regular' | 'semibold' | 'bold';
 
-/** Shared motion timings so the whole app moves the same way. pressScale is for the FAB only. */
-export const motion = { fast: 100, base: 180, slow: 240, pressScale: 0.96 } as const;
+/**
+ * Shared motion timings so the whole app moves the same way. pressScale is for the FAB only;
+ * buttons, chips and icon buttons shrink to controlPressScale (motion.md: 0.97 in 100 ms, back in 180 ms).
+ */
+export const motion = { fast: 100, base: 180, slow: 240, pressScale: 0.96, controlPressScale: 0.97 } as const;
 
 /** Sizes that recur across components, so screens don't invent their own. */
 export const sizes = {

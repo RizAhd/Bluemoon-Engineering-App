@@ -70,6 +70,8 @@ export function PhotoStrip({
               accessibilityRole="imagebutton"
               accessibilityLabel={`${label} ${i + 1}`}
               onPress={() => setView(a)}
+              // the photo covers the pressed colour, so the ripple is drawn over it
+              android_ripple={{ color: c.muted, foreground: true }}
               style={({ pressed }) => ({
                 width: THUMB,
                 height: THUMB,
@@ -82,7 +84,7 @@ export function PhotoStrip({
                 justifyContent: 'center',
               })}>
               {a.kind === 'photo' ? (
-                <Image source={{ uri: fileFor(a).uri }} style={{ width: THUMB, height: THUMB }} contentFit="cover" />
+                <Image source={{ uri: fileFor(a).uri }} recyclingKey={a.id} cachePolicy="memory-disk" style={{ width: THUMB, height: THUMB }} contentFit="cover" />
               ) : (
                 <FileText size={36} color={c.textMuted} strokeWidth={2} />
               )}

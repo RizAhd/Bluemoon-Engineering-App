@@ -6,11 +6,12 @@ import '@/test-utils/rnMocks'; // must be first: the jest.mock() calls have to r
 
 import { useLocalSearchParams } from 'expo-router';
 import { Check } from 'lucide-react-native';
-import { Text, TextInput, View } from 'react-native';
+import { FlatList, Text, TextInput, View } from 'react-native';
 
 import { resetDb } from '@/test-utils';
-import { expectClean, renderScreen, setRouteParams, takeConsole, visibleText } from '@/test-utils/screenKit';
+import { expectClean, renderScreen, setRouteParams, setTheme, takeConsole, visibleText } from '@/test-utils/screenKit';
 import { setSetting } from '@/db';
+import { useColors } from '@/theme';
 
 beforeEach(() => {
   resetDb();
@@ -18,6 +19,30 @@ beforeEach(() => {
 });
 
 const mount = (ui: React.ReactElement) => renderScreen(ui);
+
+describe('lists never update outside act()', () => {
+  /** A list whose rows follow the colour scheme, like every list screen. */
+  function ThemedList() {
+    const c = useColors();
+    return <FlatList data={['a', 'b', 'c']} keyExtractor={(x) => x} renderItem={({ item }) => <Text style={{ color: c.text }}>{item}</Text>} />;
+  }
+
+  // The wage/today flake (2 runs in 10): a theme switch re-rendered the list, the list queued a cell update on its
+  // 50 ms timer, and when the test was still running 50 ms later the update landed outside act() and React warned.
+  // changeSetting / settle now run that queued update inside act(), so waiting longer than the timer is harmless.
+  it('a theme switch leaves no cell update waiting for the 50 ms timer', async () => {
+    await mount(<ThemedList />);
+    await setTheme('dark');
+    await new Promise((resolve) => setTimeout(resolve, 120));
+    expect(takeConsole()).toEqual([]);
+  });
+
+  it('nor does the first render', async () => {
+    await mount(<ThemedList />);
+    await new Promise((resolve) => setTimeout(resolve, 120));
+    expect(takeConsole()).toEqual([]);
+  });
+});
 
 describe('expectClean catches what must never reach a phone', () => {
   it('passes a healthy screen', async () => {

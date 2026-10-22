@@ -2,15 +2,15 @@ import DateTimePicker from '@react-native-community/datetimepicker';
 import * as Haptics from 'expo-haptics';
 import type { LucideIcon } from 'lucide-react-native';
 import { AlertCircle, Calendar, Check, ChevronDown, Search, X } from 'lucide-react-native';
-import { useState, type ReactNode } from 'react';
-import { FlatList, Modal, Pressable, TextInput, View, type StyleProp, type TextInputProps, type ViewStyle } from 'react-native';
+import { memo, useState, type ReactNode } from 'react';
+import { FlatList, Modal, Platform, Pressable, TextInput, View, type DimensionValue, type StyleProp, type TextInputProps, type ViewStyle } from 'react-native';
 import Animated from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useT } from '@/i18n';
 import { addDays, formatDay, toDay, today } from '@/lib/dates';
 import { formatAmount, parseCents } from '@/lib/money';
-import { FONT_MAP, hairline, lineHeight, radius, space, touch, touchMin, type, useColors, useFont } from '@/theme';
+import { FONT_MAP, hairline, lineHeight, listTuning, radius, space, touch, touchMin, type, useColors, useFont, useLayout } from '@/theme';
 
 import { IconButton } from './Button';
 import { usePressScale } from './PressScale';
@@ -333,6 +333,8 @@ export function Segmented<T extends string>({
               accessibilityRole="radio"
               accessibilityState={{ checked: on }}
               accessibilityLabel={o.accessibilityLabel ?? o.label}
+              // 42 inside the 48 track; the hit area reaches the track's edges
+              hitSlop={{ top: 3, bottom: 3 }}
               onPress={() => {
                 Haptics.selectionAsync().catch(() => {});
                 onChange(o.value);
@@ -384,7 +386,10 @@ export function Checkbox({
         Haptics.selectionAsync().catch(() => {});
         onChange(!checked);
       }}
-      style={[{ width: touchMin, height: touchMin, alignItems: 'center', justifyContent: 'center' }, style]}>
+      style={({ pressed }) => [
+        { width: touchMin, height: touchMin, borderRadius: touchMin / 2, alignItems: 'center', justifyContent: 'center', backgroundColor: pressed && !disabled ? c.muted : 'transparent' },
+        style,
+      ]}>
       <View
         style={{
           width: 28,
@@ -477,7 +482,6 @@ export function DateField({
   error?: string | null;
 }) {
   const t = useT();
-  const c = useColors();
   const [open, setOpen] = useState(false);
   const td = today();
   const yd = addDays(td, -1);
@@ -497,26 +501,7 @@ export function DateField({
           value={custom ? null : value}
           onChange={onChange}
         />
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel={`${label}: ${formatDay(value)}`}
-          onPress={() => setOpen(true)}
-          style={({ pressed }) => ({
-            minHeight: touchMin,
-            paddingHorizontal: space.lg,
-            borderRadius: radius.pill,
-            borderWidth: hairline,
-            borderColor: custom ? (pressed ? c.slatePressed : c.slate) : c.borderStrong,
-            backgroundColor: custom ? (pressed ? c.slatePressed : c.slate) : pressed ? c.muted : c.card,
-            flexDirection: 'row',
-            alignItems: 'center',
-            gap: space.sm,
-          })}>
-          <Calendar size={16} color={custom ? c.onSlate : c.textMuted} strokeWidth={2} />
-          <Txt numeric weight={custom ? 'semibold' : 'regular'} style={{ color: custom ? c.onSlate : c.text }}>
-            {formatDay(value)}
-          </Txt>
-        </Pressable>
+        <CalendarChip label={`${label}: ${formatDay(value)}`} custom={custom} value={value} onPress={() => setOpen(true)} />
       </View>
       <HelperText error={error} />
       {open ? (
@@ -532,6 +517,40 @@ export function DateField({
         />
       ) : null}
     </View>
+  );
+}
+
+/** The "pick another day" chip of a DateField: ink when a day other than today / yesterday is chosen; 0.97 press scale like the chips. */
+function CalendarChip({ label, custom, value, onPress }: { label: string; custom: boolean; value: string; onPress: () => void }) {
+  const c = useColors();
+  const press = usePressScale();
+  return (
+    <Animated.View style={press.style}>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={label}
+        {...press.handlers}
+        onPress={() => {
+          Haptics.selectionAsync().catch(() => {});
+          onPress();
+        }}
+        style={({ pressed }) => ({
+          minHeight: touchMin,
+          paddingHorizontal: space.lg,
+          borderRadius: radius.pill,
+          borderWidth: hairline,
+          borderColor: custom ? (pressed ? c.slatePressed : c.slate) : c.borderStrong,
+          backgroundColor: custom ? (pressed ? c.slatePressed : c.slate) : pressed ? c.muted : c.card,
+          flexDirection: 'row',
+          alignItems: 'center',
+          gap: space.sm,
+        })}>
+        <Calendar size={16} color={custom ? c.onSlate : c.textMuted} strokeWidth={2} />
+        <Txt numeric weight={custom ? 'semibold' : 'regular'} style={{ color: custom ? c.onSlate : c.text }}>
+          {formatDay(value)}
+        </Txt>
+      </Pressable>
+    </Animated.View>
   );
 }
 
@@ -622,6 +641,51 @@ export function SelectField<T extends PickerItem>({
   );
 }
 
+/**
+ * The panel of a bottom sheet: surface3, rounded top, safe bottom padding, never taller than `maxHeight` of the
+ * window (its content scrolls inside), and on tablets at most 640 wide and centred like the screens.
+ */
+export function SheetPanel({ children, maxHeight = '85%', style }: { children: ReactNode; maxHeight?: DimensionValue; style?: StyleProp<ViewStyle> }) {
+  const c = useColors();
+  const insets = useSafeAreaInsets();
+  const { column, wide } = useLayout();
+  return (
+    <View
+      style={[
+        column,
+        {
+          maxHeight,
+          backgroundColor: c.surface3,
+          borderTopLeftRadius: radius.xl,
+          borderTopRightRadius: radius.xl,
+          borderTopWidth: hairline,
+          // a centred tablet sheet needs its sides drawn; a phone sheet runs edge to edge
+          borderLeftWidth: wide ? hairline : 0,
+          borderRightWidth: wide ? hairline : 0,
+          borderColor: c.border,
+          paddingBottom: insets.bottom + space.lg,
+        },
+        style,
+      ]}>
+      {children}
+    </View>
+  );
+}
+
+/** A modal bottom sheet: dimmed backdrop (tap to close) and a SheetPanel. Back closes it through `onClose`. */
+export function BottomSheet({ visible, onClose, maxHeight, children }: { visible: boolean; onClose: () => void; maxHeight?: DimensionValue; children: ReactNode }) {
+  const c = useColors();
+  const t = useT();
+  return (
+    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose} statusBarTranslucent navigationBarTranslucent>
+      <View style={{ flex: 1, justifyContent: 'flex-end', backgroundColor: c.overlay }}>
+        <Pressable style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0 }} onPress={onClose} accessibilityRole="button" accessibilityLabel={t('close')} />
+        <SheetPanel maxHeight={maxHeight}>{children}</SheetPanel>
+      </View>
+    </Modal>
+  );
+}
+
 /** Sheet header: grabber, title, close. Shared by PickerSheet and the quick-add sheet. */
 export function SheetHeader({ title, onClose, caption }: { title: string; onClose: () => void; caption?: string }) {
   const c = useColors();
@@ -632,7 +696,7 @@ export function SheetHeader({ title, onClose, caption }: { title: string; onClos
         <View style={{ width: 36, height: 4, borderRadius: 2, backgroundColor: c.borderStrong }} />
       </View>
       <View style={{ flexDirection: 'row', alignItems: 'center', minHeight: 56, paddingLeft: space.lg, paddingRight: space.sm, gap: space.sm }}>
-        <Txt variant="title" weight="semibold" style={{ flex: 1 }} accessibilityRole="header">
+        <Txt variant="title" weight="semibold" style={{ flex: 1, minWidth: 0 }} accessibilityRole="header" numberOfLines={2}>
           {title}
         </Txt>
         <IconButton icon={X} label={t('close')} size={44} onPress={onClose} />
@@ -670,83 +734,78 @@ export function PickerSheet<T extends PickerItem>({
 }) {
   const c = useColors();
   const t = useT();
-  const insets = useSafeAreaInsets();
   const [q, setQ] = useState('');
   const shown = q ? items.filter((i) => `${i.title} ${i.subtitle ?? ''}`.toLowerCase().includes(q.toLowerCase())) : items;
   const rows = allowNone ? [{ id: '', title: '—' } as T, ...shown] : shown;
   const hasIcons = items.some((i) => i.icon);
+  const separatorInset = hasIcons ? 68 : space.lg;
 
   return (
-    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose} statusBarTranslucent navigationBarTranslucent>
-      <Pressable style={{ flex: 1, backgroundColor: c.overlay }} onPress={onClose} accessibilityRole="button" accessibilityLabel={t('close')} />
-      <View
-        style={{
-          maxHeight: '75%',
-          backgroundColor: c.surface3,
-          borderTopLeftRadius: radius.xl,
-          borderTopRightRadius: radius.xl,
-          borderTopWidth: hairline,
-          borderTopColor: c.border,
-          paddingBottom: insets.bottom + space.lg,
-        }}>
-        <SheetHeader title={title} onClose={onClose} />
-        {items.length > searchFrom ? (
-          <View style={{ paddingHorizontal: space.lg, paddingBottom: space.sm }}>
-            <SearchField value={q} onChangeText={setQ} />
-          </View>
-        ) : null}
-        <FlatList
-          data={rows}
-          keyExtractor={(i) => i.id || 'none'}
-          keyboardShouldPersistTaps="handled"
-          ItemSeparatorComponent={() => <View style={{ height: hairline, backgroundColor: c.border, marginLeft: hasIcons ? 68 : space.lg }} />}
-          ListEmptyComponent={
-            q ? (
-              <Txt variant="caption" color="textMuted" style={{ padding: space.lg }}>
-                {`${t('search')}: "${q}"`}
-              </Txt>
-            ) : undefined
-          }
-          renderItem={({ item }) => {
-            const on = (item.id || null) === value;
-            const Icon = item.icon;
-            return (
-              <Pressable
-                accessibilityRole="button"
-                accessibilityState={{ selected: on, disabled: !!item.disabled }}
-                android_ripple={{ color: c.muted }}
-                onPress={() => onPick(item.id || null)}
-                style={({ pressed }) => ({
-                  minHeight: touch,
-                  paddingHorizontal: space.lg,
-                  paddingVertical: space.md,
-                  flexDirection: 'row',
-                  alignItems: 'center',
-                  gap: space.md,
-                  backgroundColor: pressed ? c.muted : on ? c.primarySoft : 'transparent',
-                })}>
-                {Icon ? (
-                  <View style={{ width: 40, height: 40, borderRadius: radius.md, backgroundColor: c.surface2, alignItems: 'center', justifyContent: 'center' }}>
-                    <Icon size={20} color={c.textMuted} strokeWidth={2} />
-                  </View>
-                ) : null}
-                <View style={{ flex: 1 }}>
-                  <Txt weight="semibold" color={item.disabled ? 'textMuted' : 'text'} numberOfLines={2}>
-                    {item.title}
-                  </Txt>
-                  {item.subtitle ? (
-                    <Txt variant="caption" color="textMuted" numberOfLines={1}>
-                      {item.subtitle}
-                    </Txt>
-                  ) : null}
-                </View>
-                {on ? <Check size={20} color={c.primary} strokeWidth={2.4} /> : null}
-              </Pressable>
-            );
-          }}
-        />
-        {footer ? <View style={{ paddingHorizontal: space.lg, paddingTop: space.lg }}>{footer}</View> : null}
-      </View>
-    </Modal>
+    <BottomSheet visible={visible} onClose={onClose} maxHeight="75%">
+      <SheetHeader title={title} onClose={onClose} />
+      {items.length > searchFrom ? (
+        <View style={{ paddingHorizontal: space.lg, paddingBottom: space.sm }}>
+          <SearchField value={q} onChangeText={setQ} />
+        </View>
+      ) : null}
+      <FlatList
+        data={rows}
+        keyExtractor={pickerKey}
+        keyboardShouldPersistTaps="handled"
+        {...listTuning}
+        removeClippedSubviews={Platform.OS === 'android'}
+        ItemSeparatorComponent={() => <View style={{ height: hairline, backgroundColor: c.border, marginLeft: separatorInset }} />}
+        ListEmptyComponent={
+          q ? (
+            <Txt variant="caption" color="textMuted" style={{ padding: space.lg }}>
+              {`${t('search')}: "${q}"`}
+            </Txt>
+          ) : undefined
+        }
+        renderItem={({ item }) => <PickerRow item={item} on={(item.id || null) === value} onPick={onPick} />}
+      />
+      {footer ? <View style={{ paddingHorizontal: space.lg, paddingTop: space.lg }}>{footer}</View> : null}
+    </BottomSheet>
   );
 }
+
+const pickerKey = (i: PickerItem) => i.id || 'none';
+
+/** One row of a PickerSheet: ripple and pressed colour, selected = primarySoft + tick. */
+const PickerRow = memo(function PickerRow({ item, on, onPick }: { item: PickerItem; on: boolean; onPick: (id: string | null) => void }) {
+  const c = useColors();
+  const Icon = item.icon;
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityState={{ selected: on, disabled: !!item.disabled }}
+      android_ripple={{ color: c.muted }}
+      onPress={() => onPick(item.id || null)}
+      style={({ pressed }) => ({
+        minHeight: touch,
+        paddingHorizontal: space.lg,
+        paddingVertical: space.md,
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: space.md,
+        backgroundColor: pressed ? c.muted : on ? c.primarySoft : 'transparent',
+      })}>
+      {Icon ? (
+        <View style={{ width: 40, height: 40, borderRadius: radius.md, backgroundColor: c.surface2, alignItems: 'center', justifyContent: 'center' }}>
+          <Icon size={20} color={c.textMuted} strokeWidth={2} />
+        </View>
+      ) : null}
+      <View style={{ flex: 1, minWidth: 0 }}>
+        <Txt weight="semibold" color={item.disabled ? 'textMuted' : 'text'} numberOfLines={2}>
+          {item.title}
+        </Txt>
+        {item.subtitle ? (
+          <Txt variant="caption" color="textMuted" numberOfLines={1}>
+            {item.subtitle}
+          </Txt>
+        ) : null}
+      </View>
+      {on ? <Check size={20} color={c.primary} strokeWidth={2.4} /> : null}
+    </Pressable>
+  );
+});

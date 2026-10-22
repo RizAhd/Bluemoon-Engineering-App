@@ -38,11 +38,17 @@ export interface ScreenProps {
   gap?: number;
 }
 
-/** Page shell: bg, gutter, safe padding, keyboard room, optional sticky footer. */
+/**
+ * Page shell: bg, gutter, safe padding, keyboard room, optional sticky footer.
+ * On a window under 480 dp tall (landscape phone, split screen) a scrolling screen's footer moves to the end of
+ * the content, so it scrolls with it instead of covering half the list. A `scroll={false}` screen places
+ * `footer` itself when `useLayout().short` (see StickyFooter).
+ */
 export function Screen({ children, scroll = true, footer, padTop = true, hairlineTop = true, paddingBottom, scrollProps, contentStyle, gap = space.lg }: ScreenProps) {
   const c = useColors();
   const insets = useSafeAreaInsets();
-  const { gutter, maxWidth } = useLayout();
+  const { gutter, column, short } = useLayout();
+  const inlineFooter = !!footer && scroll && short;
   const bottom = paddingBottom ?? (footer ? space.xl : sizes.tabScrollBottom);
   const body = scroll ? (
     <ScrollView
@@ -50,10 +56,12 @@ export function Screen({ children, scroll = true, footer, padTop = true, hairlin
       keyboardDismissMode="on-drag"
       {...scrollProps}
       contentContainerStyle={[
-        { paddingHorizontal: gutter, paddingTop: padTop ? space.lg : 0, gap, paddingBottom: bottom, maxWidth, width: '100%', alignSelf: 'center' },
+        column,
+        { paddingHorizontal: gutter, paddingTop: padTop ? space.lg : 0, gap, paddingBottom: inlineFooter ? Math.max(insets.bottom, space.lg) : bottom },
         contentStyle,
       ]}>
       {children}
+      {inlineFooter ? <View style={{ gap: space.sm, paddingTop: space.sm }}>{footer}</View> : null}
     </ScrollView>
   ) : (
     <View style={{ flex: 1 }}>{children}</View>
@@ -62,21 +70,29 @@ export function Screen({ children, scroll = true, footer, padTop = true, hairlin
     <KeyboardAvoidingView style={{ flex: 1, backgroundColor: c.bg }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       {hairlineTop ? <View style={{ height: hairline, backgroundColor: c.border }} /> : null}
       {body}
-      {footer ? (
-        <View
-          style={{
-            paddingHorizontal: gutter,
-            paddingTop: space.lg,
-            paddingBottom: Math.max(insets.bottom, space.lg),
-            borderTopWidth: hairline,
-            borderTopColor: c.border,
-            backgroundColor: c.card,
-            gap: space.sm,
-          }}>
-          <View style={{ maxWidth, width: '100%', alignSelf: 'center', gap: space.sm }}>{footer}</View>
-        </View>
-      ) : null}
+      {footer && !inlineFooter ? <StickyFooter>{footer}</StickyFooter> : null}
     </KeyboardAvoidingView>
+  );
+}
+
+/** The sticky footer box of a Screen: card bg, 1 dp top border, padding 16, bottom max(insets.bottom, 16), content in the centred column. */
+export function StickyFooter({ children }: { children: ReactNode }) {
+  const c = useColors();
+  const insets = useSafeAreaInsets();
+  const { gutter, column } = useLayout();
+  return (
+    <View
+      style={{
+        paddingHorizontal: gutter,
+        paddingTop: space.lg,
+        paddingBottom: Math.max(insets.bottom, space.lg),
+        borderTopWidth: hairline,
+        borderTopColor: c.border,
+        backgroundColor: c.card,
+        gap: space.sm,
+      }}>
+      <View style={[column, { gap: space.sm }]}>{children}</View>
+    </View>
   );
 }
 
@@ -300,7 +316,7 @@ export function ListRow({
             <Icon size={20} color={slot.fg} strokeWidth={2} />
           </View>
         ) : null}
-        <View style={{ flex: 1, gap: 2 }}>
+        <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
           <Txt weight="semibold" numberOfLines={2} color={muted || disabled ? 'textMuted' : 'text'}>
             {title}
           </Txt>
@@ -313,16 +329,17 @@ export function ListRow({
         </View>
         {trailing ??
           (collapsible ? (
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.sm, flexShrink: 0 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.sm, flexShrink: 0, maxWidth: '55%' }}>
               {value ? (
-                <Txt weight="semibold" numeric color={valueTone}>
+                <Txt weight="semibold" numeric color={valueTone} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7} style={{ flexShrink: 1 }}>
                   {value}
                 </Txt>
               ) : null}
               <ExpandIcon size={18} color={c.textMuted} strokeWidth={2} />
             </View>
           ) : value ? (
-            <Txt weight="semibold" numeric color={valueTone} style={{ flexShrink: 0 }}>
+            // A big amount never pushes the title out: it keeps at most about half the row and shrinks (to 70 %) before it would be cut.
+            <Txt weight="semibold" numeric color={valueTone} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7} style={{ flexShrink: 0, maxWidth: '55%' }}>
               {value}
             </Txt>
           ) : selected ? (
@@ -392,6 +409,8 @@ export function InfoLine({
       onPress={onPress}
       accessibilityRole={onPress ? 'button' : undefined}
       accessibilityLabel={accessibilityLabel ?? text}
+      // 44 tall to sit quietly in a list of cards; the hit area reaches 48
+      hitSlop={{ top: 2, bottom: 2 }}
       style={({ pressed }) => ({
         minHeight: 44,
         flexDirection: 'row',

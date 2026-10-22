@@ -12,7 +12,7 @@ The app must look right and feel quick on every Android phone the site staff car
 
 Height: under 480 dp (landscape phone, split screen) the sticky footers and big totals must still leave room for the list: footers scroll with the content when the window is that short.
 
-Use `useLayout()` from `src/theme` for every decision (`gutter`, `maxWidth`, `narrow`, `stackTiles`, width class). Never read `Dimensions` directly; it does not update on rotation, folding or split screen.
+Use `useLayout()` from `src/theme` for every decision (`widthClass`, `gutter`, `maxWidth` / `column`, `short`, `narrow`, `stackTiles`). Never read `Dimensions` directly; it does not update on rotation, folding or split screen. `Screen` moves its footer into the scroll content when `short`; sheets use `BottomSheet` / `SheetPanel` (640 max, centred, scroll inside).
 
 ## 2. Rules that keep layouts from breaking
 
@@ -26,6 +26,7 @@ Use `useLayout()` from `src/theme` for every decision (`gutter`, `maxWidth`, `na
 
 ## 3. Smooth on slow phones
 
+- Lists of cards use `CardList` (`src/components/ui/CardList.tsx`); any other FlatList spreads `listTuning` from `src/theme`. `src/__tests__/screens/responsive.test.tsx` renders every screen across the window sizes.
 - Long lists use `FlatList` / `SectionList` (never `map` inside a ScrollView for lists that can grow past ~30 rows). Stable `keyExtractor`, memoised row components (`React.memo` / React Compiler), `renderItem` stable, `initialNumToRender` about 12, `windowSize` about 7 to 11, `maxToRenderPerBatch` about 8, `removeClippedSubviews` on Android, `getItemLayout` when rows have a fixed height.
 - Queries do the work: filtering, sorting, sums and limits happen in SQL (`WHERE`, `ORDER BY`, `LIMIT`), not in JavaScript over all rows.
 - Images: `expo-image` with fixed dimensions and caching; thumbnails, never full photos, in lists.

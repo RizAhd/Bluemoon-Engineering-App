@@ -2,13 +2,16 @@ import * as Haptics from 'expo-haptics';
 import { router, Tabs, usePathname } from 'expo-router';
 import { Building2, Hammer, HardHat, Plus, Receipt, Sun } from 'lucide-react-native';
 import { useEffect, useState } from 'react';
-import { type ColorValue, Keyboard, Platform, Pressable, View } from 'react-native';
+import { type ColorValue, Keyboard, Platform, Pressable, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Txt } from '@/components/ui/Txt';
 import { useProjects } from '@/hooks/data';
 import { useT } from '@/i18n';
 import { fabEdgeDark, hairline, radius, sizes, space, tabLabel, useColors, useFont, useLayout, useMotion, useScheme } from '@/theme';
+
+/** Largest text-size multiplier the tab labels follow. */
+const TAB_LABEL_MAX_SCALE = 1.2;
 
 function useKeyboardOpen() {
   const [open, setOpen] = useState(false);
@@ -69,6 +72,16 @@ export default function TabLayout() {
           },
           tabBarItemStyle: { paddingVertical: 0 },
           tabBarIconStyle: { width: 56, height: 32 },
+          // The label follows the phone's text size only up to 1.2x: at 2x the 12 / 16 label no longer fits the
+          // 64 dp bar beside the 32 dp icon pill and five labels would be cut. One line, ellipsis if a language runs long.
+          tabBarLabel: ({ color, children }) => (
+            <Text
+              numberOfLines={1}
+              maxFontSizeMultiplier={TAB_LABEL_MAX_SCALE}
+              style={{ color, fontFamily: font('semibold'), fontSize: tabLabel.size, lineHeight: tabLabel.lineHeight, marginTop: space.xs, textAlign: 'center' }}>
+              {children}
+            </Text>
+          ),
           tabBarLabelStyle: { fontFamily: font('semibold'), fontSize: tabLabel.size, lineHeight: tabLabel.lineHeight, marginTop: space.xs },
           tabBarAllowFontScaling: true,
           sceneStyle: { backgroundColor: c.bg },

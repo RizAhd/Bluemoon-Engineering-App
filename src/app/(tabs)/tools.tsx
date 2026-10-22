@@ -1,20 +1,21 @@
 import { router } from 'expo-router';
 import { Hammer, Plus } from 'lucide-react-native';
-import { useMemo, useState } from 'react';
+import { memo, useMemo, useState } from 'react';
 import { View } from 'react-native';
 
 import { HeaderAction, TabHeader } from '@/components/ProjectSwitcher';
 import { ShareHeaderButton, useShareSheet } from '@/components/ShareSheet';
 import { Button } from '@/components/ui/Button';
+import { CardList, type CardSection } from '@/components/ui/CardList';
 import { Badge, EmptyState } from '@/components/ui/feedback';
 import { Chips } from '@/components/ui/form';
-import { GroupLabel, ListCard, ListRow, Screen } from '@/components/ui/layout';
+import { ListRow, Screen } from '@/components/ui/layout';
 import { useQuery } from '@/db';
 import type { ToolStatus } from '@/db/types';
 import { useCurrentProjectId } from '@/hooks/data';
 import { useT } from '@/i18n';
 import { formatDay } from '@/lib/dates';
-import { space, useColors } from '@/theme';
+import { useColors } from '@/theme';
 
 type Row = ToolStatus & { worker_name: string | null; project_name: string | null };
 type Filter = 'all' | 'out' | 'in';
@@ -53,9 +54,87 @@ export default function ToolsScreen() {
 
   const goNew = () => router.push('/tool/form');
 
-  const renderRow = (item: Row, muted = false) => (
+  // Tools out on another project are drawn muted, under the collapsible "Other projects" row.
+  const renderRow = (item: Row) => <ToolRow item={item} pid={pid} muted={!!pid && !!item.is_out && item.project_id !== pid} />;
+
+  const showOut = active !== 'in';
+  const showIn = active !== 'out';
+
+  const sections: CardSection<Row>[] = [
+    { key: 'out', label: `${t(pid ? 'outHere' : 'out')} (${outHere.length})`, rows: showOut ? outHere : [] },
+    { key: 'in', label: `${t(pid ? 'availableToIssue' : 'inStore')} (${inStore.length})`, rows: showIn ? inStore : [] },
+    {
+      key: 'elsewhere',
+      label: `${t('outElsewhere')} (${outElsewhere.length})`,
+      rows: showOut && showElsewhere ? outElsewhere : [],
+      before:
+        showOut && outElsewhere.length
+          ? [
+              {
+                key: 'toggle',
+                node: (
+                  <ListRow
+                    icon={Hammer}
+                    title={t('otherProjects')}
+                    subtitle={showElsewhere ? t('hide') : t('showAll')}
+                    value={String(outElsewhere.length)}
+                    expanded={showElsewhere}
+                    accessibilityLabel={`${t('outElsewhere')}: ${outElsewhere.length}. ${showElsewhere ? t('hide') : t('showAll')}`}
+                    onPress={() => setShowElsewhere((v) => !v)}
+                  />
+                ),
+              },
+            ]
+          : [],
+    },
+  ];
+
+  return (
+    <View style={{ flex: 1, backgroundColor: c.bg }}>
+      <TabHeader
+        title={t('tools')}
+        allowAll
+        right={
+          <>
+            <ShareHeaderButton onPress={share.open} />
+            <HeaderAction icon={Plus} label={t('newTool')} onPress={goNew} />
+          </>
+        }
+      />
+      <Screen hairlineTop={false} scroll={false}>
+        <CardList
+          sections={rows.length ? sections : []}
+          keyOf={toolKey}
+          renderRow={renderRow}
+          inset
+          empty={rows.length === 0 ? <EmptyState icon={Hammer} title={t('noTools')} hint={t('noToolsHint')} action={<Button icon={Plus} label={t('newTool')} onPress={goNew} full />} /> : null}
+          header={
+            rows.length ? (
+              <Chips
+                value={active}
+                onChange={setFilter}
+                options={[
+                  { value: 'all', label: t('all') },
+                  { value: 'out', label: t('out'), count: out.length, disabled: out.length === 0 },
+                  { value: 'in', label: t('inStore'), count: inStore.length, disabled: inStore.length === 0 },
+                ]}
+              />
+            ) : null
+          }
+        />
+      </Screen>
+      {share.sheet}
+    </View>
+  );
+}
+
+const toolKey = (r: Row) => r.tool_id;
+
+/** One tool: name and code, who has it and where, out / in store badge. */
+const ToolRow = memo(function ToolRow({ item, pid, muted }: { item: Row; pid: string | null; muted: boolean }) {
+  const t = useT();
+  return (
     <ListRow
-      key={item.tool_id}
       icon={Hammer}
       iconTone={item.is_out ? 'warning' : undefined}
       muted={muted}
@@ -72,72 +151,4 @@ export default function ToolsScreen() {
       onPress={() => router.push(`/tool/${item.tool_id}`)}
     />
   );
-
-  const showOut = active !== 'in';
-  const showIn = active !== 'out';
-
-  return (
-    <View style={{ flex: 1, backgroundColor: c.bg }}>
-      <TabHeader
-        title={t('tools')}
-        allowAll
-        right={
-          <>
-            <ShareHeaderButton onPress={share.open} />
-            <HeaderAction icon={Plus} label={t('newTool')} onPress={goNew} />
-          </>
-        }
-      />
-      <Screen hairlineTop={false} gap={space.md}>
-        {rows.length === 0 ? (
-          <EmptyState icon={Hammer} title={t('noTools')} hint={t('noToolsHint')} action={<Button icon={Plus} label={t('newTool')} onPress={goNew} full />} />
-        ) : (
-          <>
-            <Chips
-              value={active}
-              onChange={setFilter}
-              options={[
-                { value: 'all', label: t('all') },
-                { value: 'out', label: t('out'), count: out.length, disabled: out.length === 0 },
-                { value: 'in', label: t('inStore'), count: inStore.length, disabled: inStore.length === 0 },
-              ]}
-            />
-
-            {showOut && outHere.length ? (
-              <View style={{ gap: space.sm }}>
-                <GroupLabel label={`${t(pid ? 'outHere' : 'out')} (${outHere.length})`} />
-                <ListCard inset>{outHere.map((r) => renderRow(r))}</ListCard>
-              </View>
-            ) : null}
-
-            {showIn && inStore.length ? (
-              <View style={{ gap: space.sm }}>
-                <GroupLabel label={`${t(pid ? 'availableToIssue' : 'inStore')} (${inStore.length})`} />
-                <ListCard inset>{inStore.map((r) => renderRow(r))}</ListCard>
-              </View>
-            ) : null}
-
-            {showOut && outElsewhere.length ? (
-              <View style={{ gap: space.sm }}>
-                <GroupLabel label={`${t('outElsewhere')} (${outElsewhere.length})`} />
-                <ListCard inset>
-                  <ListRow
-                    icon={Hammer}
-                    title={t('otherProjects')}
-                    subtitle={showElsewhere ? t('hide') : t('showAll')}
-                    value={String(outElsewhere.length)}
-                    expanded={showElsewhere}
-                    accessibilityLabel={`${t('outElsewhere')}: ${outElsewhere.length}. ${showElsewhere ? t('hide') : t('showAll')}`}
-                    onPress={() => setShowElsewhere((v) => !v)}
-                  />
-                  {showElsewhere ? outElsewhere.map((r) => renderRow(r, true)) : null}
-                </ListCard>
-              </View>
-            ) : null}
-          </>
-        )}
-      </Screen>
-      {share.sheet}
-    </View>
-  );
-}
+});

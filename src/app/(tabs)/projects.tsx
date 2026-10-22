@@ -1,14 +1,15 @@
 import { router } from 'expo-router';
 import { Building2, Plus, Search } from 'lucide-react-native';
-import { useMemo, useState } from 'react';
+import { memo, useMemo, useState } from 'react';
 import { View } from 'react-native';
 
 import { ListControls, oneOf, useListPrefs } from '@/components/ListControls';
 import { TabHeader } from '@/components/ProjectSwitcher';
 import { Button } from '@/components/ui/Button';
+import { CardList, type CardSection } from '@/components/ui/CardList';
 import { Badge, EmptyState } from '@/components/ui/feedback';
 import { SearchField } from '@/components/ui/form';
-import { GroupLabel, ListCard, ListRow, Screen } from '@/components/ui/layout';
+import { ListRow, Screen } from '@/components/ui/layout';
 import type { ProjectCost, ProjectStatus } from '@/db/types';
 import { PROJECT_SORTS, useCurrentProjectId, useProjectList, type ProjectSort } from '@/hooks/data';
 import { useT } from '@/i18n';
@@ -81,73 +82,84 @@ export default function ProjectsScreen() {
 
   const applied = [activeFilter !== 'all' ? t(`status_${activeFilter}`) : null, sort !== 'name' ? t(`sort_${sort}`) : null].filter((s): s is string => !!s);
 
-  const renderRow = (p: Row) => {
-    const current = p.project_id === pid;
-    const label = `${p.name}${current ? ` (${t('thisProject')})` : ''}, ${t(`status_${p.status}`)}, ${formatLKR(total(p))}`;
-    return (
-      <ListRow
-        key={p.project_id}
-        icon={Building2}
-        iconTone={current ? 'primary' : undefined}
-        title={p.name}
-        subtitle={[p.client, p.location].filter(Boolean).join(' · ') || undefined}
-        value={formatLKR(total(p))}
-        accessibilityLabel={label}
-        badge={
-          <View style={{ flexDirection: 'row', gap: space.sm, flexWrap: 'wrap' }}>
-            <Badge tone={p.status === 'active' ? 'success' : p.status === 'on_hold' ? 'warning' : 'slate'} label={t(`status_${p.status}`)} />
-            {current ? <Badge tone="primary" label={t('thisProject')} /> : null}
-          </View>
-        }
-        onPress={() => open(p)}>
-        {p.contract_cents ? <MiniBar spent={total(p)} contract={p.contract_cents} /> : null}
-      </ListRow>
-    );
-  };
+  const renderRow = (p: Row) => <ProjectRow p={p} current={p.project_id === pid} onOpen={open} />;
+
+  // Grouped by status with each group's total under "All"; one card when a status chip is chosen.
+  const sections: CardSection<Row>[] =
+    activeFilter === 'all'
+      ? STATUSES.map((s) => {
+          const group = visible.filter((r) => r.status === s);
+          return { key: s, label: `${t(`status_${s}`)} (${group.length})`, value: formatLKR(group.reduce((n, r) => n + total(r), 0)), rows: group };
+        })
+      : [{ key: activeFilter, rows: visible }];
 
   return (
     <View style={{ flex: 1, backgroundColor: c.bg }}>
       <TabHeader title={t('projects')} showProject={false} />
-      <Screen hairlineTop={false} gap={space.md}>
+      <Screen hairlineTop={false} scroll={false}>
         {rows.length === 0 ? (
           // The floating "New project" button is the screen's one primary action here, so the empty state's own is secondary.
-          <EmptyState icon={Building2} title={t('noProjects')} hint={t('noProjectsHint')} action={<Button kind="secondary" icon={Plus} label={t('newProject')} onPress={goNew} full />} />
+          <CardList
+            sections={[]}
+            keyOf={projectKey}
+            renderRow={renderRow}
+            empty={<EmptyState icon={Building2} title={t('noProjects')} hint={t('noProjectsHint')} action={<Button kind="secondary" icon={Plus} label={t('newProject')} onPress={goNew} full />} />}
+          />
         ) : (
-          <>
-            {rows.length > SEARCH_FROM ? <SearchField value={q} onChangeText={setQ} placeholder={t('search')} /> : null}
-            <ListControls
-              quick={{
-                value: activeFilter,
-                onChange: (v) => set('status', v),
-                options: [
-                  { value: 'all', label: t('all') },
-                  ...STATUSES.map((s) => ({ value: s, label: t(`status_${s}`), count: counts[s], disabled: counts[s] === 0 })),
-                ],
-              }}
-              sort={{ value: sort, onChange: (v) => set('sort', v), options: PROJECT_SORTS.map((s) => ({ value: s, label: t(`sort_${s}`) })) }}
-              sheetCount={sort !== 'name' ? 1 : 0}
-              applied={applied}
-              onClear={reset}
-            />
-            {visible.length === 0 ? (
-              <EmptyState icon={Search} title={`0 ${t('projects')}`} hint={query ? `"${q.trim()}"` : undefined} />
-            ) : activeFilter === 'all' ? (
-              STATUSES.map((s) => {
-                const group = visible.filter((r) => r.status === s);
-                if (!group.length) return null;
-                return (
-                  <View key={s} style={{ gap: space.sm }}>
-                    <GroupLabel label={`${t(`status_${s}`)} (${group.length})`} value={formatLKR(group.reduce((n, r) => n + total(r), 0))} />
-                    <ListCard inset>{group.map(renderRow)}</ListCard>
-                  </View>
-                );
-              })
-            ) : (
-              <ListCard inset>{visible.map(renderRow)}</ListCard>
-            )}
-          </>
+          <CardList
+            sections={sections}
+            keyOf={projectKey}
+            renderRow={renderRow}
+            inset
+            empty={<EmptyState icon={Search} title={`0 ${t('projects')}`} hint={query ? `"${q.trim()}"` : undefined} />}
+            header={
+              <View style={{ gap: space.md }}>
+                {rows.length > SEARCH_FROM ? <SearchField value={q} onChangeText={setQ} placeholder={t('search')} /> : null}
+                <ListControls
+                  quick={{
+                    value: activeFilter,
+                    onChange: (v) => set('status', v),
+                    options: [
+                      { value: 'all', label: t('all') },
+                      ...STATUSES.map((s) => ({ value: s, label: t(`status_${s}`), count: counts[s], disabled: counts[s] === 0 })),
+                    ],
+                  }}
+                  sort={{ value: sort, onChange: (v) => set('sort', v), options: PROJECT_SORTS.map((s) => ({ value: s, label: t(`sort_${s}`) })) }}
+                  sheetCount={sort !== 'name' ? 1 : 0}
+                  applied={applied}
+                  onClear={reset}
+                />
+              </View>
+            }
+          />
         )}
       </Screen>
     </View>
   );
 }
+
+const projectKey = (p: Row) => p.project_id;
+
+/** One project: name, client and place, status badges, whole-life cost and the contract bar. */
+const ProjectRow = memo(function ProjectRow({ p, current, onOpen }: { p: Row; current: boolean; onOpen: (p: Row) => void }) {
+  const t = useT();
+  const label = `${p.name}${current ? ` (${t('thisProject')})` : ''}, ${t(`status_${p.status}`)}, ${formatLKR(total(p))}`;
+  return (
+    <ListRow
+      icon={Building2}
+      iconTone={current ? 'primary' : undefined}
+      title={p.name}
+      subtitle={[p.client, p.location].filter(Boolean).join(' · ') || undefined}
+      value={formatLKR(total(p))}
+      accessibilityLabel={label}
+      badge={
+        <View style={{ flexDirection: 'row', gap: space.sm, flexWrap: 'wrap' }}>
+          <Badge tone={p.status === 'active' ? 'success' : p.status === 'on_hold' ? 'warning' : 'slate'} label={t(`status_${p.status}`)} />
+          {current ? <Badge tone="primary" label={t('thisProject')} /> : null}
+        </View>
+      }
+      onPress={() => onOpen(p)}>
+      {p.contract_cents ? <MiniBar spent={total(p)} contract={p.contract_cents} /> : null}
+    </ListRow>
+  );
+});

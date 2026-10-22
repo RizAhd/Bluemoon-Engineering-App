@@ -2,7 +2,7 @@ import * as Haptics from 'expo-haptics';
 import { router, Stack, useLocalSearchParams } from 'expo-router';
 import { Building2, CheckCircle2, Info, UserPlus } from 'lucide-react-native';
 import { memo, useCallback, useEffect, useMemo, useState } from 'react';
-import { Alert, FlatList, Keyboard, Pressable, View } from 'react-native';
+import { Alert, FlatList, Keyboard, Platform, Pressable, View } from 'react-native';
 
 import { ShareHeaderButton, useShareSheet } from '@/components/ShareSheet';
 import { Button } from '@/components/ui/Button';
@@ -17,7 +17,7 @@ import { useT, type TKey } from '@/i18n';
 import { isValidDay, today } from '@/lib/dates';
 import { guard } from '@/lib/errors';
 import { centsToInput, formatLKR, parseCents } from '@/lib/money';
-import { hairline, radius, space, useColors, useLayout } from '@/theme';
+import { hairline, listTuning, radius, space, useColors, useLayout } from '@/theme';
 
 const DAY_CHOICES = ['0.5', '1', '1.5', '2'] as const;
 const DAY_LABELS: Record<(typeof DAY_CHOICES)[number], { label: string; a11y: TKey }> = {
@@ -350,7 +350,7 @@ export default function TodaysWorkScreen() {
     else toast(t('nothingToPay'));
   }
 
-  const { gutter, maxWidth } = useLayout();
+  const { gutter, column, short } = useLayout();
 
   const projectField = (
     <SelectField
@@ -408,14 +408,9 @@ export default function TodaysWorkScreen() {
     share.open();
   }
 
-  return (
+  const footer = (
     <>
-      <Stack.Screen options={{ title: t('todaysWork'), headerRight: () => <ShareHeaderButton onPress={openShare} /> }} />
-      <Screen
-        scroll={false}
-        footer={
-          <>
-            {kbOpen ? null : (
+      {kbOpen ? null : (
               <View style={{ gap: space.xs }} accessibilityLiveRegion="polite">
                 <View style={{ flexDirection: 'row', gap: space.lg }}>
                   <SummaryCell label={t('workersToday')} value={String(workedRows.length)} />
@@ -435,15 +430,22 @@ export default function TodaysWorkScreen() {
             ) : (
               <Button label={t('saveSheet')} onPress={onSave} loading={busy} />
             )}
-          </>
-        }>
+    </>
+  );
+
+  return (
+    <>
+      <Stack.Screen options={{ title: t('todaysWork'), headerRight: () => <ShareHeaderButton onPress={openShare} /> }} />
+      {/* On a short window (landscape, split screen) the totals and Save scroll with the sheet instead of covering it. */}
+      <Screen scroll={false} footer={short ? undefined : footer}>
         <FlatList
           data={vms}
-          keyExtractor={(v) => v.row.worker_id}
+          keyExtractor={vmKey}
           keyboardShouldPersistTaps="handled"
           keyboardDismissMode="on-drag"
-          initialNumToRender={8}
-          contentContainerStyle={{ paddingHorizontal: gutter, paddingTop: space.lg, paddingBottom: space.xl, maxWidth, width: '100%', alignSelf: 'center' }}
+          {...listTuning}
+          removeClippedSubviews={Platform.OS === 'android'}
+          contentContainerStyle={[column, { paddingHorizontal: gutter, paddingTop: space.lg, paddingBottom: space.xl }]}
           ItemSeparatorComponent={Gap}
           ListHeaderComponent={header}
           ListEmptyComponent={
@@ -455,11 +457,14 @@ export default function TodaysWorkScreen() {
             />
           }
           ListFooterComponent={
-            vms.length ? (
-              <View style={{ marginTop: space.lg }}>
-                <ListCard>
-                  <ListRow icon={UserPlus} title={t('addWorkerToProject')} onPress={addWorker} />
-                </ListCard>
+            vms.length || short ? (
+              <View style={{ marginTop: space.lg, gap: space.lg }}>
+                {vms.length ? (
+                  <ListCard>
+                    <ListRow icon={UserPlus} title={t('addWorkerToProject')} onPress={addWorker} />
+                  </ListCard>
+                ) : null}
+                {short ? <View style={{ gap: space.sm }}>{footer}</View> : null}
               </View>
             ) : undefined
           }
@@ -471,6 +476,7 @@ export default function TodaysWorkScreen() {
   );
 }
 
+const vmKey = (v: Vm) => v.row.worker_id;
 const EMPTY_DRAFTS: Record<string, Draft> = {};
 const EMPTY_DRAFT: Draft = {};
 const EMPTY_ERRORS: Record<string, TKey> = {};
@@ -481,11 +487,12 @@ function Gap() {
 
 function SummaryCell({ label, value, tone = 'text' }: { label: string; value: string; tone?: 'text' | 'success' | 'danger' }) {
   return (
-    <View style={{ flex: 1, flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: space.sm }}>
-      <Txt variant="caption" color="textMuted" style={{ flex: 1 }}>
+    <View style={{ flex: 1, minWidth: 0, flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: space.sm }}>
+      <Txt variant="caption" color="textMuted" style={{ flex: 1, minWidth: 0 }}>
         {label}
       </Txt>
-      <Txt weight="semibold" numeric color={tone} style={{ flexShrink: 0 }}>
+      {/* Half a 320 dp phone is 136 dp: a big total shrinks (to 70 %) before it could run past the cell. */}
+      <Txt weight="semibold" numeric color={tone} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7} style={{ flexShrink: 0, maxWidth: '70%' }}>
         {value}
       </Txt>
     </View>
@@ -532,7 +539,7 @@ const WorkerRow = memo(function WorkerRow({
           backgroundColor: pressed ? c.muted : c.card,
         })}>
         <Checkbox checked={worked} label={row.name} onChange={(next) => onToggle(vm, next)} />
-        <View style={{ flex: 1, paddingVertical: space.sm, gap: 2 }}>
+        <View style={{ flex: 1, minWidth: 0, paddingVertical: space.sm, gap: 2 }}>
           <Txt weight="semibold" numberOfLines={2}>
             {row.name}
           </Txt>
@@ -540,10 +547,10 @@ const WorkerRow = memo(function WorkerRow({
             {sub}
           </Txt>
         </View>
-        <View style={{ alignItems: 'flex-end', gap: space.xs, marginLeft: space.sm, flexShrink: 0 }}>
+        <View style={{ alignItems: 'flex-end', gap: space.xs, marginLeft: space.sm, flexShrink: 0, maxWidth: '45%' }}>
           {worked ? (
             <>
-              <Txt weight="semibold" numeric>
+              <Txt weight="semibold" numeric numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>
                 {formatLKR(wage)}
               </Txt>
               {wage > 0 && paid >= wage ? (

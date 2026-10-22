@@ -1,16 +1,18 @@
 import { router, Stack, useLocalSearchParams } from 'expo-router';
 import { ArrowDownToLine, ArrowUpFromLine, Camera, CheckCircle2, Hammer, Pencil } from 'lucide-react-native';
+import { memo } from 'react';
 import { Alert, View } from 'react-native';
 
 import { PhotoStrip } from '@/components/PhotoStrip';
 import { Button, HeaderButton } from '@/components/ui/Button';
+import { CardList } from '@/components/ui/CardList';
 import { Badge, EmptyState, toast } from '@/components/ui/feedback';
-import { Card, ListCard, ListRow, Screen, SectionTitle } from '@/components/ui/layout';
+import { Card, ListRow, Screen, SectionTitle } from '@/components/ui/layout';
 import { Txt } from '@/components/ui/Txt';
 import { useFirst, useQuery } from '@/db';
 import { deleteRecord } from '@/db/repo';
 import type { Tool, ToolMovement, ToolStatus } from '@/db/types';
-import { useAttachmentCounts, useCurrentProjectId } from '@/hooks/data';
+import { useCurrentProjectId } from '@/hooks/data';
 import { useT } from '@/i18n';
 import { formatDay } from '@/lib/dates';
 import { showError } from '@/lib/errors';
@@ -35,7 +37,13 @@ export default function ToolDetail() {
      WHERE m.tool_id = ? AND m.deleted_at IS NULL ORDER BY m.day DESC, m.created_at DESC`,
     [id ?? ''],
   );
-  const photos = useAttachmentCounts('tool_movements');
+  // Photo counts of this tool's movements only (not of every movement on the phone).
+  const photoRows = useQuery<{ owner_id: string; n: number }>(
+    `SELECT a.owner_id, COUNT(*) AS n FROM attachments a JOIN tool_movements m ON m.id = a.owner_id
+     WHERE a.owner_table = 'tool_movements' AND a.deleted_at IS NULL AND m.tool_id = ? GROUP BY a.owner_id`,
+    [id ?? ''],
+  );
+  const photos = new Map(photoRows.map((r) => [r.owner_id, r.n]));
 
   if (!tool || !status) {
     return (
@@ -79,75 +87,86 @@ export default function ToolDetail() {
           headerRight: () => <HeaderButton icon={Pencil} label={t('editTool')} onPress={() => router.push(`/tool/form?id=${tool.id}`)} />,
         }}
       />
-      <Screen>
-        {/* Status card: colour + icon + word, never colour alone. */}
-        <Card tone={out ? 'warningSoft' : 'successSoft'}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.md }}>
-            {out ? <ArrowUpFromLine size={24} color={c.warning} strokeWidth={2} /> : <CheckCircle2 size={24} color={c.success} strokeWidth={2} />}
-            <View style={{ flex: 1, gap: space.xs }}>
-              <Txt weight="semibold" color={out ? 'warning' : 'success'}>
-                {out ? `${t('outWith')} ${status.worker_name ?? status.taken_by ?? ''}`.trim() : t('inStore')}
-              </Txt>
+      <Screen scroll={false}>
+        <CardList
+          sections={[{ key: 'moves', rows: moves }]}
+          keyOf={moveKey}
+          renderRow={(m) => <MoveRow m={m} photos={photos.get(m.id) ?? 0} onRemove={removeMove} />}
+          inset
+          gap={space.lg}
+          empty={
+            <Txt variant="caption" color="textMuted">
+              {t('issueTool')}
+            </Txt>
+          }
+          header={
+            <View style={{ gap: space.lg }}>
+              {/* Status card: colour + icon + word, never colour alone. */}
+              <Card tone={out ? 'warningSoft' : 'successSoft'}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.md }}>
+                  {out ? <ArrowUpFromLine size={24} color={c.warning} strokeWidth={2} /> : <CheckCircle2 size={24} color={c.success} strokeWidth={2} />}
+                  <View style={{ flex: 1, gap: space.xs }}>
+                    <Txt weight="semibold" color={out ? 'warning' : 'success'}>
+                      {out ? `${t('outWith')} ${status.worker_name ?? status.taken_by ?? ''}`.trim() : t('inStore')}
+                    </Txt>
+                    {out ? (
+                      <Txt variant="caption" color="textMuted">
+                        {[status.project_name, status.last_day ? formatDay(status.last_day) : null].filter(Boolean).join(' · ')}
+                      </Txt>
+                    ) : status.last_day ? (
+                      <Txt variant="caption" color="textMuted" numeric>
+                        {formatDay(status.last_day)}
+                      </Txt>
+                    ) : null}
+                  </View>
+                  <Badge tone={out ? 'warning' : 'success'} label={out ? t('out') : t('inStore')} />
+                </View>
+              </Card>
+
               {out ? (
-                <Txt variant="caption" color="textMuted">
-                  {[status.project_name, status.last_day ? formatDay(status.last_day) : null].filter(Boolean).join(' · ')}
-                </Txt>
-              ) : status.last_day ? (
-                <Txt variant="caption" color="textMuted" numeric>
-                  {formatDay(status.last_day)}
-                </Txt>
+                <Button icon={ArrowDownToLine} label={t('returnTool')} onPress={() => openMove('return')} />
+              ) : (
+                <Button icon={ArrowUpFromLine} label={t('issueTool')} onPress={() => openMove('issue')} />
+              )}
+
+              {tool.notes ? (
+                <Card>
+                  <Txt eyebrow>{t('notes')}</Txt>
+                  <Txt>{tool.notes}</Txt>
+                </Card>
               ) : null}
+
+              <PhotoStrip ownerTable="tools" ownerId={tool.id} label={t('photoProof')} editable={false} />
+
+              <SectionTitle title={t('history')} count={moves.length || undefined} />
             </View>
-            <Badge tone={out ? 'warning' : 'success'} label={out ? t('out') : t('inStore')} />
-          </View>
-        </Card>
-
-        {out ? (
-          <Button icon={ArrowDownToLine} label={t('returnTool')} onPress={() => openMove('return')} />
-        ) : (
-          <Button icon={ArrowUpFromLine} label={t('issueTool')} onPress={() => openMove('issue')} />
-        )}
-
-        {tool.notes ? (
-          <Card>
-            <Txt eyebrow>{t('notes')}</Txt>
-            <Txt>{tool.notes}</Txt>
-          </Card>
-        ) : null}
-
-        <PhotoStrip ownerTable="tools" ownerId={tool.id} label={t('photoProof')} editable={false} />
-
-        <SectionTitle title={t('history')} count={moves.length || undefined} />
-        {moves.length ? (
-          <ListCard inset>
-            {moves.map((m) => {
-              const n = photos.get(m.id) ?? 0;
-              const isIssue = m.kind === 'issue';
-              return (
-                <ListRow
-                  key={m.id}
-                  icon={isIssue ? ArrowUpFromLine : ArrowDownToLine}
-                  iconTone={isIssue ? 'warning' : 'success'}
-                  title={`${t(isIssue ? 'issue' : 'return')} · ${formatDay(m.day)}`}
-                  subtitle={[m.worker_name ?? m.taken_by, m.project_name, m.condition, m.note].filter(Boolean).join(' · ')}
-                  badge={n ? <Badge icon={Camera} label={String(n)} /> : undefined}
-                  onPress={() =>
-                    Alert.alert(`${t(isIssue ? 'issue' : 'return')} · ${formatDay(m.day)}`, [m.worker_name ?? m.taken_by, m.project_name].filter(Boolean).join(' · '), [
-                      { text: t('close'), style: 'cancel' },
-                      { text: t('photoProof'), onPress: () => router.push(`/tool/move?id=${m.id}`) },
-                      { text: t('delete'), style: 'destructive', onPress: () => removeMove(m) },
-                    ])
-                  }
-                />
-              );
-            })}
-          </ListCard>
-        ) : (
-          <Txt variant="caption" color="textMuted">
-            {t('issueTool')}
-          </Txt>
-        )}
+          }
+        />
       </Screen>
     </>
   );
 }
+
+const moveKey = (m: Move) => m.id;
+
+/** One issue or return: day, who, project, condition and note, photo count; tap for photos or delete. */
+const MoveRow = memo(function MoveRow({ m, photos, onRemove }: { m: Move; photos: number; onRemove: (m: Move) => void }) {
+  const t = useT();
+  const isIssue = m.kind === 'issue';
+  return (
+    <ListRow
+      icon={isIssue ? ArrowUpFromLine : ArrowDownToLine}
+      iconTone={isIssue ? 'warning' : 'success'}
+      title={`${t(isIssue ? 'issue' : 'return')} · ${formatDay(m.day)}`}
+      subtitle={[m.worker_name ?? m.taken_by, m.project_name, m.condition, m.note].filter(Boolean).join(' · ')}
+      badge={photos ? <Badge icon={Camera} label={String(photos)} /> : undefined}
+      onPress={() =>
+        Alert.alert(`${t(isIssue ? 'issue' : 'return')} · ${formatDay(m.day)}`, [m.worker_name ?? m.taken_by, m.project_name].filter(Boolean).join(' · '), [
+          { text: t('close'), style: 'cancel' },
+          { text: t('photoProof'), onPress: () => router.push(`/tool/move?id=${m.id}`) },
+          { text: t('delete'), style: 'destructive', onPress: () => onRemove(m) },
+        ])
+      }
+    />
+  );
+});

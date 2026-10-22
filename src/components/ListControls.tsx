@@ -11,12 +11,11 @@ import * as Haptics from 'expo-haptics';
 import type { LucideIcon } from 'lucide-react-native';
 import { Calendar, Check, ChevronDown, SlidersHorizontal, X } from 'lucide-react-native';
 import { useEffect, useState, type ReactNode } from 'react';
-import { AppState, Modal, Pressable, ScrollView, View } from 'react-native';
+import { AppState, Pressable, ScrollView, View } from 'react-native';
 import Animated from 'react-native-reanimated';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Button } from '@/components/ui/Button';
-import { Chips, Label, PickerSheet, SheetHeader } from '@/components/ui/form';
+import { BottomSheet, Chips, Label, PickerSheet, SheetHeader } from '@/components/ui/form';
 import { usePressScale } from '@/components/ui/PressScale';
 import { Txt } from '@/components/ui/Txt';
 import { setSetting, tx, useQuery } from '@/db';
@@ -492,31 +491,18 @@ function FilterSheet({
 }) {
   const c = useColors();
   const t = useT();
-  const insets = useSafeAreaInsets();
   return (
-    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose} statusBarTranslucent navigationBarTranslucent>
-      <Pressable style={{ flex: 1, backgroundColor: c.overlay }} onPress={onClose} accessibilityRole="button" accessibilityLabel={t('close')} />
-      <View
-        style={{
-          maxHeight: '85%',
-          backgroundColor: c.surface3,
-          borderTopLeftRadius: radius.xl,
-          borderTopRightRadius: radius.xl,
-          borderTopWidth: hairline,
-          borderTopColor: c.border,
-          paddingBottom: insets.bottom + space.lg,
-        }}>
-        <SheetHeader title={t('filterSort')} onClose={onClose} />
-        <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ paddingHorizontal: space.lg, paddingBottom: space.lg, gap: space.xl }}>
-          {period}
-          <Chips label={t('sortBy')} options={sort.options} value={sort.value} onChange={sort.onChange} />
-          {children}
-        </ScrollView>
-        <View style={{ flexDirection: 'row', gap: space.md, paddingHorizontal: space.lg, paddingTop: space.md, borderTopWidth: hairline, borderTopColor: c.border }}>
-          <Button kind="secondary" compact label={t('reset')} onPress={onReset} style={{ flex: 1 }} />
-          <Button compact label={t('done')} onPress={onClose} style={{ flex: 1 }} />
-        </View>
+    <BottomSheet visible={visible} onClose={onClose}>
+      <SheetHeader title={t('filterSort')} onClose={onClose} />
+      <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ paddingHorizontal: space.lg, paddingBottom: space.lg, gap: space.xl }}>
+        {period}
+        <Chips label={t('sortBy')} options={sort.options} value={sort.value} onChange={sort.onChange} />
+        {children}
+      </ScrollView>
+      <View style={{ flexDirection: 'row', gap: space.md, paddingHorizontal: space.lg, paddingTop: space.md, borderTopWidth: hairline, borderTopColor: c.border }}>
+        <Button kind="secondary" compact label={t('reset')} onPress={onReset} style={{ flex: 1 }} />
+        <Button compact label={t('done')} onPress={onClose} style={{ flex: 1 }} />
       </View>
-    </Modal>
+    </BottomSheet>
   );
 }

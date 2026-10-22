@@ -21,15 +21,15 @@ import {
   Trash2,
   XCircle,
 } from 'lucide-react-native';
-import { useCallback, useRef, useState, type ReactNode } from 'react';
-import { Alert, Modal, Pressable, ScrollView, View } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { memo, useCallback, useRef, useState, type ReactNode } from 'react';
+import { Alert, Pressable, ScrollView, View } from 'react-native';
 
 import { EstimateStatusBadge } from '@/components/EstimateBits';
 import { ShareHeaderButton, useShareSheet } from '@/components/ShareSheet';
 import { Button, HeaderButton } from '@/components/ui/Button';
+import { CardList } from '@/components/ui/CardList';
 import { EmptyState, toast } from '@/components/ui/feedback';
-import { Checkbox, Chips, SheetHeader } from '@/components/ui/form';
+import { BottomSheet, Checkbox, Chips, SheetHeader } from '@/components/ui/form';
 import { Card, Divider, ListCard, ListRow, Screen, SectionTitle } from '@/components/ui/layout';
 import { Txt } from '@/components/ui/Txt';
 import { setSetting, useFirst, useSetting } from '@/db';
@@ -41,7 +41,7 @@ import {
   loadEstimate,
   setEstimateStatus,
 } from '@/db/estimates';
-import type { EstimateStatus } from '@/db/types';
+import type { EstimateItem, EstimateStatus } from '@/db/types';
 import { useEstimate, useEstimateItems, useEstimatePayments, useEstimateTotal } from '@/hooks/data';
 import { LANG_NAMES, useT, type Lang } from '@/i18n';
 import { useCompanyProfile } from '@/lib/company';
@@ -50,7 +50,7 @@ import { showError } from '@/lib/errors';
 import { allocatePayments, formatPercent, formatQty, lineAmount, validUntil } from '@/lib/estimate';
 import { exportEstimatePdf } from '@/lib/estimatePdf';
 import { formatLKR } from '@/lib/money';
-import { hairline, radius, space, touch, useColors } from '@/theme';
+import { radius, space, touch, useColors } from '@/theme';
 
 // ---------------------------------------------------------------- small pieces
 
@@ -61,10 +61,15 @@ import { hairline, radius, space, touch, useColors } from '@/theme';
 function MoneyLine({ label, value, text, numeric = true }: { label: string; value: string; text?: boolean; numeric?: boolean }) {
   return (
     <View style={{ flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between', gap: space.md }}>
-      <Txt color="textMuted" style={text ? { flexShrink: 0 } : { flex: 1 }} numberOfLines={text ? 1 : 2}>
+      {/* A long label (Sinhala, Tamil, large text) gets at most half the line, so the value always shows. */}
+      <Txt color="textMuted" style={text ? { flexShrink: 0, maxWidth: '50%' } : { flex: 1, minWidth: 0 }} numberOfLines={text ? 1 : 2}>
         {label}
       </Txt>
-      <Txt weight="semibold" numeric={numeric} style={text ? { flex: 1, textAlign: 'right' } : { flexShrink: 0 }}>
+      <Txt
+        weight="semibold"
+        numeric={numeric}
+        style={text ? { flex: 1, minWidth: 0, textAlign: 'right' } : { flexShrink: 0, maxWidth: '70%' }}
+        {...(text ? {} : { numberOfLines: 1, adjustsFontSizeToFit: true, minimumFontScale: 0.7 })}>
         {value}
       </Txt>
     </View>
@@ -141,39 +146,39 @@ function PdfShareSheet({
   onShare: () => void;
   onClose: () => void;
 }) {
-  const c = useColors();
   const t = useT();
-  const insets = useSafeAreaInsets();
   // While the PDF is being made the sheet stays: closing it would hide the only sign that something is happening.
   const close = busy ? () => undefined : onClose;
   return (
-    <Modal visible={visible} transparent animationType="slide" onRequestClose={close} statusBarTranslucent navigationBarTranslucent>
-      <Pressable style={{ flex: 1, backgroundColor: c.overlay }} onPress={close} accessibilityRole="button" accessibilityLabel={t('close')} />
-      <View
-        style={{
-          maxHeight: '85%',
-          backgroundColor: c.surface3,
-          borderTopLeftRadius: radius.xl,
-          borderTopRightRadius: radius.xl,
-          borderTopWidth: hairline,
-          borderTopColor: c.border,
-          paddingBottom: insets.bottom + space.lg,
-        }}>
-        <SheetHeader title={t('shareEstimate')} onClose={close} />
-        <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ paddingHorizontal: space.lg, gap: space.lg }}>
-          <ShareOption label={t('letterheadOption')} hint={t('estimateLetterheadHint')} checked={letterhead} onChange={onLetterhead} />
-          <Chips<Lang>
-            label={t('pdfLanguage')}
-            value={lang}
-            onChange={onLang}
-            options={(Object.keys(LANG_NAMES) as Lang[]).map((l) => ({ value: l, label: LANG_NAMES[l] }))}
-          />
-          <Button icon={Share2} label={busy ? t('exporting') : t('shareNow')} loading={busy} onPress={onShare} full />
-        </ScrollView>
-      </View>
-    </Modal>
+    <BottomSheet visible={visible} onClose={close}>
+      <SheetHeader title={t('shareEstimate')} onClose={close} />
+      <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ paddingHorizontal: space.lg, gap: space.lg }}>
+        <ShareOption label={t('letterheadOption')} hint={t('estimateLetterheadHint')} checked={letterhead} onChange={onLetterhead} />
+        <Chips<Lang>
+          label={t('pdfLanguage')}
+          value={lang}
+          onChange={onLang}
+          options={(Object.keys(LANG_NAMES) as Lang[]).map((l) => ({ value: l, label: LANG_NAMES[l] }))}
+        />
+        <Button icon={Share2} label={busy ? t('exporting') : t('shareNow')} loading={busy} onPress={onShare} full />
+      </ScrollView>
+    </BottomSheet>
   );
 }
+
+const itemKey = (it: EstimateItem) => it.id;
+
+/** One price line: description, quantity × rate, line amount. Not tappable while the estimate is locked. */
+const ItemRow = memo(function ItemRow({ it, onOpen }: { it: EstimateItem; onOpen?: (id: string) => void }) {
+  return (
+    <ListRow
+      title={it.description}
+      subtitle={`${[formatQty(it.qty_milli), it.unit].filter(Boolean).join(' ')} × ${formatLKR(it.rate_cents)}`}
+      value={formatLKR(lineAmount(it.qty_milli, it.rate_cents))}
+      onPress={onOpen ? () => onOpen(it.id) : undefined}
+    />
+  );
+});
 
 // ---------------------------------------------------------------- the hub
 
@@ -402,191 +407,194 @@ export default function EstimateHub() {
           ),
         }}
       />
-      <Screen>
-        {/* who it is for, and when */}
-        <Card>
-          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: space.md }}>
-            <Txt variant="bodyLg" weight="semibold" numeric style={{ flex: 1 }} numberOfLines={1}>
-              {est.number}
-            </Txt>
-            <EstimateStatusBadge status={est.status} />
-          </View>
-          <View style={{ gap: space.xs }}>
-            <Txt variant="title" weight="semibold" numberOfLines={2}>
-              {est.client_name}
-            </Txt>
-            <Txt color="textMuted" numberOfLines={2}>
-              {est.title}
-            </Txt>
-            {[est.client_phone, est.client_address, est.location].filter(Boolean).map((line) => (
-              <Txt key={line} variant="caption" color="textMuted" numberOfLines={2}>
-                {line}
-              </Txt>
-            ))}
-          </View>
-          <Divider />
-          <View style={{ flexDirection: 'row', gap: space.md }}>
-            <Fact label={t('date')} value={formatDay(est.issue_day)} />
-            <Fact label={t('validUntil')} value={formatDay(validUntil(est.issue_day, est.valid_days))} />
-          </View>
-        </Card>
-
-        {/* the total is the centre of the screen */}
-        <Card>
-          <MoneyLine label={t('subtotal')} value={formatLKR(total.subtotal_cents)} />
-          {total.discount_cents > 0 ? <MoneyLine label={t('discount')} value={`−${formatLKR(total.discount_cents)}`} /> : null}
-          {est.tax_bp > 0 ? <MoneyLine label={`${t('tax')} (${formatPercent(est.tax_bp)} %)`} value={formatLKR(total.tax_cents)} /> : null}
-          <Divider />
-          <Txt eyebrow>{t('total')}</Txt>
-          <Txt variant="amountXl" weight="bold" numeric adjustsFontSizeToFit minimumFontScale={0.7} numberOfLines={1}>
-            {formatLKR(total.total_cents)}
-          </Txt>
-          {!locked ? <Button kind="ghost" compact icon={Percent} label={t('discountAndTax')} onPress={() => router.push(`/estimate/form?id=${est.id}&more=1`)} style={{ alignSelf: 'flex-start' }} /> : null}
-        </Card>
-
-        {locked ? (
-          <Card tone="warningSoft">
-            <View style={{ flexDirection: 'row', gap: space.md, alignItems: 'center' }}>
-              <Lock size={24} color={c.warning} strokeWidth={2} />
-              <Txt weight="semibold" color="warning" style={{ flex: 1 }}>
-                {t('estimateLockedCaption')}
-              </Txt>
-            </View>
-            <Button kind="secondary" compact icon={RotateCcw} label={t('reopenAsDraft')} onPress={() => setStatus('draft')} />
-          </Card>
-        ) : null}
-
-        {/* price lines */}
-        <SectionTitle title={t('items')} count={items.length} />
-        {items.length ? (
-          <ListCard>
-            {items.map((it) => (
-              <ListRow
-                key={it.id}
-                title={it.description}
-                subtitle={`${[formatQty(it.qty_milli), it.unit].filter(Boolean).join(' ')} × ${formatLKR(it.rate_cents)}`}
-                value={formatLKR(lineAmount(it.qty_milli, it.rate_cents))}
-                onPress={locked ? undefined : () => openItem(it.id)}
+      <Screen scroll={false}>
+        {/* One virtualised list: the cards above the price lines are its header, the rest of the hub its footer. */}
+        <CardList
+          sections={[{ key: 'items', rows: items }]}
+          keyOf={itemKey}
+          renderRow={(it) => <ItemRow it={it} onOpen={locked ? undefined : openItem} />}
+          gap={space.lg}
+          empty={
+            <Card>
+              <EmptyState
+                compact
+                icon={ListPlus}
+                title={t('noItems')}
+                hint={t('noItemsHint')}
+                action={locked ? undefined : <Button kind="secondary" compact icon={Plus} label={t('addItem')} onPress={() => openItem()} />}
               />
-            ))}
-          </ListCard>
-        ) : (
-          <Card>
-            <EmptyState
-              compact
-              icon={ListPlus}
-              title={t('noItems')}
-              hint={t('noItemsHint')}
-              action={locked ? undefined : <Button kind="secondary" compact icon={Plus} label={t('addItem')} onPress={() => openItem()} />}
-            />
-          </Card>
-        )}
-        {!locked && items.length ? <Button kind="secondary" compact icon={Plus} label={t('addItem')} onPress={() => openItem()} full /> : null}
+            </Card>
+          }
+          header={
+            <View style={{ gap: space.lg }}>
+              {/* who it is for, and when */}
+              <Card>
+                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: space.md }}>
+                  <Txt variant="bodyLg" weight="semibold" numeric style={{ flex: 1 }} numberOfLines={1}>
+                    {est.number}
+                  </Txt>
+                  <EstimateStatusBadge status={est.status} />
+                </View>
+                <View style={{ gap: space.xs }}>
+                  <Txt variant="title" weight="semibold" numberOfLines={2}>
+                    {est.client_name}
+                  </Txt>
+                  <Txt color="textMuted" numberOfLines={2}>
+                    {est.title}
+                  </Txt>
+                  {[est.client_phone, est.client_address, est.location].filter(Boolean).map((line) => (
+                    <Txt key={line} variant="caption" color="textMuted" numberOfLines={2}>
+                      {line}
+                    </Txt>
+                  ))}
+                </View>
+                <Divider />
+                <View style={{ flexDirection: 'row', gap: space.md }}>
+                  <Fact label={t('date')} value={formatDay(est.issue_day)} />
+                  <Fact label={t('validUntil')} value={formatDay(validUntil(est.issue_day, est.valid_days))} />
+                </View>
+              </Card>
 
-        {/* payment schedule */}
-        <SectionTitle title={t('paymentSchedule')} count={payments.length || undefined} />
-        {payments.length ? (
-          <ListCard>
-            {payments.map((p, i) => (
-              <ListRow
-                key={p.id}
-                title={p.label}
-                subtitle={`${formatPercent(p.percent_bp)} %`}
-                value={formatLKR(amounts[i] ?? 0, { forceDecimals: stageDecimals })}
-                onPress={locked ? undefined : () => openStage(p.id)}
-              />
-            ))}
-          </ListCard>
-        ) : (
-          <Card>
-            <EmptyState
-              compact
-              icon={ListChecks}
-              title={t('noStages')}
-              hint={t('noStagesHint')}
-              action={
-                locked ? undefined : (
-                  <View style={{ gap: space.sm }}>
-                    <Button kind="secondary" compact icon={ListChecks} label={t('useStandardSchedule')} onPress={standardSchedule} />
-                    <Button kind="ghost" compact icon={Plus} label={t('addStage')} onPress={() => openStage()} />
+              {/* the total is the centre of the screen */}
+              <Card>
+                <MoneyLine label={t('subtotal')} value={formatLKR(total.subtotal_cents)} />
+                {total.discount_cents > 0 ? <MoneyLine label={t('discount')} value={`−${formatLKR(total.discount_cents)}`} /> : null}
+                {est.tax_bp > 0 ? <MoneyLine label={`${t('tax')} (${formatPercent(est.tax_bp)} %)`} value={formatLKR(total.tax_cents)} /> : null}
+                <Divider />
+                <Txt eyebrow>{t('total')}</Txt>
+                <Txt variant="amountXl" weight="bold" numeric adjustsFontSizeToFit minimumFontScale={0.7} numberOfLines={1}>
+                  {formatLKR(total.total_cents)}
+                </Txt>
+                {!locked ? <Button kind="ghost" compact icon={Percent} label={t('discountAndTax')} onPress={() => router.push(`/estimate/form?id=${est.id}&more=1`)} style={{ alignSelf: 'flex-start' }} /> : null}
+              </Card>
+
+              {locked ? (
+                <Card tone="warningSoft">
+                  <View style={{ flexDirection: 'row', gap: space.md, alignItems: 'center' }}>
+                    <Lock size={24} color={c.warning} strokeWidth={2} />
+                    <Txt weight="semibold" color="warning" style={{ flex: 1 }}>
+                      {t('estimateLockedCaption')}
+                    </Txt>
                   </View>
-                )
-              }
-            />
-          </Card>
-        )}
-        {payments.length && unscheduled > 0 ? (
-          <Card tone="warningSoft">
-            <View style={{ flexDirection: 'row', gap: space.md, alignItems: 'center' }}>
-              <AlertTriangle size={24} color={c.warning} strokeWidth={2} />
-              <Txt weight="semibold" color="warning" style={{ flex: 1 }}>
-                {t('unscheduledPercent', { pct: formatPercent(unscheduled) })}
-              </Txt>
-            </View>
-          </Card>
-        ) : null}
-        {!locked && payments.length ? (
-          <View style={{ gap: space.sm }}>
-            <Button kind="secondary" compact icon={Plus} label={t('addStage')} onPress={() => openStage()} full />
-            <Button kind="ghost" compact icon={ListChecks} label={t('useStandardSchedule')} onPress={standardSchedule} full />
-          </View>
-        ) : null}
+                  <Button kind="secondary" compact icon={RotateCcw} label={t('reopenAsDraft')} onPress={() => setStatus('draft')} />
+                </Card>
+              ) : null}
 
-        {/* where the client pays */}
-        <SectionTitle title={t('paymentDetails')} />
-        {bank.length ? (
-          <Card>
-            {bank.map((line) => (
-              <MoneyLine key={line.label} label={line.label} value={line.value.trim()} numeric={line.numeric} text />
-            ))}
-            <Button
-              kind="ghost"
-              compact
-              icon={bankIncomplete ? Landmark : Pencil}
-              label={bankIncomplete ? t('addBankDetails') : t('edit')}
-              onPress={() => router.push('/company')}
-              style={{ alignSelf: 'flex-start' }}
-            />
-          </Card>
-        ) : (
-          <ListCard>
-            <ListRow icon={Landmark} iconTone="primary" title={t('addBankDetails')} subtitle={t('companyAndBankHint')} onPress={() => router.push('/company')} />
-          </ListCard>
-        )}
-
-        {/* terms and notes */}
-        <SectionTitle title={t('termsAndNotes')} />
-        <Card>
-          {est.terms ? (
-            <View style={{ gap: space.xs }}>
-              <Txt eyebrow>{t('terms')}</Txt>
-              <Txt>{est.terms}</Txt>
+              {/* price lines */}
+              <SectionTitle title={t('items')} count={items.length} />
             </View>
-          ) : null}
-          {est.notes ? (
-            <View style={{ gap: space.xs }}>
-              <Txt eyebrow>{t('notes')}</Txt>
-              <Txt>{est.notes}</Txt>
-            </View>
-          ) : null}
-          {!est.terms && !est.notes ? (
-            <Txt variant="caption" color="textMuted">
-              {t('noTerms')}
-            </Txt>
-          ) : null}
-        </Card>
+          }
+          footer={
+            <View style={{ gap: space.lg }}>
+              {!locked && items.length ? <Button kind="secondary" compact icon={Plus} label={t('addItem')} onPress={() => openItem()} full /> : null}
 
-        {/* actions */}
-        <View style={{ gap: space.md, marginTop: space.md }}>
-          <Button icon={Share2} label={t('shareEstimatePdf')} onPress={() => setSheetOpen(true)} full />
-          {projectElsewhere ? (
-            <Txt variant="caption" color="textMuted">
-              {t('projectOnOtherPhone')}
-            </Txt>
-          ) : null}
-          <ListCard inset>{actionRows}</ListCard>
-          <Button kind="danger" icon={Trash2} label={t('deleteEstimate')} onPress={remove} full />
-        </View>
+              {/* payment schedule */}
+              <SectionTitle title={t('paymentSchedule')} count={payments.length || undefined} />
+              {payments.length ? (
+                <ListCard>
+                  {payments.map((p, i) => (
+                    <ListRow
+                      key={p.id}
+                      title={p.label}
+                      subtitle={`${formatPercent(p.percent_bp)} %`}
+                      value={formatLKR(amounts[i] ?? 0, { forceDecimals: stageDecimals })}
+                      onPress={locked ? undefined : () => openStage(p.id)}
+                    />
+                  ))}
+                </ListCard>
+              ) : (
+                <Card>
+                  <EmptyState
+                    compact
+                    icon={ListChecks}
+                    title={t('noStages')}
+                    hint={t('noStagesHint')}
+                    action={
+                      locked ? undefined : (
+                        <View style={{ gap: space.sm }}>
+                          <Button kind="secondary" compact icon={ListChecks} label={t('useStandardSchedule')} onPress={standardSchedule} />
+                          <Button kind="ghost" compact icon={Plus} label={t('addStage')} onPress={() => openStage()} />
+                        </View>
+                      )
+                    }
+                  />
+                </Card>
+              )}
+              {payments.length && unscheduled > 0 ? (
+                <Card tone="warningSoft">
+                  <View style={{ flexDirection: 'row', gap: space.md, alignItems: 'center' }}>
+                    <AlertTriangle size={24} color={c.warning} strokeWidth={2} />
+                    <Txt weight="semibold" color="warning" style={{ flex: 1 }}>
+                      {t('unscheduledPercent', { pct: formatPercent(unscheduled) })}
+                    </Txt>
+                  </View>
+                </Card>
+              ) : null}
+              {!locked && payments.length ? (
+                <View style={{ gap: space.sm }}>
+                  <Button kind="secondary" compact icon={Plus} label={t('addStage')} onPress={() => openStage()} full />
+                  <Button kind="ghost" compact icon={ListChecks} label={t('useStandardSchedule')} onPress={standardSchedule} full />
+                </View>
+              ) : null}
+
+              {/* where the client pays */}
+              <SectionTitle title={t('paymentDetails')} />
+              {bank.length ? (
+                <Card>
+                  {bank.map((line) => (
+                    <MoneyLine key={line.label} label={line.label} value={line.value.trim()} numeric={line.numeric} text />
+                  ))}
+                  <Button
+                    kind="ghost"
+                    compact
+                    icon={bankIncomplete ? Landmark : Pencil}
+                    label={bankIncomplete ? t('addBankDetails') : t('edit')}
+                    onPress={() => router.push('/company')}
+                    style={{ alignSelf: 'flex-start' }}
+                  />
+                </Card>
+              ) : (
+                <ListCard>
+                  <ListRow icon={Landmark} iconTone="primary" title={t('addBankDetails')} subtitle={t('companyAndBankHint')} onPress={() => router.push('/company')} />
+                </ListCard>
+              )}
+
+              {/* terms and notes */}
+              <SectionTitle title={t('termsAndNotes')} />
+              <Card>
+                {est.terms ? (
+                  <View style={{ gap: space.xs }}>
+                    <Txt eyebrow>{t('terms')}</Txt>
+                    <Txt>{est.terms}</Txt>
+                  </View>
+                ) : null}
+                {est.notes ? (
+                  <View style={{ gap: space.xs }}>
+                    <Txt eyebrow>{t('notes')}</Txt>
+                    <Txt>{est.notes}</Txt>
+                  </View>
+                ) : null}
+                {!est.terms && !est.notes ? (
+                  <Txt variant="caption" color="textMuted">
+                    {t('noTerms')}
+                  </Txt>
+                ) : null}
+              </Card>
+
+              {/* actions */}
+              <View style={{ gap: space.md, marginTop: space.md }}>
+                <Button icon={Share2} label={t('shareEstimatePdf')} onPress={() => setSheetOpen(true)} full />
+                {projectElsewhere ? (
+                  <Txt variant="caption" color="textMuted">
+                    {t('projectOnOtherPhone')}
+                  </Txt>
+                ) : null}
+                <ListCard inset>{actionRows}</ListCard>
+                <Button kind="danger" icon={Trash2} label={t('deleteEstimate')} onPress={remove} full />
+              </View>
+            </View>
+          }
+        />
       </Screen>
 
       <PdfShareSheet

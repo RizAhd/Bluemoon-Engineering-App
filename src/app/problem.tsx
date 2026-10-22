@@ -1,12 +1,13 @@
 import { useFocusEffect } from 'expo-router';
 import { Bug, Share2, Trash2 } from 'lucide-react-native';
-import { useCallback, useMemo, useState } from 'react';
+import { memo, useCallback, useMemo, useState } from 'react';
 import { Alert, View } from 'react-native';
 
 import { shareErrorLog } from '@/components/ErrorScreen';
 import { Button } from '@/components/ui/Button';
+import { CardList, type CardSection } from '@/components/ui/CardList';
 import { EmptyState, toast } from '@/components/ui/feedback';
-import { Card, GroupLabel, ListCard, ListRow, Screen } from '@/components/ui/layout';
+import { Card, ListRow, Screen } from '@/components/ui/layout';
 import { Txt } from '@/components/ui/Txt';
 import { useLang, useT } from '@/i18n';
 import { formatDay, toDay, today } from '@/lib/dates';
@@ -114,50 +115,45 @@ export default function ProblemScreen() {
 
   const dayLabel = (day: string) => (day === today() ? t('today') : day ? formatDay(day) : t('errorLog'));
 
-  return (
-    <Screen
-      footer={
-        entries.length ? (
-          <View style={{ gap: space.sm }}>
-            <Button icon={Share2} label={t('shareLog')} onPress={() => void share()} loading={sharing} full />
-            <Button kind="danger" icon={Trash2} label={t('clearLog')} onPress={confirmClear} disabled={sharing} full />
-          </View>
-        ) : undefined
-      }>
-      {entries.length ? (
-        <Card gap={space.xs}>
-          <Txt eyebrow>{t('errorLog')}</Txt>
-          <Txt variant="caption" color="textMuted">
-            {t('appCrashedBody')}
-          </Txt>
-          <Txt variant="caption" weight="semibold" numeric>
-            {`${entries.length} ${t('records')}`}
-          </Txt>
-        </Card>
-      ) : null}
+  const sections: CardSection<LogEntry>[] = groups.map(([day, rows]) => ({ key: day || 'none', label: `${dayLabel(day)} (${rows.length})`, rows }));
 
-      {entries.length ? (
-        groups.map(([day, rows], gi) => (
-          <View key={day || 'none'} style={{ gap: space.sm }}>
-            <GroupLabel label={`${dayLabel(day)} (${rows.length})`} first={gi === 0} />
-            <ListCard inset>
-              {rows.map((e) => (
-                <ListRow
-                  key={e.key}
-                  icon={Bug}
-                  title={e.context}
-                  subtitle={e.message}
-                  value={timeOf(e.at)}
-                  onPress={() => show(e)}
-                  accessibilityLabel={`${e.context}: ${e.message}`}
-                />
-              ))}
-            </ListCard>
-          </View>
-        ))
-      ) : (
-        <EmptyState icon={Bug} title={t('noErrors')} hint={t('appCrashedBody')} />
-      )}
+  return (
+    <Screen scroll={false}>
+      <CardList
+        sections={sections}
+        keyOf={entryKey}
+        renderRow={(e) => <LogRow e={e} onPress={show} />}
+        inset
+        empty={<EmptyState icon={Bug} title={t('noErrors')} hint={t('appCrashedBody')} />}
+        stickyFooter={
+          entries.length ? (
+            <View style={{ gap: space.sm }}>
+              <Button icon={Share2} label={t('shareLog')} onPress={() => void share()} loading={sharing} full />
+              <Button kind="danger" icon={Trash2} label={t('clearLog')} onPress={confirmClear} disabled={sharing} full />
+            </View>
+          ) : undefined
+        }
+        header={
+          entries.length ? (
+            <Card gap={space.xs}>
+              <Txt eyebrow>{t('errorLog')}</Txt>
+              <Txt variant="caption" color="textMuted">
+                {t('appCrashedBody')}
+              </Txt>
+              <Txt variant="caption" weight="semibold" numeric>
+                {`${entries.length} ${t('records')}`}
+              </Txt>
+            </Card>
+          ) : null
+        }
+      />
     </Screen>
   );
 }
+
+const entryKey = (e: LogEntry) => e.key;
+
+/** One logged error: where it happened, the message, the time. */
+const LogRow = memo(function LogRow({ e, onPress }: { e: LogEntry; onPress: (e: LogEntry) => void }) {
+  return <ListRow icon={Bug} title={e.context} subtitle={e.message} value={timeOf(e.at)} onPress={() => onPress(e)} accessibilityLabel={`${e.context}: ${e.message}`} />;
+});

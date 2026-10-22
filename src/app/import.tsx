@@ -216,7 +216,14 @@ export default function ImportScreen() {
               key={table}
               title={t(TABLE_LABEL[table as DataTable] ?? 'records')}
               subtitle={parts.length ? undefined : t('unchanged')}
-              value={parts.length ? parts.join(' · ') : undefined}
+              // Words, not one amount: may wrap to two lines instead of shrinking like a money value.
+              trailing={
+                parts.length ? (
+                  <Txt weight="semibold" numeric numberOfLines={2} style={{ flexShrink: 1, maxWidth: '60%', textAlign: 'right' }}>
+                    {parts.join(' · ')}
+                  </Txt>
+                ) : undefined
+              }
             />
           );
         })}

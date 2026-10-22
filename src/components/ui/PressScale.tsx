@@ -16,7 +16,7 @@ export function usePressScale() {
   const style = useAnimatedStyle(() => ({ transform: [{ scale: scale.get() }] }));
   const handlers = {
     onPressIn: () => {
-      if (!m.reduced) scale.set(withTiming(motion.pressScale, { duration: motion.fast, easing: easeOut }));
+      if (!m.reduced) scale.set(withTiming(motion.controlPressScale, { duration: motion.fast, easing: easeOut }));
     },
     onPressOut: () => {
       scale.set(withTiming(1, { duration: motion.base, easing: easeOut }));

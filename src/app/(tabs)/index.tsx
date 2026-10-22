@@ -191,7 +191,7 @@ export default function TodayScreen() {
             </Txt>
             {toolsOut > 0 ? <Badge icon={Hammer} tone="warning" label={`${toolsOut} ${t('toolsOut')}`} /> : null}
           </View>
-          <Txt variant="amount" weight="bold" numeric adjustsFontSizeToFit numberOfLines={1}>
+          <Txt variant="amount" weight="bold" numeric adjustsFontSizeToFit minimumFontScale={0.7} numberOfLines={1}>
             {formatLKR(totals.spent)}
           </Txt>
           {pid ? (

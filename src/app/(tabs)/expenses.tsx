@@ -1,6 +1,6 @@
 import { router } from 'expo-router';
 import { Camera, Plus, Receipt, Search } from 'lucide-react-native';
-import { useMemo, useState } from 'react';
+import { memo, useMemo, useState } from 'react';
 import { View } from 'react-native';
 
 import {
@@ -21,8 +21,9 @@ import { ShareHeaderButton, useShareSheet } from '@/components/ShareSheet';
 import { Stat, Tiles } from '@/components/Stats';
 import { Button } from '@/components/ui/Button';
 import { Badge, EmptyState } from '@/components/ui/feedback';
+import { CardList, type CardSection } from '@/components/ui/CardList';
 import { AmountField, HelperText, Label } from '@/components/ui/form';
-import { GroupLabel, ListCard, ListRow, Screen } from '@/components/ui/layout';
+import { ListRow, Screen } from '@/components/ui/layout';
 import { useFirst } from '@/db';
 import { EXPENSE_CATEGORIES, PAY_METHODS, type Expense } from '@/db/types';
 import { EXPENSE_SORTS, useAttachmentCounts, useCurrentProjectId, useExpenseList, type ExpenseSort } from '@/hooks/data';
@@ -144,79 +145,91 @@ export default function ExpensesScreen() {
     setLimit(PAGE);
   };
 
-  const renderRow = (item: Row, withDay: boolean) => {
-    const n = photos.get(item.id) ?? 0;
-    const cat = t(`cat_${item.category}` as TKey);
-    return (
-      <ListRow
-        key={item.id}
-        icon={Receipt}
-        title={item.paid_to || cat}
-        subtitle={[withDay ? formatDay(item.day) : null, cat, pid ? null : item.project_name, t(`method_${item.method}` as TKey)].filter(Boolean).join(' · ')}
-        value={formatLKR(item.amount_cents)}
-        badge={n ? <Badge icon={Camera} label={String(n)} /> : undefined}
-        noChevron
-        onPress={() => router.push(`/expense/form?id=${item.id}`)}
-      />
-    );
-  };
+  // Sorted by date the rows sit in one card per day under the day's total; sorted by amount they are one card and say their day.
+  // (React Compiler memoises this, so the list only rebuilds when the rows or the labels change.)
+  const sections: CardSection<Row>[] = byDate
+    ? groups.map((g) => ({ key: g.day, label: dayLabel(g.day), value: formatLKR(g.total), rows: g.rows }))
+    : [{ key: 'all', rows }];
+
+  const renderRow = (item: Row) => <ExpenseRow item={item} photos={photos.get(item.id) ?? 0} withDay={!byDate} showProject={!pid} />;
 
   return (
     <View style={{ flex: 1, backgroundColor: c.bg }}>
       <TabHeader title={t('expenses')} right={<ShareHeaderButton onPress={share.open} />} />
-      <Screen hairlineTop={false} gap={space.md}>
+      <Screen hairlineTop={false} scroll={false}>
         {unfiltered.n === 0 ? (
-          <EmptyState icon={Receipt} title={t('noExpenses')} hint={t('noExpensesHint')} action={<Button icon={Plus} label={t('newExpense')} onPress={goNew} full />} />
+          <CardList
+            sections={[]}
+            keyOf={rowKey}
+            renderRow={renderRow}
+            empty={<EmptyState icon={Receipt} title={t('noExpenses')} hint={t('noExpensesHint')} action={<Button icon={Plus} label={t('newExpense')} onPress={goNew} full />} />}
+          />
         ) : (
-          <>
-            <ListControls
-              period={{ value: period, onChange: (p) => set('period', p), months: list.months, today: td }}
-              sort={{ value: sort, onChange: (v) => set('sort', v), options: EXPENSE_SORTS.map((s) => ({ value: s, label: t(`sort_${s}`) })) }}
-              sheetCount={sheetCount}
-              applied={applied}
-              onClear={clear}>
-              <MultiChips
-                label={t('category')}
-                options={EXPENSE_CATEGORIES.map((k) => ({ value: k, label: t(`cat_${k}`) }))}
-                values={cats}
-                onChange={(next) => set('cats', next.join(','))}
-              />
-              <MultiChips
-                label={t('method')}
-                options={PAY_METHODS.map((m) => ({ value: m, label: t(`method_${m}`) }))}
-                values={methods}
-                onChange={(next) => set('methods', next.join(','))}
-              />
-              <AmountRange min={min} max={max} onMin={(v) => set('min', v == null ? '' : String(v))} onMax={(v) => set('max', v == null ? '' : String(v))} />
-            </ListControls>
-            {filtered ? (
-              <Tiles>
-                <Stat label={`${t('total')} · ${periodLabel(period, td, t)}`} value={formatLKR(list.total)} caption={pid ? undefined : t('allProjects')} style={{ flex: 1 }} />
-                <Stat label={t('entries')} value={String(list.count)} style={{ flex: 1 }} />
-              </Tiles>
-            ) : (
-              <Tiles>
-                <Stat label={t('thisMonth')} value={formatLKR(unfiltered.month)} style={{ flex: 1 }} />
-                <Stat label={t('totalCost')} value={formatLKR(unfiltered.everything)} caption={pid ? undefined : t('allProjects')} style={{ flex: 1 }} />
-              </Tiles>
-            )}
-            {rows.length === 0 ? (
-              <EmptyState icon={Search} title={t('noMatches')} hint={t('noMatchesHint')} action={<Button kind="secondary" compact label={t('clearFilters')} onPress={clear} />} compact />
-            ) : byDate ? (
-              groups.map((g) => (
-                <View key={g.day} style={{ gap: space.sm }}>
-                  <GroupLabel label={dayLabel(g.day)} value={formatLKR(g.total)} />
-                  <ListCard inset>{g.rows.map((item) => renderRow(item, false))}</ListCard>
-                </View>
-              ))
-            ) : (
-              <ListCard inset>{rows.map((item) => renderRow(item, true))}</ListCard>
-            )}
-            {capped ? <Button kind="secondary" label={t('showAll')} onPress={() => setLimit(-1)} full /> : null}
-          </>
+          <CardList
+            sections={rows.length ? sections : []}
+            keyOf={rowKey}
+            renderRow={renderRow}
+            inset
+            empty={<EmptyState icon={Search} title={t('noMatches')} hint={t('noMatchesHint')} action={<Button kind="secondary" compact label={t('clearFilters')} onPress={clear} />} compact />}
+            footer={capped ? <Button kind="secondary" label={t('showAll')} onPress={() => setLimit(-1)} full /> : null}
+            header={
+              <View style={{ gap: space.md }}>
+                <ListControls
+                  period={{ value: period, onChange: (p) => set('period', p), months: list.months, today: td }}
+                  sort={{ value: sort, onChange: (v) => set('sort', v), options: EXPENSE_SORTS.map((s) => ({ value: s, label: t(`sort_${s}`) })) }}
+                  sheetCount={sheetCount}
+                  applied={applied}
+                  onClear={clear}>
+                  <MultiChips
+                    label={t('category')}
+                    options={EXPENSE_CATEGORIES.map((k) => ({ value: k, label: t(`cat_${k}`) }))}
+                    values={cats}
+                    onChange={(next) => set('cats', next.join(','))}
+                  />
+                  <MultiChips
+                    label={t('method')}
+                    options={PAY_METHODS.map((m) => ({ value: m, label: t(`method_${m}`) }))}
+                    values={methods}
+                    onChange={(next) => set('methods', next.join(','))}
+                  />
+                  <AmountRange min={min} max={max} onMin={(v) => set('min', v == null ? '' : String(v))} onMax={(v) => set('max', v == null ? '' : String(v))} />
+                </ListControls>
+                {filtered ? (
+                  <Tiles>
+                    <Stat label={`${t('total')} · ${periodLabel(period, td, t)}`} value={formatLKR(list.total)} caption={pid ? undefined : t('allProjects')} style={{ flex: 1 }} />
+                    <Stat label={t('entries')} value={String(list.count)} style={{ flex: 1 }} />
+                  </Tiles>
+                ) : (
+                  <Tiles>
+                    <Stat label={t('thisMonth')} value={formatLKR(unfiltered.month)} style={{ flex: 1 }} />
+                    <Stat label={t('totalCost')} value={formatLKR(unfiltered.everything)} caption={pid ? undefined : t('allProjects')} style={{ flex: 1 }} />
+                  </Tiles>
+                )}
+              </View>
+            }
+          />
         )}
       </Screen>
       {share.sheet}
     </View>
   );
 }
+
+const rowKey = (r: Row) => r.id;
+
+/** One expense: paid to (or the category), the details, the amount, and a photo count badge. */
+const ExpenseRow = memo(function ExpenseRow({ item, photos, withDay, showProject }: { item: Row; photos: number; withDay: boolean; showProject: boolean }) {
+  const t = useT();
+  const cat = t(`cat_${item.category}` as TKey);
+  return (
+    <ListRow
+      icon={Receipt}
+      title={item.paid_to || cat}
+      subtitle={[withDay ? formatDay(item.day) : null, cat, showProject ? item.project_name : null, t(`method_${item.method}` as TKey)].filter(Boolean).join(' · ')}
+      value={formatLKR(item.amount_cents)}
+      badge={photos ? <Badge icon={Camera} label={String(photos)} /> : undefined}
+      noChevron
+      onPress={() => router.push(`/expense/form?id=${item.id}`)}
+    />
+  );
+});

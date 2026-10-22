@@ -50,9 +50,9 @@ export function setPathname(pathname: string): void {
  * used on phones: tests start at 360 (see PHONE_WIDTH in screenKit) and some variants use 320 (stacked stat
  * tiles, icon-only floating button) and 768 (centred content, 24 dp gutter). Set it BEFORE mounting.
  */
-export function setWindow(width: number, height = 800): void {
+export function setWindow(width: number, height = 800, fontScale = 1): void {
   const { Dimensions } = require('react-native') as typeof import('react-native');
-  const size = { width, height, scale: 3, fontScale: 1 };
+  const size = { width, height, scale: 3, fontScale };
   Dimensions.set({ window: size, screen: size });
 }
 
@@ -117,6 +117,26 @@ jest.mock('expo-router', () => {
     DefaultTheme: { dark: false, colors },
     DarkTheme: { dark: true, colors },
   };
+});
+
+// ---------------------------------------------------------------- lists
+
+/**
+ * Jest has no layout, so a VirtualizedList (FlatList, SectionList) never learns how tall the window is and keeps
+ * only its first `initialNumToRender` rows. In the tests every list renders all of its rows, as a very tall phone
+ * would, so a screen can be checked whole. The screens' own windowing settings (listTuning) are passed through
+ * untouched otherwise. The list's batching timer is flushed by screenKit (flushLists).
+ */
+jest.mock('@react-native/virtualized-lists/Lists/VirtualizedList', () => {
+  const React = require('react') as typeof import('react');
+  const actual = jest.requireActual('@react-native/virtualized-lists/Lists/VirtualizedList') as { default: React.ComponentType<Record<string, unknown>> };
+  const Real = actual.default;
+  const AllRows = React.forwardRef(function VirtualizedListAllRows(props: Record<string, unknown>, ref: unknown) {
+    const count = typeof props.getItemCount === 'function' ? Number(Reflect.apply(props.getItemCount, undefined, [props.data])) : 0;
+    const asked = typeof props.initialNumToRender === 'number' ? props.initialNumToRender : 10;
+    return React.createElement(Real, { ...props, ref, initialNumToRender: Math.max(asked, count) } as never);
+  });
+  return { ...actual, __esModule: true, default: AllRows };
 });
 
 // ---------------------------------------------------------------- icons & images

@@ -114,11 +114,79 @@ afterEach(() => {
 
 // ---------------------------------------------------------------- rendering
 
-/** Let queued microtasks / effects settle inside act(). */
+// ---------------------------------------------------------------- list timers
+
+/** The parts of a mounted VirtualizedList (FlatList / SectionList) that flushLists needs. */
+interface MountedList {
+  _updateCellsToRenderTimeoutID: ReturnType<typeof setTimeout> | null;
+  _updateCellsToRender: () => void;
+}
+
+interface FiberLike {
+  stateNode: unknown;
+  child: FiberLike | null;
+  sibling: FiberLike | null;
+  return: FiberLike | null;
+}
+
+function isList(node: unknown): node is MountedList {
+  return !!node && typeof node === 'object' && typeof (node as MountedList)._updateCellsToRender === 'function' && '_updateCellsToRenderTimeoutID' in node;
+}
+
+/** Every mounted list that has a cell update waiting on its timer. */
+function listsWithPendingUpdate(): MountedList[] {
+  let first: FiberLike | null = null;
+  try {
+    for (const child of screen.container.children) {
+      if (typeof child !== 'string') {
+        first = child.unstable_fiber as FiberLike | null;
+        break;
+      }
+    }
+  } catch {
+    return []; // nothing rendered
+  }
+  let root = first;
+  while (root?.return) root = root.return;
+  const out: MountedList[] = [];
+  const stack: (FiberLike | null)[] = [root];
+  while (stack.length) {
+    const f = stack.pop();
+    if (!f) continue;
+    if (isList(f.stateNode) && f.stateNode._updateCellsToRenderTimeoutID != null) out.push(f.stateNode);
+    stack.push(f.child, f.sibling);
+  }
+  return out;
+}
+
+/**
+ * A VirtualizedList answers every update of its own (mount, new data, a theme switch) by scheduling a cell
+ * update on a 50 ms timer, and that update calls setState. When the test happened to take longer than 50 ms
+ * after the render, the timer fired outside act() and React warned "An update to VirtualizedList ... was not
+ * wrapped in act(...)" (the wage/today flake: 2 runs in 10). The pending update is run now, inside act(),
+ * until no list has one waiting, so nothing is left for a timer to do. No waiting, no fake timers.
+ */
+export async function flushLists(): Promise<void> {
+  for (let round = 0; round < 10; round++) {
+    const lists = listsWithPendingUpdate();
+    if (!lists.length) return;
+    await act(async () => {
+      for (const list of lists) {
+        if (list._updateCellsToRenderTimeoutID == null) continue;
+        clearTimeout(list._updateCellsToRenderTimeoutID);
+        list._updateCellsToRenderTimeoutID = null;
+        list._updateCellsToRender();
+      }
+    });
+  }
+}
+
+/** Let queued microtasks / effects settle inside act(), then run the lists' pending cell updates. */
 export async function settle(): Promise<void> {
   await act(async () => {
     await Promise.resolve();
   });
+  await flushLists();
 }
 
 /** Render a screen and wait for its first effects. Throws if the screen throws. */
@@ -133,6 +201,8 @@ export async function changeSetting(key: string, value: string | null): Promise<
   await act(async () => {
     setSetting(key, value);
   });
+  // a theme or language switch re-renders every list, which schedules their cell updates
+  await flushLists();
 }
 
 export function setLanguage(lang: Lang) {
@@ -274,6 +344,7 @@ export async function pressLabel(label: string, index = 0): Promise<void> {
   const all = screen.getAllByLabelText(label, { exact: true });
   if (!all[index]) throw new Error(`No element labelled "${label}" (index ${index}); found ${all.length}`);
   await fireEvent.press(all[index]);
+  await flushLists();
 }
 
 /** Press the element showing this exact text (list rows, cards). */
@@ -281,6 +352,7 @@ export async function pressText(text: string, index = 0): Promise<void> {
   const all = screen.getAllByText(text, { exact: true });
   if (!all[index]) throw new Error(`No text "${text}" (index ${index}); found ${all.length}`);
   await fireEvent.press(all[index]);
+  await flushLists();
 }
 
 /** Type into the input that has this accessibility label. */
@@ -288,6 +360,7 @@ export async function typeInto(label: string, value: string, index = 0): Promise
   const all = screen.getAllByLabelText(label, { exact: true });
   if (!all[index]) throw new Error(`No input labelled "${label}" (index ${index}); found ${all.length}`);
   await fireEvent.changeText(all[index], value);
+  await flushLists();
 }
 
 /** Value currently shown in the input with this label. */
@@ -311,6 +384,7 @@ export async function pressAlertButton(spy: jest.SpyInstance, text: string): Pro
   await act(async () => {
     button.onPress?.();
   });
+  await flushLists();
 }
 
 export function has(text: string): boolean {
@@ -335,6 +409,10 @@ export interface Variant {
   blank?: boolean;
   /** Window width in dp (default 360): 320 stacks the stat tiles, 768 is a tablet. */
   width?: number;
+  /** Window height in dp (default 800): under 480 the sticky footers scroll with the content. */
+  height?: number;
+  /** The phone's text size setting (default 1). */
+  fontScale?: number;
   /** Run this variant in these languages only (default: all three). */
   langs?: Lang[];
   /** Extra assertions on the mounted screen, once per language (light theme). */
@@ -426,7 +504,7 @@ export function smokeScreen(title: string, ui: () => ReactElement, options: Smok
       for (const lang of variant.langs ?? langs) {
         it(`${variant.name} [${lang}]`, async () => {
           const tr = makeTr(lang);
-          setWindow(variant.width ?? PHONE_WIDTH);
+          setWindow(variant.width ?? PHONE_WIDTH, variant.height, variant.fontScale);
           for (const key of VOLATILE_SETTINGS) setSetting(key, null);
           setSetting('lang', lang);
           setSetting('theme', 'light');

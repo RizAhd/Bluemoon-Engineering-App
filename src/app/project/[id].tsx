@@ -20,19 +20,21 @@ import { formatDay } from '@/lib/dates';
 import { showError } from '@/lib/errors';
 import { formatLKR } from '@/lib/money';
 import { exportProjectPdf } from '@/lib/pdf';
-import { space } from '@/theme';
+import { radius, space, useColors } from '@/theme';
 
 const MAX_ROWS = 5;
 
 /** One export choice: a checkbox, a label and a one-line hint. The whole row is the tap target (48 dp+). */
 function ExportOption({ label, hint, checked, onChange }: { label: string; hint: string; checked: boolean; onChange: (next: boolean) => void }) {
+  const c = useColors();
   return (
     <Pressable
       accessibilityRole="checkbox"
       accessibilityState={{ checked }}
       accessibilityLabel={`${label}. ${hint}`}
       onPress={() => onChange(!checked)}
-      style={{ flexDirection: 'row', alignItems: 'center', gap: space.xs, minHeight: 56 }}>
+      // pressed colour, as on the estimate's share options: the tap shows at once
+      style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', gap: space.xs, minHeight: 56, borderRadius: radius.md, backgroundColor: pressed ? c.muted : 'transparent' })}>
       {/* The row carries the role and the tap; the box is only the picture of the state. */}
       <View pointerEvents="none" accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
         <Checkbox checked={checked} onChange={onChange} label={label} />

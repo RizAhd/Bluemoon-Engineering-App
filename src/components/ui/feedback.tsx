@@ -5,7 +5,7 @@ import { Pressable, View } from 'react-native';
 import Animated, { FadeInDown, FadeOutDown } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { hairline, motion, radius, space, touchMin, useColors, useMotion, type Palette } from '@/theme';
+import { hairline, motion, radius, space, touchMin, useColors, useLayout, useMotion, type Palette } from '@/theme';
 
 import { Txt } from './Txt';
 
@@ -66,13 +66,14 @@ export function Badge({ label, tone = 'slate', icon: Icon }: { label: string; to
         alignItems: 'center',
         gap: space.xs,
         alignSelf: 'flex-start',
+        maxWidth: '100%',
         minHeight: 24,
         paddingHorizontal: space.sm,
         borderRadius: radius.sm,
         backgroundColor: c[bg[tone]],
       }}>
       {Icon ? <Icon size={14} color={fg} strokeWidth={2.4} /> : null}
-      <Txt variant="caption" weight="semibold" style={{ color: fg }} numberOfLines={1}>
+      <Txt variant="caption" weight="semibold" style={{ color: fg, flexShrink: 1 }} numberOfLines={1}>
         {label}
       </Txt>
     </View>
@@ -107,6 +108,7 @@ export function ToastHost() {
   const c = useColors();
   const insets = useSafeAreaInsets();
   const m = useMotion();
+  const { column } = useLayout();
   const [msg, setMsg] = useState<ToastMsg | null>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -133,53 +135,57 @@ export function ToastHost() {
   const close = () => setMsg(null);
   return (
     <View pointerEvents="box-none" style={{ position: 'absolute', left: space.lg, right: space.lg, bottom: insets.bottom + 148, alignItems: 'center' }}>
-      <Animated.View
-        key={msg.id}
-        entering={FadeInDown.duration(m.reduced ? m.enter : motion.base)}
-        exiting={FadeOutDown.duration(m.reduced ? m.exit : 120)}
-        accessibilityLiveRegion="polite"
-        style={{
-          flexDirection: 'row',
-          alignItems: 'center',
-          gap: space.sm,
-          backgroundColor: danger ? c.dangerSoft : c.slate,
-          borderWidth: hairline,
-          borderColor: danger ? c.danger : c.slate,
-          paddingLeft: space.lg,
-          paddingRight: msg.action || danger ? space.xs : space.lg,
-          paddingVertical: space.xs,
-          minHeight: touchMin,
-          borderRadius: radius.md,
-          maxWidth: '100%',
-        }}>
-        <Icon size={18} color={fg} strokeWidth={2} />
-        <Txt weight="semibold" style={{ color: fg, flexShrink: 1, paddingVertical: space.sm }}>
-          {msg.text}
-        </Txt>
-        {msg.action ? (
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel={msg.action.label}
-            onPress={() => {
-              close();
-              msg.action?.onPress();
-            }}
-            style={({ pressed }) => ({ minHeight: 44, paddingHorizontal: space.md, marginLeft: space.sm, justifyContent: 'center', borderRadius: radius.sm, backgroundColor: pressed ? (danger ? c.muted : c.slatePressed) : 'transparent' })}>
-            <Txt weight="bold" style={{ color: fg }}>
-              {msg.action.label}
-            </Txt>
-          </Pressable>
-        ) : null}
-        {danger ? (
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="×"
-            onPress={close}
-            style={({ pressed }) => ({ width: 44, height: 44, alignItems: 'center', justifyContent: 'center', borderRadius: 22, backgroundColor: pressed ? c.muted : 'transparent' })}>
-            <X size={18} color={fg} strokeWidth={2} />
-          </Pressable>
-        ) : null}
-      </Animated.View>
+      <View pointerEvents="box-none" style={[column, { alignItems: 'center' }]}>
+        <Animated.View
+          key={msg.id}
+          entering={FadeInDown.duration(m.reduced ? m.enter : motion.base)}
+          exiting={FadeOutDown.duration(m.reduced ? m.exit : 120)}
+          accessibilityLiveRegion="polite"
+          style={{
+            flexDirection: 'row',
+            alignItems: 'center',
+            gap: space.sm,
+            backgroundColor: danger ? c.dangerSoft : c.slate,
+            borderWidth: hairline,
+            borderColor: danger ? c.danger : c.slate,
+            paddingLeft: space.lg,
+            paddingRight: msg.action || danger ? space.xs : space.lg,
+            paddingVertical: space.xs,
+            minHeight: touchMin,
+            borderRadius: radius.md,
+            maxWidth: '100%',
+          }}>
+          <Icon size={18} color={fg} strokeWidth={2} />
+          <Txt weight="semibold" style={{ color: fg, flexShrink: 1, paddingVertical: space.sm }}>
+            {msg.text}
+          </Txt>
+          {msg.action ? (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={msg.action.label}
+              hitSlop={{ top: 2, bottom: 2 }}
+              onPress={() => {
+                close();
+                msg.action?.onPress();
+              }}
+              style={({ pressed }) => ({ minHeight: 44, paddingHorizontal: space.md, marginLeft: space.sm, justifyContent: 'center', borderRadius: radius.sm, backgroundColor: pressed ? (danger ? c.muted : c.slatePressed) : 'transparent' })}>
+              <Txt weight="bold" style={{ color: fg }}>
+                {msg.action.label}
+              </Txt>
+            </Pressable>
+          ) : null}
+          {danger ? (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="×"
+              hitSlop={2}
+              onPress={close}
+              style={({ pressed }) => ({ width: 44, height: 44, alignItems: 'center', justifyContent: 'center', borderRadius: 22, backgroundColor: pressed ? c.muted : 'transparent' })}>
+              <X size={18} color={fg} strokeWidth={2} />
+            </Pressable>
+          ) : null}
+        </Animated.View>
+      </View>
     </View>
   );
 }

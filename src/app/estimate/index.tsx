@@ -1,14 +1,15 @@
 import { router } from 'expo-router';
 import { FileText, Plus, Search } from 'lucide-react-native';
-import { useMemo, useState } from 'react';
+import { memo, useMemo, useState } from 'react';
 import { View } from 'react-native';
 
 import { EstimateStatusBadge } from '@/components/EstimateBits';
 import { ListControls, oneOf, periodLabel, periodRange, toPeriod, useListPrefs, useToday } from '@/components/ListControls';
 import { Button } from '@/components/ui/Button';
+import { CardList } from '@/components/ui/CardList';
 import { EmptyState } from '@/components/ui/feedback';
 import { SearchField } from '@/components/ui/form';
-import { ListCard, ListRow, Screen } from '@/components/ui/layout';
+import { ListRow, Screen } from '@/components/ui/layout';
 import { Txt } from '@/components/ui/Txt';
 import { ESTIMATE_STATUSES, type EstimateListRow, type EstimateStatus } from '@/db/types';
 import { ESTIMATE_SORTS, useEstimateList, type EstimateSort } from '@/hooks/data';
@@ -66,9 +67,62 @@ export default function EstimatesScreen() {
   ].filter((s): s is string => !!s);
   const sheetCount = [period !== 'all', sort !== 'newest'].filter(Boolean).length;
 
-  const renderRow = (e: EstimateListRow) => (
+  const renderRow = (e: EstimateListRow) => <EstimateRow e={e} />;
+
+  // The empty state carries the primary button itself, so the footer button is only for a list that has rows.
+  if (total === 0) {
+    return (
+      <Screen>
+        <EmptyState icon={FileText} title={t('noEstimates')} hint={t('noEstimatesHint')} action={<Button icon={Plus} label={t('newEstimate')} onPress={goNew} full />} />
+      </Screen>
+    );
+  }
+
+  return (
+    <Screen scroll={false}>
+      <CardList
+        sections={[{ key: 'all', rows: visible }]}
+        keyOf={estimateKey}
+        renderRow={renderRow}
+        inset
+        stickyFooter={<Button icon={Plus} label={t('newEstimate')} onPress={goNew} full />}
+        empty={<EmptyState icon={Search} title={`0 ${t('estimates')}`} hint={query ? `"${q.trim()}"` : undefined} />}
+        header={
+          <View style={{ gap: space.md }}>
+            {total > SEARCH_FROM ? <SearchField value={q} onChangeText={setQ} placeholder={t('search')} /> : null}
+            <ListControls
+              quick={
+                showFilter
+                  ? {
+                      value: activeFilter,
+                      onChange: (v) => set('status', v),
+                      options: [
+                        { value: 'all', label: t('all') },
+                        ...ESTIMATE_STATUSES.map((s) => ({ value: s, label: t(`estStatus_${s}`), count: counts[s], disabled: counts[s] === 0 })),
+                      ],
+                    }
+                  : undefined
+              }
+              period={{ value: period, onChange: (p) => set('period', p), months, today: td, inSheet: true }}
+              sort={{ value: sort, onChange: (v) => set('sort', v), options: ESTIMATE_SORTS.map((s) => ({ value: s, label: t(`sort_${s}`) })) }}
+              sheetCount={sheetCount}
+              applied={applied}
+              onClear={reset}
+            />
+          </View>
+        }
+      />
+    </Screen>
+  );
+}
+
+const estimateKey = (e: EstimateListRow) => e.id;
+
+/** One estimate: client, title, status badge, number and date, total. */
+const EstimateRow = memo(function EstimateRow({ e }: { e: EstimateListRow }) {
+  const t = useT();
+  return (
     <ListRow
-      key={e.id}
       icon={FileText}
       title={e.client_name}
       subtitle={e.title}
@@ -85,43 +139,4 @@ export default function EstimatesScreen() {
       onPress={() => router.push(`/estimate/${e.id}`)}
     />
   );
-
-  // The empty state carries the primary button itself, so the footer button is only for a list that has rows.
-  if (total === 0) {
-    return (
-      <Screen>
-        <EmptyState icon={FileText} title={t('noEstimates')} hint={t('noEstimatesHint')} action={<Button icon={Plus} label={t('newEstimate')} onPress={goNew} full />} />
-      </Screen>
-    );
-  }
-
-  return (
-    <Screen gap={space.md} footer={<Button icon={Plus} label={t('newEstimate')} onPress={goNew} full />}>
-      {total > SEARCH_FROM ? <SearchField value={q} onChangeText={setQ} placeholder={t('search')} /> : null}
-      <ListControls
-        quick={
-          showFilter
-            ? {
-                value: activeFilter,
-                onChange: (v) => set('status', v),
-                options: [
-                  { value: 'all', label: t('all') },
-                  ...ESTIMATE_STATUSES.map((s) => ({ value: s, label: t(`estStatus_${s}`), count: counts[s], disabled: counts[s] === 0 })),
-                ],
-              }
-            : undefined
-        }
-        period={{ value: period, onChange: (p) => set('period', p), months, today: td, inSheet: true }}
-        sort={{ value: sort, onChange: (v) => set('sort', v), options: ESTIMATE_SORTS.map((s) => ({ value: s, label: t(`sort_${s}`) })) }}
-        sheetCount={sheetCount}
-        applied={applied}
-        onClear={reset}
-      />
-      {visible.length === 0 ? (
-        <EmptyState icon={Search} title={`0 ${t('estimates')}`} hint={query ? `"${q.trim()}"` : undefined} />
-      ) : (
-        <ListCard inset>{visible.map(renderRow)}</ListCard>
-      )}
-    </Screen>
-  );
-}
+});

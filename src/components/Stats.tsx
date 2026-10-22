@@ -32,6 +32,8 @@ export function Stat({ label, value, onPress, tone = 'text', caption, style }: S
       style={({ pressed }) => [
         {
           flex: 1,
+          // Tiles wrap below this width (see Tiles), so an amount always has room; 3 tiles on a phone become 2 + 1.
+          minWidth: STAT_MIN_WIDTH,
           minHeight: 84,
           gap: space.xs,
           padding: space.lg,
@@ -60,10 +62,17 @@ export function Stat({ label, value, onPress, tone = 'text', caption, style }: S
   );
 }
 
-/** Lays Stat tiles out in one row (gap 12, equal flex); stacks them when the window is under 340 wide. */
+/** Narrowest a Stat tile gets before the row wraps: room for "Rs 1,234,567" at 70 %. */
+const STAT_MIN_WIDTH = 136;
+
+/**
+ * Lays Stat tiles out in one row (gap 12, equal flex); stacks them when the window is under 340 wide. A row
+ * that cannot give every tile 136 dp (three tiles on a phone, large text) wraps, and the last tile takes the
+ * whole next line, instead of cutting the amounts.
+ */
 export function Tiles({ children, style }: { children: ReactNode; style?: StyleProp<ViewStyle> }) {
   const { stackTiles } = useLayout();
-  return <View style={[{ flexDirection: stackTiles ? 'column' : 'row', gap: space.md }, style]}>{children}</View>;
+  return <View style={[{ flexDirection: stackTiles ? 'column' : 'row', flexWrap: stackTiles ? 'nowrap' : 'wrap', gap: space.md }, style]}>{children}</View>;
 }
 
 /** How much of the contract value has been spent. Colour plus a % label, never colour alone. */
@@ -82,7 +91,8 @@ export function ContractBar({ spent, contract }: { spent: number; contract: numb
         <Txt variant="caption" color={over ? 'danger' : 'textMuted'} weight="semibold" numeric>
           {pct} %
         </Txt>
-        <Txt variant="caption" color="textMuted" weight="semibold" numeric>
+        {/* "කොන්ත්‍රාත්තුව Rs 9,999,999,999" is wider than a 320 phone leaves beside the %: it wraps on the right. */}
+        <Txt variant="caption" color="textMuted" weight="semibold" numeric style={{ flexShrink: 1, textAlign: 'right' }}>
           {t('contract')} {formatLKR(contract)}
         </Txt>
       </View>
@@ -102,7 +112,7 @@ export function CategoryBars({ rows }: { rows: { label: string; cents: number }[
             <Txt style={{ flex: 1 }} numberOfLines={1}>
               {r.label}
             </Txt>
-            <Txt weight="semibold" numeric style={{ flexShrink: 0 }}>
+            <Txt weight="semibold" numeric numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7} style={{ flexShrink: 0, maxWidth: '60%' }}>
               {formatLKR(r.cents)}
             </Txt>
           </View>

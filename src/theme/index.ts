@@ -4,7 +4,7 @@ import { AccessibilityInfo, useColorScheme, useWindowDimensions } from 'react-na
 import { useSetting } from '@/db';
 import { useLang, type Lang } from '@/i18n';
 
-import { gutter, motion, palette, type Palette, type Weight } from './tokens';
+import { gutter, motion, palette, windowClass, type Palette, type Weight } from './tokens';
 
 export * from './tokens';
 
@@ -47,20 +47,41 @@ export function useScript(): 'latin' | 'complex' {
   return useLang() === 'en' ? 'latin' : 'complex';
 }
 
+export type WidthClass = 'compact' | 'medium' | 'expanded';
+
+/** The Android window size class of a width in dp. */
+export function widthClassOf(width: number): WidthClass {
+  return width >= windowClass.expandedFrom ? 'expanded' : width >= windowClass.mediumFrom ? 'medium' : 'compact';
+}
+
 /**
- * Screen gutter and content width for the current window: 16 on phones, 24 from
- * 600 wide, content capped at 640 and centred on tablets.
+ * Everything a screen decides from the window, read through useWindowDimensions so rotation, folding and
+ * split screen update it (never read `Dimensions` directly):
+ *
+ *   widthClass   'compact' (< 600) · 'medium' (600-839) · 'expanded' (>= 840)
+ *   gutter       16, or 24 from 600 wide
+ *   maxWidth     content column cap (640 from 600 wide, undefined on phones); `column` is the centred style
+ *   short        under 480 tall: sticky footers scroll with the content instead of covering the list
+ *   narrow       under 360 wide: the FAB shows only its icon
+ *   stackTiles   under 340 wide: stat tiles stack
  */
 export function useLayout() {
-  const { width } = useWindowDimensions();
-  const wide = width >= gutter.wideFrom;
-  const pad = wide ? gutter.wide : gutter.base;
+  const { width, height, fontScale } = useWindowDimensions();
+  const widthClass = widthClassOf(width);
+  const wide = widthClass !== 'compact';
+  const maxWidth = wide ? gutter.contentMax : undefined;
   return {
     width,
+    height,
+    fontScale,
+    widthClass,
     wide,
-    gutter: pad,
+    gutter: wide ? gutter.wide : gutter.base,
     /** Max content width (undefined on phones). */
-    maxWidth: wide ? gutter.contentMax : undefined,
+    maxWidth,
+    /** A centred content column: full width on phones, at most 640 on tablets. Sheets and footers use it too. */
+    column: { width: '100%', maxWidth, alignSelf: 'center' } as const,
+    short: height > 0 && height < windowClass.shortBelow,
     /** FAB shows only its icon under 360 wide. */
     narrow: width < 360,
     /** Stat tiles stack under 340 wide. */
