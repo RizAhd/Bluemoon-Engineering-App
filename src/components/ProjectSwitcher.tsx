@@ -1,98 +1,95 @@
 import { router } from 'expo-router';
-import { Building2, ChevronDown, Plus } from 'lucide-react-native';
-import { useState } from 'react';
-import { Pressable, View } from 'react-native';
+import { Building2, ChevronDown, LayoutGrid, Menu, Plus } from 'lucide-react-native';
+import { useState, type ReactNode } from 'react';
+import { Pressable, View, type StyleProp, type ViewStyle } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { Button } from '@/components/ui/Button';
+import { Button, IconButton } from '@/components/ui/Button';
 import { PickerSheet } from '@/components/ui/form';
 import { Txt } from '@/components/ui/Txt';
 import { setCurrentProject, useCurrentProjectId, useProjects } from '@/hooks/data';
 import { useT } from '@/i18n';
-import { motion, radius, space, useColors } from '@/theme';
+import { hairline, radius, sizes, space, useColors, useLayout } from '@/theme';
 
-/** Blue top band for the tab screens: title, optional subtitle, current-project pill. */
-export function TabHeader({
-  title,
-  subtitle,
-  allowAll = true,
-  showProject = true,
-}: {
-  title: string;
-  subtitle?: string;
+export interface ProjectPillProps {
+  /** Offer "All projects" (current = null). Screens that need one project pass false. */
   allowAll?: boolean;
-  showProject?: boolean;
-}) {
+  /** Called after the current project changes (the pill already saved it). */
+  onChange?: (id: string | null) => void;
+  style?: StyleProp<ViewStyle>;
+}
+
+/**
+ * The current-project chooser: a 44-tall pill that opens the project PickerSheet.
+ * The single source of truth for "current project" (`setCurrentProject`).
+ */
+export function ProjectPill({ allowAll = true, onChange, style }: ProjectPillProps) {
   const c = useColors();
   const t = useT();
-  const insets = useSafeAreaInsets();
   const projects = useProjects();
   const current = useCurrentProjectId();
   const [open, setOpen] = useState(false);
-  const name = projects.find((p) => p.id === current)?.name ?? t('allProjects');
+  const [focus, setFocus] = useState(false);
+  const project = projects.find((p) => p.id === current);
+  const name = project?.name ?? t('allProjects');
+  const Icon = project ? Building2 : LayoutGrid;
 
   return (
-    <View
-      style={{
-        paddingTop: insets.top + space.md,
-        paddingHorizontal: space.lg,
-        paddingBottom: space.lg,
-        backgroundColor: c.header,
-        borderBottomLeftRadius: radius.xl,
-        borderBottomRightRadius: radius.xl,
-        gap: space.sm,
-        marginBottom: space.lg,
-      }}>
-      {subtitle ? (
-        <Txt variant="caption" weight="semibold" style={{ color: c.onHeaderMuted }}>
-          {subtitle}
-        </Txt>
-      ) : null}
-      <Txt variant="heading" weight="bold" accessibilityRole="header" style={{ color: c.onHeader }}>
-        {title}
-      </Txt>
-      {showProject ? (
+    <>
       <Pressable
         accessibilityRole="button"
         accessibilityLabel={`${t('chooseProject')}: ${name}`}
+        accessibilityState={{ expanded: open }}
+        hitSlop={{ top: 2, bottom: 2 }}
+        onFocus={() => setFocus(true)}
+        onBlur={() => setFocus(false)}
         onPress={() => setOpen(true)}
-        style={({ pressed }) => ({
-          flexDirection: 'row',
-          alignItems: 'center',
-          alignSelf: 'flex-start',
-          gap: space.sm,
-          minHeight: 44,
-          maxWidth: '100%',
-          paddingHorizontal: space.md,
-          borderRadius: radius.pill,
-          backgroundColor: c.headerSoft,
-          opacity: pressed ? 0.75 : 1,
-          transform: [{ scale: pressed ? motion.pressScale : 1 }],
-        })}>
-        <Building2 size={18} color={c.onHeader} />
-        <Txt weight="semibold" numberOfLines={1} style={{ flexShrink: 1, color: c.onHeader }}>
+        style={({ pressed }) => [
+          {
+            flexDirection: 'row',
+            alignItems: 'center',
+            alignSelf: 'flex-start',
+            gap: space.sm,
+            minHeight: sizes.headerButton,
+            maxWidth: '100%',
+            paddingHorizontal: 14,
+            borderRadius: radius.pill,
+            backgroundColor: pressed ? c.headerDeep : c.headerSoft,
+            borderWidth: hairline,
+            borderColor: c.border,
+            // focus ring drawn as an outer shadow-free outline: keep width constant
+            outlineWidth: focus ? 2 : 0,
+            outlineColor: c.focusRing,
+          },
+          style,
+        ]}>
+        <Icon size={20} color={project ? c.primary : c.textMuted} strokeWidth={2} />
+        <Txt weight="semibold" numberOfLines={1} style={{ flexShrink: 1 }}>
           {name}
         </Txt>
-        <ChevronDown size={18} color={c.onHeader} />
+        <ChevronDown size={20} color={c.textMuted} strokeWidth={2} />
       </Pressable>
-      ) : null}
 
       <PickerSheet
         visible={open}
         title={t('chooseProject')}
         value={current ?? (allowAll ? '__all' : null)}
         items={[
-          ...(allowAll ? [{ id: '__all', title: t('allProjects') }] : []),
+          ...(allowAll ? [{ id: '__all', title: t('allProjects'), icon: LayoutGrid }] : []),
           ...projects.map((p) => ({
             id: p.id,
             title: p.name,
+            icon: Building2,
             subtitle: [p.location, t(`status_${p.status}`)].filter(Boolean).join(' · '),
           })),
         ]}
         onClose={() => setOpen(false)}
         onPick={(id) => {
-          setCurrentProject(id === '__all' ? null : id);
+          const next = id === '__all' || id === null ? null : id;
+          if (next === null && !allowAll) return;
+          setCurrentProject(next);
           setOpen(false);
+          onChange?.(next);
         }}
         footer={
           <Button
@@ -106,6 +103,61 @@ export function TabHeader({
           />
         }
       />
+    </>
+  );
+}
+
+export interface TabHeaderProps {
+  title: string;
+  /** Caption under the title (e.g. today's date). */
+  subtitle?: string;
+  allowAll?: boolean;
+  /** Show the project pill (Projects tab passes false). */
+  showProject?: boolean;
+  /** One screen action (an `IconButton size={44}` with `onHeader` tone) placed left of the menu button. */
+  right?: ReactNode;
+  /** Hide the menu button (rare). */
+  hideMenu?: boolean;
+}
+
+/** White header for tab screens: title, optional subtitle, screen action + menu button, project pill. */
+export function TabHeader({ title, subtitle, allowAll = true, showProject = true, right, hideMenu }: TabHeaderProps) {
+  const c = useColors();
+  const t = useT();
+  const insets = useSafeAreaInsets();
+  const { gutter, maxWidth } = useLayout();
+
+  return (
+    <View
+      style={{
+        paddingTop: insets.top + space.sm,
+        paddingBottom: space.md,
+        backgroundColor: c.header,
+        borderBottomWidth: hairline,
+        borderBottomColor: c.border,
+      }}>
+      <View style={{ paddingHorizontal: gutter, gap: space.sm, maxWidth, width: '100%', alignSelf: 'center' }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', minHeight: sizes.headerButton, gap: space.sm }}>
+          <View style={{ flex: 1, gap: 2 }}>
+            <Txt variant="heading" weight="semibold" accessibilityRole="header" color="onHeader" numberOfLines={1} maxFontSizeMultiplier={1.3}>
+              {title}
+            </Txt>
+            {subtitle ? (
+              <Txt variant="caption" weight="semibold" color="onHeaderMuted" numberOfLines={1}>
+                {subtitle}
+              </Txt>
+            ) : null}
+          </View>
+          {right}
+          {hideMenu ? null : <IconButton icon={Menu} label={t('menu')} size={sizes.headerButton} tone="onHeader" pressedBg="headerDeep" onPress={() => router.push('/more')} />}
+        </View>
+        {showProject ? <ProjectPill allowAll={allowAll} /> : null}
+      </View>
     </View>
   );
+}
+
+/** Header action helper so screens don't repeat the sizing: `<TabHeader right={<HeaderAction icon={UserPlus} label=… onPress=… />} />`. */
+export function HeaderAction({ icon, label, onPress }: { icon: typeof Menu; label: string; onPress: () => void }) {
+  return <IconButton icon={icon} label={label} size={sizes.headerButton} tone="onHeader" pressedBg="headerDeep" onPress={onPress} />;
 }

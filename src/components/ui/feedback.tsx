@@ -1,54 +1,58 @@
 import type { LucideIcon } from 'lucide-react-native';
-import { CheckCircle2 } from 'lucide-react-native';
-import { useEffect, useState, type ReactNode } from 'react';
-import { View } from 'react-native';
+import { AlertTriangle, CheckCircle2, X } from 'lucide-react-native';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { Pressable, View } from 'react-native';
 import Animated, { FadeInDown, FadeOutDown } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { radius, space, useColors, type Palette } from '@/theme';
+import { hairline, motion, radius, space, touchMin, useColors, useMotion, type Palette } from '@/theme';
 
 import { Txt } from './Txt';
 
-export function EmptyState({
-  icon: Icon,
-  title,
-  hint,
-  action,
-}: {
+export { ErrorScreen } from '../ErrorScreen';
+
+// ---------------------------------------------------------------- EmptyState
+
+export interface EmptyStateProps {
   icon: LucideIcon;
   title: string;
-  hint: string;
+  hint?: string;
+  /** One button (primary full width; compact secondary inside cards). Never two blue buttons on one screen. */
   action?: ReactNode;
-}) {
+  /** Inside a card or section: smaller tile and title. */
+  compact?: boolean;
+}
+
+export function EmptyState({ icon: Icon, title, hint, action, compact }: EmptyStateProps) {
   const c = useColors();
+  const tile = compact ? 48 : 56;
   return (
-    <View style={{ alignItems: 'center', paddingVertical: space.xxl, paddingHorizontal: space.lg, gap: space.md }}>
-      <View
-        style={{
-          width: 72,
-          height: 72,
-          borderRadius: 36,
-          backgroundColor: c.primarySoft,
-          alignItems: 'center',
-          justifyContent: 'center',
-        }}>
-        <Icon size={34} color={c.primary} strokeWidth={2} />
+    <View style={{ alignItems: 'center', paddingVertical: compact ? space.xl : space.xxxl, paddingHorizontal: space.lg, gap: space.md }}>
+      <View style={{ width: tile, height: tile, borderRadius: radius.lg, backgroundColor: c.surface2, alignItems: 'center', justifyContent: 'center' }}>
+        <Icon size={compact ? 24 : 28} color={c.textMuted} strokeWidth={2} />
       </View>
-      <Txt variant="title" weight="bold" center>
+      <Txt variant={compact ? 'bodyLg' : 'title'} weight="semibold" center>
         {title}
       </Txt>
-      <Txt color="textMuted" center style={{ maxWidth: 320 }}>
-        {hint}
-      </Txt>
-      {action ? <View style={{ marginTop: space.sm, alignSelf: 'stretch' }}>{action}</View> : null}
+      {hint ? (
+        <Txt color="textMuted" center style={{ maxWidth: 320 }}>
+          {hint}
+        </Txt>
+      ) : null}
+      {action ? <View style={{ marginTop: space.xs, alignSelf: compact ? 'center' : 'stretch' }}>{action}</View> : null}
     </View>
   );
 }
 
-export function Badge({ label, tone = 'slate', icon: Icon }: { label: string; tone?: 'slate' | 'success' | 'warning' | 'danger' | 'primary'; icon?: LucideIcon }) {
+// ---------------------------------------------------------------- Badge
+
+export type BadgeTone = 'slate' | 'success' | 'warning' | 'danger' | 'primary';
+
+/** 24-tall label with a soft background. Always words, never icon-only, never a pill. `primary` is reserved for "current". */
+export function Badge({ label, tone = 'slate', icon: Icon }: { label: string; tone?: BadgeTone; icon?: LucideIcon }) {
   const c = useColors();
-  const bg: Record<string, keyof Palette> = {
-    slate: 'muted',
+  const bg: Record<BadgeTone, keyof Palette> = {
+    slate: 'surface2',
     success: 'successSoft',
     warning: 'warningSoft',
     danger: 'dangerSoft',
@@ -60,15 +64,15 @@ export function Badge({ label, tone = 'slate', icon: Icon }: { label: string; to
       style={{
         flexDirection: 'row',
         alignItems: 'center',
-        gap: 4,
+        gap: space.xs,
         alignSelf: 'flex-start',
+        minHeight: 24,
         paddingHorizontal: space.sm,
-        paddingVertical: 2,
-        borderRadius: radius.pill,
+        borderRadius: radius.sm,
         backgroundColor: c[bg[tone]],
       }}>
-      {Icon ? <Icon size={14} color={fg} strokeWidth={2.4} /> : null}
-      <Txt variant="caption" weight="semibold" style={{ color: fg }}>
+      {Icon ? <Icon size={16} color={fg} strokeWidth={2.4} /> : null}
+      <Txt variant="caption" weight="semibold" style={{ color: fg, lineHeight: 20 }} numberOfLines={1}>
         {label}
       </Txt>
     </View>
@@ -77,55 +81,104 @@ export function Badge({ label, tone = 'slate', icon: Icon }: { label: string; to
 
 // ---------------------------------------------------------------- toast
 
-type ToastMsg = { id: number; text: string };
-let push: ((text: string) => void) | null = null;
+export interface ToastOptions {
+  /** One tappable word: Undo / Retry. */
+  action?: { label: string; onPress: () => void };
+  tone?: 'neutral' | 'danger';
+  /** Stays until tapped or closed (danger + Retry). */
+  sticky?: boolean;
+}
+
+type ToastMsg = { id: number; text: string } & ToastOptions;
+let push: ((msg: ToastMsg) => void) | null = null;
 let counter = 0;
 
-/** Show a short confirmation, e.g. "Saved on phone". */
-export function toast(text: string) {
-  push?.(text);
+/** Show a short confirmation ("Saved on phone"); with `action` for Undo / Retry; `tone: 'danger'` for failures. */
+export function toast(text: string, opts: ToastOptions = {}) {
+  push?.({ id: ++counter, text, ...opts });
+}
+
+/** Dismiss whatever toast is showing. */
+export function hideToast() {
+  push?.({ id: -1, text: '' });
 }
 
 export function ToastHost() {
   const c = useColors();
   const insets = useSafeAreaInsets();
+  const m = useMotion();
   const [msg, setMsg] = useState<ToastMsg | null>(null);
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
-    push = (text) => setMsg({ id: ++counter, text });
+    push = (next) => setMsg(next.id < 0 ? null : next);
     return () => {
       push = null;
     };
   }, []);
 
   useEffect(() => {
-    if (!msg) return;
-    const t = setTimeout(() => setMsg(null), 2200);
-    return () => clearTimeout(t);
+    if (timer.current) clearTimeout(timer.current);
+    if (!msg || msg.sticky) return;
+    timer.current = setTimeout(() => setMsg(null), msg.action ? 6000 : 2500);
+    return () => {
+      if (timer.current) clearTimeout(timer.current);
+    };
   }, [msg]);
 
   if (!msg) return null;
+  const danger = msg.tone === 'danger';
+  const fg = danger ? c.danger : c.onSlate;
+  const Icon = danger ? AlertTriangle : CheckCircle2;
+  const close = () => setMsg(null);
   return (
-    <View pointerEvents="none" style={{ position: 'absolute', left: 0, right: 0, bottom: insets.bottom + 96, alignItems: 'center' }}>
+    <View pointerEvents="box-none" style={{ position: 'absolute', left: space.lg, right: space.lg, bottom: insets.bottom + 148, alignItems: 'center' }}>
       <Animated.View
         key={msg.id}
-        entering={FadeInDown.duration(180)}
-        exiting={FadeOutDown.duration(140)}
+        entering={FadeInDown.duration(m.reduced ? m.enter : motion.base)}
+        exiting={FadeOutDown.duration(m.reduced ? m.exit : 120)}
         accessibilityLiveRegion="polite"
         style={{
           flexDirection: 'row',
           alignItems: 'center',
           gap: space.sm,
-          backgroundColor: c.slate,
-          paddingHorizontal: space.lg,
-          paddingVertical: space.md,
-          borderRadius: radius.pill,
-          maxWidth: '90%',
+          backgroundColor: danger ? c.dangerSoft : c.slate,
+          borderWidth: hairline,
+          borderColor: danger ? c.danger : c.slate,
+          paddingLeft: space.lg,
+          paddingRight: msg.action || danger ? space.xs : space.lg,
+          paddingVertical: space.xs,
+          minHeight: touchMin,
+          borderRadius: radius.md,
+          maxWidth: '100%',
         }}>
-        <CheckCircle2 size={20} color={c.onSlate} />
-        <Txt weight="semibold" style={{ color: c.onSlate }}>
+        <Icon size={20} color={fg} strokeWidth={2} />
+        <Txt weight="semibold" style={{ color: fg, flexShrink: 1, paddingVertical: space.sm }}>
           {msg.text}
         </Txt>
+        {msg.action ? (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={msg.action.label}
+            onPress={() => {
+              close();
+              msg.action?.onPress();
+            }}
+            style={({ pressed }) => ({ minHeight: 44, paddingHorizontal: space.md, marginLeft: space.sm, justifyContent: 'center', borderRadius: radius.sm, backgroundColor: pressed ? (danger ? c.muted : c.slatePressed) : 'transparent' })}>
+            <Txt weight="bold" style={{ color: fg }}>
+              {msg.action.label}
+            </Txt>
+          </Pressable>
+        ) : null}
+        {danger ? (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="×"
+            onPress={close}
+            style={({ pressed }) => ({ width: 44, height: 44, alignItems: 'center', justifyContent: 'center', borderRadius: 22, backgroundColor: pressed ? c.muted : 'transparent' })}>
+            <X size={20} color={fg} strokeWidth={2} />
+          </Pressable>
+        ) : null}
       </Animated.View>
     </View>
   );

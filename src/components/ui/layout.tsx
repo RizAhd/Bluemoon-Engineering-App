@@ -1,5 +1,5 @@
 import type { LucideIcon } from 'lucide-react-native';
-import { ChevronRight } from 'lucide-react-native';
+import { Check, ChevronDown, ChevronRight, ChevronUp } from 'lucide-react-native';
 import type { ReactNode } from 'react';
 import {
   KeyboardAvoidingView,
@@ -7,33 +7,52 @@ import {
   Pressable,
   ScrollView,
   View,
+  type ScrollViewProps,
   type StyleProp,
   type ViewStyle,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { radius, space, useColors, type Palette } from '@/theme';
+import { hairline, radius, sizes, space, touch, useColors, useLayout, type Palette } from '@/theme';
 
 import { Txt } from './Txt';
 
-/** Scrolling page with safe padding and room for the keyboard. */
-export function Screen({
-  children,
-  scroll = true,
-  footer,
-  padTop = true,
-}: {
+// ---------------------------------------------------------------- Screen
+
+export interface ScreenProps {
   children: ReactNode;
+  /** Wrap the body in a ScrollView (default). Pass false for FlatList / SectionList screens. */
   scroll?: boolean;
+  /** Sticky footer: card bg, 1 dp top border, padding 16, bottom max(insets.bottom, 16). */
   footer?: ReactNode;
   padTop?: boolean;
-}) {
+  /** 1 dp hairline under the native header (stack screens). Tab screens pass false (TabHeader draws its own). */
+  hairlineTop?: boolean;
+  /** Scroll padding at the bottom. Default 24 with a footer, 96 (room for the FAB) without. */
+  paddingBottom?: number;
+  /** Extra scroll view props (refreshControl, onScroll, …). */
+  scrollProps?: Omit<ScrollViewProps, 'children' | 'contentContainerStyle'>;
+  /** Overrides the scroll content container. */
+  contentStyle?: StyleProp<ViewStyle>;
+  /** Vertical gap between children. Default 16. */
+  gap?: number;
+}
+
+/** Page shell: bg, gutter, safe padding, keyboard room, optional sticky footer. */
+export function Screen({ children, scroll = true, footer, padTop = true, hairlineTop = true, paddingBottom, scrollProps, contentStyle, gap = space.lg }: ScreenProps) {
   const c = useColors();
   const insets = useSafeAreaInsets();
+  const { gutter, maxWidth } = useLayout();
+  const bottom = paddingBottom ?? (footer ? space.xl : sizes.tabScrollBottom);
   const body = scroll ? (
     <ScrollView
       keyboardShouldPersistTaps="handled"
-      contentContainerStyle={{ padding: space.lg, paddingTop: padTop ? space.lg : 0, gap: space.lg, paddingBottom: space.xxl * 2 }}>
+      keyboardDismissMode="on-drag"
+      {...scrollProps}
+      contentContainerStyle={[
+        { paddingHorizontal: gutter, paddingTop: padTop ? space.lg : 0, gap, paddingBottom: bottom, maxWidth, width: '100%', alignSelf: 'center' },
+        contentStyle,
+      ]}>
       {children}
     </ScrollView>
   ) : (
@@ -41,132 +60,303 @@ export function Screen({
   );
   return (
     <KeyboardAvoidingView style={{ flex: 1, backgroundColor: c.bg }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+      {hairlineTop ? <View style={{ height: hairline, backgroundColor: c.border }} /> : null}
       {body}
       {footer ? (
         <View
           style={{
-            padding: space.lg,
+            paddingHorizontal: gutter,
+            paddingTop: space.lg,
             paddingBottom: Math.max(insets.bottom, space.lg),
-            borderTopWidth: 1,
+            borderTopWidth: hairline,
             borderTopColor: c.border,
             backgroundColor: c.card,
             gap: space.sm,
           }}>
-          {footer}
+          <View style={{ maxWidth, width: '100%', alignSelf: 'center', gap: space.sm }}>{footer}</View>
         </View>
       ) : null}
     </KeyboardAvoidingView>
   );
 }
 
-export function Card({ children, style, tone }: { children: ReactNode; style?: StyleProp<ViewStyle>; tone?: keyof Palette }) {
-  const c = useColors();
-  return (
-    <View
-      style={[
-        {
-          backgroundColor: tone ? c[tone] : c.card,
-          borderRadius: radius.lg,
-          borderWidth: 1,
-          borderColor: c.border,
-          padding: space.lg,
-          gap: space.md,
-        },
-        style,
-      ]}>
-      {children}
-    </View>
-  );
+// ---------------------------------------------------------------- Card
+
+export type CardTone = 'dangerSoft' | 'warningSoft' | 'successSoft';
+
+export interface CardProps {
+  children: ReactNode;
+  style?: StyleProp<ViewStyle>;
+  /** Soft-tinted alert card: no border; pair the colour with an icon and words inside. */
+  tone?: keyof Palette;
+  /** Makes the whole card tappable (pressed bg `muted`). */
+  onPress?: () => void;
+  accessibilityLabel?: string;
+  /** Default 16. */
+  padding?: number;
+  /** Default 12. */
+  gap?: number;
 }
 
-export function SectionTitle({ title, action }: { title: string; action?: ReactNode }) {
+export function Card({ children, style, tone, onPress, accessibilityLabel, padding = space.lg, gap = space.md }: CardProps) {
+  const c = useColors();
+  const base: ViewStyle = {
+    backgroundColor: tone ? c[tone] : c.card,
+    borderRadius: radius.lg,
+    borderWidth: hairline,
+    borderColor: tone ? 'transparent' : c.border,
+    padding,
+    gap,
+  };
+  if (onPress)
+    return (
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={accessibilityLabel}
+        onPress={onPress}
+        android_ripple={{ color: c.muted }}
+        style={({ pressed }) => [base, pressed ? { backgroundColor: c.muted } : null, style]}>
+        {children}
+      </Pressable>
+    );
+  return <View style={[base, style]}>{children}</View>;
+}
+
+/** 1 dp line. Inside a card use the default (`divider`); between rows use `strong` (`border`). */
+export function Divider({ strong, inset = 0, style }: { strong?: boolean; inset?: number; style?: StyleProp<ViewStyle> }) {
+  const c = useColors();
+  return <View style={[{ height: hairline, backgroundColor: strong ? c.border : c.divider, marginLeft: inset }, style]} />;
+}
+
+// ---------------------------------------------------------------- titles
+
+/** bodyLg 18/600 section heading with an optional right action (compact ghost Button or IconButton 44). */
+export function SectionTitle({ title, action, first, count }: { title: string; action?: ReactNode; first?: boolean; count?: number }) {
   return (
-    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: space.sm }}>
-      <Txt variant="title" weight="bold" accessibilityRole="header">
-        {title}
-      </Txt>
+    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: space.sm, marginTop: first ? 0 : space.sm, minHeight: 32 }}>
+      <View style={{ flex: 1, flexDirection: 'row', alignItems: 'baseline', gap: space.sm }}>
+        <Txt variant="bodyLg" weight="semibold" accessibilityRole="header" style={{ flexShrink: 1 }}>
+          {title}
+        </Txt>
+        {count != null ? (
+          <Txt variant="bodyLg" weight="semibold" color="textMuted" numeric>
+            {count}
+          </Txt>
+        ) : null}
+      </View>
       {action}
     </View>
   );
 }
 
-/** Tappable list row: icon, title + subtitle, value on the right. */
+/** Eyebrow label above a ListCard group ("ACTIVE (2)"), with an optional right-aligned numeric total. Not sticky. */
+export function GroupLabel({ label, value, first }: { label: string; value?: string; first?: boolean }) {
+  return (
+    <View
+      accessibilityRole="header"
+      style={{ flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between', gap: space.sm, paddingTop: first ? 0 : space.xs, paddingBottom: 0 }}>
+      <Txt eyebrow style={{ flexShrink: 1 }}>
+        {label}
+      </Txt>
+      {value ? (
+        <Txt eyebrow numeric>
+          {value}
+        </Txt>
+      ) : null}
+    </View>
+  );
+}
+
+// ---------------------------------------------------------------- ListRow
+
+export type IconTone = 'slate' | 'primary' | 'warning' | 'success' | 'danger';
+
+function slotColors(c: Palette, tone: keyof Palette | undefined) {
+  switch (tone) {
+    case 'primary':
+      return { bg: c.primarySoft, fg: c.primary };
+    case 'warning':
+      return { bg: c.warningSoft, fg: c.warning };
+    case 'success':
+      return { bg: c.successSoft, fg: c.success };
+    case 'danger':
+      return { bg: c.dangerSoft, fg: c.danger };
+    case undefined:
+    case 'slate':
+    case 'text':
+    case 'textMuted':
+      return { bg: c.surface2, fg: c.textMuted };
+    default:
+      return { bg: c.surface2, fg: c[tone] };
+  }
+}
+
+/** Initials for an avatar circle: first letters of the first two words. */
+export function initials(name: string): string {
+  return name
+    .trim()
+    .split(/\s+/)
+    .slice(0, 2)
+    .map((w) => w[0] ?? '')
+    .join('')
+    .toUpperCase();
+}
+
+export interface ListRowProps {
+  icon?: LucideIcon;
+  /** Only when it means something: `warning` (tool out), `success`, `danger`, `primary` (action entry). Anything else = neutral slot. */
+  iconTone?: keyof Palette;
+  /** Worker rows: 40 circle with these initials instead of an icon (pass the name; initials are computed). */
+  avatar?: string;
+  /** Anything else on the left (e.g. a Checkbox). */
+  leading?: ReactNode;
+  title: string;
+  subtitle?: string;
+  /** Trailing numeric value (body 16/600). */
+  value?: string;
+  /** Only together with a badge that says why. */
+  valueTone?: keyof Palette;
+  /** Rendered on its own line under the subtitle. */
+  badge?: ReactNode;
+  /** Replaces the value / chevron on the right. */
+  trailing?: ReactNode;
+  onPress?: () => void;
+  onLongPress?: () => void;
+  /** Picker rows: `primarySoft` bg + Check. */
+  selected?: boolean;
+  /** Inactive items: title in textMuted (never opacity). */
+  muted?: boolean;
+  disabled?: boolean;
+  /** Hide the chevron on tappable rows without a value. */
+  noChevron?: boolean;
+  /** Collapsible group header: shows a chevron up (true) / down (false) after the value, and sets the expanded a11y state. */
+  expanded?: boolean;
+  accessibilityLabel?: string;
+  /** Content below the row's main line (expanded rows). */
+  children?: ReactNode;
+  style?: StyleProp<ViewStyle>;
+  testID?: string;
+}
+
+/** Tappable list row: icon slot or avatar, title + subtitle (+ badge), value or chevron on the right. */
 export function ListRow({
   icon: Icon,
-  iconTone = 'slate',
+  iconTone,
+  avatar,
+  leading,
   title,
   subtitle,
   value,
   valueTone = 'text',
   badge,
+  trailing,
   onPress,
-}: {
-  icon?: LucideIcon;
-  iconTone?: keyof Palette;
-  title: string;
-  subtitle?: string;
-  value?: string;
-  valueTone?: keyof Palette;
-  badge?: ReactNode;
-  onPress?: () => void;
-}) {
+  onLongPress,
+  selected,
+  muted,
+  disabled,
+  noChevron,
+  expanded,
+  accessibilityLabel,
+  children,
+  style,
+  testID,
+}: ListRowProps) {
   const c = useColors();
+  const slot = slotColors(c, iconTone);
+  const tappable = !!onPress || !!onLongPress;
+  const collapsible = expanded != null;
+  const ExpandIcon = expanded ? ChevronUp : ChevronDown;
   return (
     <Pressable
-      disabled={!onPress}
+      testID={testID}
+      disabled={!tappable || disabled}
       onPress={onPress}
-      accessibilityRole={onPress ? 'button' : undefined}
-      style={({ pressed }) => ({
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: space.md,
-        minHeight: 64,
-        paddingVertical: space.md,
-        paddingHorizontal: space.lg,
-        backgroundColor: pressed ? c.muted : c.card,
-      })}>
-      {Icon ? (
-        <View
-          style={{
-            width: 44,
-            height: 44,
-            borderRadius: radius.md,
-            backgroundColor: c.muted,
-            alignItems: 'center',
-            justifyContent: 'center',
-          }}>
-          <Icon size={22} color={c[iconTone]} strokeWidth={2} />
-        </View>
-      ) : null}
-      <View style={{ flex: 1, gap: 2 }}>
-        <Txt weight="semibold" numberOfLines={2}>
-          {title}
-        </Txt>
-        {subtitle ? (
-          <Txt variant="caption" color="textMuted" numberOfLines={2}>
-            {subtitle}
-          </Txt>
+      onLongPress={onLongPress}
+      accessibilityRole={tappable ? 'button' : undefined}
+      accessibilityLabel={accessibilityLabel}
+      accessibilityState={{ selected: !!selected, disabled: !!disabled, ...(collapsible ? { expanded: !!expanded } : {}) }}
+      android_ripple={tappable ? { color: c.muted } : undefined}
+      style={({ pressed }) => [
+        {
+          minHeight: touch,
+          paddingVertical: space.md,
+          paddingHorizontal: space.lg,
+          backgroundColor: pressed && tappable ? c.muted : selected ? c.primarySoft : c.card,
+        },
+        style,
+      ]}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.md }}>
+        {leading}
+        {avatar != null ? (
+          <View style={{ width: sizes.iconSlot, height: sizes.iconSlot, borderRadius: sizes.iconSlot / 2, backgroundColor: c.surface2, alignItems: 'center', justifyContent: 'center' }}>
+            <Txt variant="caption" weight="semibold" color="textMuted" numeric>
+              {initials(avatar)}
+            </Txt>
+          </View>
+        ) : Icon ? (
+          <View style={{ width: sizes.iconSlot, height: sizes.iconSlot, borderRadius: radius.md, backgroundColor: slot.bg, alignItems: 'center', justifyContent: 'center' }}>
+            <Icon size={22} color={slot.fg} strokeWidth={2} />
+          </View>
         ) : null}
-        {badge}
+        <View style={{ flex: 1, gap: 2 }}>
+          <Txt weight="semibold" numberOfLines={2} color={muted || disabled ? 'textMuted' : 'text'}>
+            {title}
+          </Txt>
+          {subtitle ? (
+            <Txt variant="caption" color="textMuted" numberOfLines={1}>
+              {subtitle}
+            </Txt>
+          ) : null}
+          {badge ? <View style={{ marginTop: 2 }}>{badge}</View> : null}
+        </View>
+        {trailing ??
+          (collapsible ? (
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.sm, flexShrink: 0 }}>
+              {value ? (
+                <Txt weight="semibold" numeric color={valueTone}>
+                  {value}
+                </Txt>
+              ) : null}
+              <ExpandIcon size={20} color={c.textMuted} strokeWidth={2} />
+            </View>
+          ) : value ? (
+            <Txt weight="semibold" numeric color={valueTone} style={{ flexShrink: 0 }}>
+              {value}
+            </Txt>
+          ) : selected ? (
+            <Check size={22} color={c.primary} strokeWidth={2.4} />
+          ) : tappable && !noChevron ? (
+            <ChevronRight size={20} color={c.textMuted} strokeWidth={2} />
+          ) : null)}
       </View>
-      {value ? (
-        <Txt weight="bold" numeric color={valueTone}>
-          {value}
-        </Txt>
-      ) : null}
-      {onPress && !value ? <ChevronRight size={20} color={c.textMuted} /> : null}
+      {children}
     </Pressable>
   );
 }
 
-/** Groups list rows in one rounded card with hairline dividers. */
-export function ListCard({ children }: { children: ReactNode }) {
+// ---------------------------------------------------------------- ListCard
+
+export interface ListCardProps {
+  children: ReactNode;
+  /**
+   * Divider inset from the left: `true` = 68 (rows have icons/avatars), a number for custom,
+   * default 16 (text-only rows). `false` hides dividers.
+   */
+  inset?: boolean | number;
+  style?: StyleProp<ViewStyle>;
+}
+
+/** Groups list rows in one rounded card with 1 dp dividers inset to the text start. */
+export function ListCard({ children, inset, style }: ListCardProps) {
   const c = useColors();
   const items = (Array.isArray(children) ? children.flat() : [children]).filter(Boolean);
+  const left = inset === true ? 68 : inset === false ? -1 : typeof inset === 'number' ? inset : space.lg;
   return (
-    <View style={{ borderRadius: radius.lg, borderWidth: 1, borderColor: c.border, overflow: 'hidden', backgroundColor: c.card }}>
+    <View style={[{ borderRadius: radius.lg, borderWidth: hairline, borderColor: c.border, overflow: 'hidden', backgroundColor: c.card }, style]}>
       {items.map((child, i) => (
-        <View key={i} style={i > 0 ? { borderTopWidth: 1, borderTopColor: c.border } : undefined}>
+        <View key={i}>
+          {i > 0 && left >= 0 ? <View style={{ height: hairline, backgroundColor: c.border, marginLeft: left }} /> : null}
           {child}
         </View>
       ))}
@@ -174,6 +364,47 @@ export function ListCard({ children }: { children: ReactNode }) {
   );
 }
 
-export function Row({ children, gap = space.sm, style }: { children: ReactNode; gap?: number; style?: StyleProp<ViewStyle> }) {
-  return <View style={[{ flexDirection: 'row', alignItems: 'center', gap, flexWrap: 'wrap' }, style]}>{children}</View>;
+// ---------------------------------------------------------------- Row
+
+export function Row({ children, gap = space.sm, style, wrap = true }: { children: ReactNode; gap?: number; style?: StyleProp<ViewStyle>; wrap?: boolean }) {
+  return <View style={[{ flexDirection: 'row', alignItems: 'center', gap, flexWrap: wrap ? 'wrap' : 'nowrap' }, style]}>{children}</View>;
+}
+
+/** A caption-sized info line with a leading icon (backup status, "day already recorded", …). */
+export function InfoLine({
+  icon: Icon,
+  text,
+  tone = 'textMuted',
+  onPress,
+  accessibilityLabel,
+}: {
+  icon: LucideIcon;
+  text: string;
+  tone?: 'textMuted' | 'success' | 'warning' | 'danger';
+  onPress?: () => void;
+  accessibilityLabel?: string;
+}) {
+  const c = useColors();
+  return (
+    <Pressable
+      disabled={!onPress}
+      onPress={onPress}
+      accessibilityRole={onPress ? 'button' : undefined}
+      accessibilityLabel={accessibilityLabel ?? text}
+      style={({ pressed }) => ({
+        minHeight: 44,
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: space.sm,
+        paddingHorizontal: space.xs,
+        borderRadius: radius.sm,
+        backgroundColor: pressed ? c.muted : 'transparent',
+      })}>
+      <Icon size={18} color={c[tone]} strokeWidth={2} />
+      <Txt variant="caption" color={tone} style={{ flex: 1 }}>
+        {text}
+      </Txt>
+      {onPress ? <ChevronRight size={16} color={c.textMuted} strokeWidth={2} /> : null}
+    </Pressable>
+  );
 }

@@ -1,35 +1,51 @@
-import { Text, type TextProps } from 'react-native';
+import { Platform, Text, type TextProps } from 'react-native';
 
-import { FONT_MAP, type, useColors, useFont, type Palette, type Weight } from '@/theme';
+import { useLang } from '@/i18n';
+import { FONT_MAP, fontScaleMax, lineHeight, type, useColors, useFont, type Palette, type Weight } from '@/theme';
 
-type Variant = keyof typeof type;
+export type TxtVariant = keyof typeof type;
 
 export interface TxtProps extends TextProps {
-  variant?: Variant;
+  variant?: TxtVariant;
   weight?: Weight;
   color?: keyof Palette;
-  /** Amounts and counts: Latin digits, equal-width so columns line up. */
+  /** Amounts, counts and dates: Latin digits, equal-width so columns line up, in every UI language. */
   numeric?: boolean;
   center?: boolean;
+  /**
+   * Small label above a stat, group or card ("TOTAL COST"): caption 14/600 textMuted,
+   * uppercase + tracked in English only (Sinhala / Tamil have no case and tracking breaks shaping).
+   */
+  eyebrow?: boolean;
 }
 
-export function Txt({ variant = 'body', weight = 'regular', color = 'text', numeric, center, style, ...rest }: TxtProps) {
+export function Txt({ variant, weight, color, numeric, center, eyebrow, style, maxFontSizeMultiplier, ...rest }: TxtProps) {
   const c = useColors();
   const font = useFont();
-  const size = type[variant];
+  const lang = useLang();
+  const v: TxtVariant = variant ?? (eyebrow ? 'caption' : 'body');
+  const w: Weight = weight ?? (eyebrow ? 'semibold' : 'regular');
+  const col: keyof Palette = color ?? (eyebrow ? 'textMuted' : 'text');
+  const size = type[v];
+  const latin = numeric || lang === 'en';
+  const lh = lineHeight[v][latin ? 'latin' : 'complex'];
+  const upper = eyebrow && lang === 'en';
   return (
     <Text
       {...rest}
-      maxFontSizeMultiplier={1.6}
+      maxFontSizeMultiplier={maxFontSizeMultiplier ?? fontScaleMax[v]}
       style={[
         {
-          color: c[color],
+          color: c[col],
           fontSize: size,
-          // Sinhala and Tamil need extra line height so marks above and below don't clip.
-          lineHeight: Math.round(size * 1.5),
-          fontFamily: numeric ? FONT_MAP.en[weight] : font(weight),
+          lineHeight: lh,
+          fontFamily: numeric ? FONT_MAP.en[w] : font(w),
           fontVariant: numeric ? ['tabular-nums'] : undefined,
           textAlign: center ? 'center' : undefined,
+          textTransform: upper ? 'uppercase' : undefined,
+          letterSpacing: upper ? 0.5 : undefined,
+          // Sinhala / Tamil keep Android's font padding so marks never clip; Latin numbers may drop it.
+          includeFontPadding: numeric && Platform.OS === 'android' ? false : undefined,
         },
         style,
       ]}

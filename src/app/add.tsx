@@ -1,74 +1,60 @@
 import { router, type Href } from 'expo-router';
 import type { LucideIcon } from 'lucide-react-native';
-import { FileDown, Hammer, HardHat, NotebookPen, Receipt, X } from 'lucide-react-native';
+import { ArrowUpFromLine, ClipboardCheck, HandCoins, NotebookPen, Receipt, UserPlus } from 'lucide-react-native';
 import { Pressable, View } from 'react-native';
 import Animated, { FadeIn, SlideInDown } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { IconButton } from '@/components/ui/Button';
-import { Txt } from '@/components/ui/Txt';
+import { SheetHeader } from '@/components/ui/form';
+import { ListCard, ListRow } from '@/components/ui/layout';
+import { useCurrentProjectId, useProjects } from '@/hooks/data';
 import { useT, type TKey } from '@/i18n';
-import { motion, radius, space, useColors } from '@/theme';
+import { hairline, radius, space, useColors, useLayout, useMotion } from '@/theme';
 
-const ITEMS: { icon: LucideIcon; label: TKey; href: Href; tone: 'primary' | 'slate' }[] = [
-  { icon: Receipt, label: 'newExpense', href: '/expense/form', tone: 'primary' },
-  { icon: HardHat, label: 'recordWork', href: '/wage/form?kind=work', tone: 'slate' },
-  { icon: HardHat, label: 'giveAdvance', href: '/wage/form?kind=advance', tone: 'slate' },
-  { icon: Hammer, label: 'issueTool', href: '/tool/move?kind=issue', tone: 'slate' },
-  { icon: NotebookPen, label: 'newNote', href: '/note/form', tone: 'slate' },
-  { icon: FileDown, label: 'importPdf', href: '/import', tone: 'slate' },
+const ITEMS: { icon: LucideIcon; label: TKey; href: Href; primary?: boolean }[] = [
+  { icon: Receipt, label: 'newExpense', href: '/expense/form', primary: true },
+  { icon: ClipboardCheck, label: 'todaysWork', href: '/wage/today' },
+  { icon: HandCoins, label: 'giveAdvance', href: '/wage/form?kind=advance' },
+  { icon: ArrowUpFromLine, label: 'issueTool', href: '/tool/move?kind=issue' },
+  { icon: NotebookPen, label: 'newNote', href: '/note/form' },
+  { icon: UserPlus, label: 'newWorker', href: '/worker/form' },
 ];
 
+/** Quick-add sheet: a list of the things a supervisor records most, opened by the FAB. */
 export default function AddSheet() {
   const c = useColors();
   const t = useT();
   const insets = useSafeAreaInsets();
+  const m = useMotion();
+  const { gutter, maxWidth } = useLayout();
+  const pid = useCurrentProjectId();
+  const projects = useProjects();
+  const projectName = projects.find((p) => p.id === pid)?.name ?? t('allProjects');
 
   return (
     <View style={{ flex: 1, justifyContent: 'flex-end' }}>
-      <Animated.View entering={FadeIn.duration(150)} style={{ position: 'absolute', inset: 0, backgroundColor: 'rgba(15,23,42,0.5)' }}>
-        <Pressable style={{ flex: 1 }} onPress={() => router.back()} accessibilityLabel={t('close')} />
+      <Animated.View entering={FadeIn.duration(m.reduced ? m.enter : 150)} style={{ position: 'absolute', inset: 0, backgroundColor: c.overlay }}>
+        <Pressable style={{ flex: 1 }} onPress={() => router.back()} accessibilityRole="button" accessibilityLabel={t('close')} />
       </Animated.View>
       <Animated.View
-        entering={SlideInDown.duration(220)}
+        entering={m.reduced ? FadeIn.duration(m.enter) : SlideInDown.duration(220)}
         style={{
-          backgroundColor: c.bg,
-          borderTopLeftRadius: radius.lg + 8,
-          borderTopRightRadius: radius.lg + 8,
-          padding: space.lg,
+          backgroundColor: c.surface3,
+          borderTopLeftRadius: radius.xl,
+          borderTopRightRadius: radius.xl,
+          borderTopWidth: hairline,
+          borderTopColor: c.border,
           paddingBottom: insets.bottom + space.lg,
-          gap: space.md,
         }}>
-        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-          <Txt variant="title" weight="bold" style={{ flex: 1 }}>
-            {t('whatToAdd')}
-          </Txt>
-          <IconButton icon={X} label={t('close')} onPress={() => router.back()} />
-        </View>
-        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: space.md }}>
-          {ITEMS.map((it) => (
-            <Pressable
-              key={it.label}
-              accessibilityRole="button"
-              accessibilityLabel={t(it.label)}
-              onPress={() => router.replace(it.href)}
-              style={({ pressed }) => ({
-                flexBasis: '47%',
-                flexGrow: 1,
-                minHeight: 104,
-                borderRadius: radius.lg,
-                borderWidth: 1.5,
-                borderColor: it.tone === 'primary' ? c.primary : c.border,
-                backgroundColor: pressed ? c.muted : it.tone === 'primary' ? c.primarySoft : c.card,
-                transform: [{ scale: pressed ? motion.pressScale : 1 }],
-                padding: space.md,
-                justifyContent: 'space-between',
-                gap: space.sm,
-              })}>
-              <it.icon size={28} color={it.tone === 'primary' ? c.primary : c.slate} strokeWidth={2} />
-              <Txt weight="semibold">{t(it.label)}</Txt>
-            </Pressable>
-          ))}
+        <View style={{ maxWidth, width: '100%', alignSelf: 'center' }}>
+          <SheetHeader title={t('whatToAdd')} onClose={() => router.back()} caption={`${t('project')}: ${projectName}`} />
+          <View style={{ paddingHorizontal: gutter, paddingTop: space.sm }}>
+            <ListCard inset>
+              {ITEMS.map((it) => (
+                <ListRow key={it.label} icon={it.icon} iconTone={it.primary ? 'primary' : undefined} title={t(it.label)} onPress={() => router.replace(it.href)} />
+              ))}
+            </ListCard>
+          </View>
         </View>
       </Animated.View>
     </View>

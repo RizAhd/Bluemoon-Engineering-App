@@ -1,162 +1,247 @@
 import DateTimePicker from '@react-native-community/datetimepicker';
-import { Calendar, Check, ChevronDown, X } from 'lucide-react-native';
+import * as Haptics from 'expo-haptics';
+import type { LucideIcon } from 'lucide-react-native';
+import { AlertCircle, Calendar, Check, ChevronDown, Search, X } from 'lucide-react-native';
 import { useState, type ReactNode } from 'react';
-import { FlatList, Modal, Pressable, TextInput, View, type TextInputProps } from 'react-native';
+import { FlatList, Modal, Pressable, TextInput, View, type StyleProp, type TextInputProps, type ViewStyle } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useT } from '@/i18n';
 import { addDays, formatDay, toDay, today } from '@/lib/dates';
-import { FONT_MAP, motion, radius, space, touch, type, useColors, useFont } from '@/theme';
+import { formatAmount, parseCents } from '@/lib/money';
+import { FONT_MAP, hairline, radius, space, touch, touchMin, type, useColors, useFont } from '@/theme';
 
 import { IconButton } from './Button';
 import { Txt } from './Txt';
 
-function Label({ text, optional, error }: { text: string; optional?: boolean; error?: string | null }) {
+// ---------------------------------------------------------------- shared bits
+
+/** Field label: caption 14/600 `text` (stays `text` on error), optional marker in textMuted 400. */
+export function Label({ text, optional }: { text: string; optional?: boolean; error?: string | null }) {
   const t = useT();
   return (
-    <Txt weight="semibold" color={error ? 'danger' : 'text'}>
+    <Txt variant="caption" weight="semibold" color="text">
       {text}
-      {optional ? <Txt color="textMuted" variant="caption">{`  (${t('optional')})`}</Txt> : null}
+      {optional ? (
+        <Txt color="textMuted" variant="caption" weight="regular">
+          {`  (${t('optional')})`}
+        </Txt>
+      ) : null}
     </Txt>
   );
 }
 
-function ErrorText({ error, hint }: { error?: string | null; hint?: string }) {
+/** Error (danger + AlertCircle, live region) or hint (textMuted) under a field. */
+export function HelperText({ error, hint, tone = 'textMuted' }: { error?: string | null; hint?: string; tone?: 'textMuted' | 'warning' }) {
+  const c = useColors();
   if (error)
     return (
-      <Txt variant="caption" color="danger" weight="semibold" accessibilityLiveRegion="polite">
-        {error}
-      </Txt>
+      <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: space.xs }} accessibilityLiveRegion="polite">
+        <AlertCircle size={16} color={c.danger} strokeWidth={2.4} style={{ marginTop: 2 }} />
+        <Txt variant="caption" color="danger" weight="semibold" style={{ flex: 1 }}>
+          {error}
+        </Txt>
+      </View>
     );
   if (hint)
     return (
-      <Txt variant="caption" color="textMuted">
+      <Txt variant="caption" color={tone}>
         {hint}
       </Txt>
     );
   return null;
 }
 
-export function Field({
-  label,
-  optional,
-  error,
-  hint,
-  multiline,
-  ...input
-}: TextInputProps & { label: string; optional?: boolean; error?: string | null; hint?: string }) {
+/** 2 dp focus ring drawn outside the shape so the box itself never moves. */
+export function Ring({ focus, children, style }: { focus: boolean; children: ReactNode; style?: StyleProp<ViewStyle> }) {
   const c = useColors();
-  const font = useFont();
-  const [focus, setFocus] = useState(false);
   return (
-    <View style={{ gap: space.xs }}>
-      <Label text={label} optional={optional} error={error} />
-      <TextInput
-        {...input}
-        accessibilityLabel={label}
-        multiline={multiline}
-        placeholderTextColor={c.textMuted}
-        onFocus={(e) => {
-          setFocus(true);
-          input.onFocus?.(e);
-        }}
-        onBlur={(e) => {
-          setFocus(false);
-          input.onBlur?.(e);
-        }}
-        style={{
-          minHeight: multiline ? 112 : touch,
-          textAlignVertical: multiline ? 'top' : 'center',
-          paddingHorizontal: space.md,
-          paddingVertical: space.md,
-          borderRadius: radius.md,
-          borderWidth: focus ? 2 : 1.5,
-          borderColor: error ? c.danger : focus ? c.primary : c.borderStrong,
-          backgroundColor: c.card,
-          color: c.text,
-          fontSize: type.bodyLg,
-          fontFamily: font('regular'),
-        }}
-      />
-      <ErrorText error={error} hint={hint} />
+    <View style={[{ padding: 2, margin: -2, borderRadius: radius.md + 2, borderWidth: 2, borderColor: focus ? c.focusRing : 'transparent' }, style]}>
+      {children}
     </View>
   );
 }
 
-/** Large amount input with an Rs prefix and a number keypad. */
-export function AmountField({
-  label,
-  value,
-  onChangeText,
-  error,
-  autoFocus,
-  optional,
-}: {
+function useBoxColors(opts: { focus: boolean; error?: string | null; disabled?: boolean }) {
+  const c = useColors();
+  return {
+    borderColor: opts.error ? c.danger : opts.focus ? c.primary : opts.disabled ? c.border : c.borderStrong,
+    backgroundColor: opts.disabled ? c.surface2 : c.card,
+    color: opts.disabled ? c.textMuted : c.text,
+  };
+}
+
+// ---------------------------------------------------------------- Field
+
+export interface FieldProps extends TextInputProps {
+  label: string;
+  optional?: boolean;
+  error?: string | null;
+  hint?: string;
+  /** Renders without the label (for inline use). */
+  hideLabel?: boolean;
+  disabled?: boolean;
+}
+
+export function Field({ label, optional, error, hint, multiline, hideLabel, disabled, editable, style, ...input }: FieldProps) {
+  const c = useColors();
+  const font = useFont();
+  const [focus, setFocus] = useState(false);
+  const off = disabled || editable === false;
+  const box = useBoxColors({ focus, error, disabled: off });
+  return (
+    <View style={{ gap: 6 }}>
+      {hideLabel ? null : <Label text={label} optional={optional} error={error} />}
+      <Ring focus={focus && !off}>
+        <TextInput
+          {...input}
+          editable={!off}
+          accessibilityLabel={label}
+          multiline={multiline}
+          placeholderTextColor={c.placeholder}
+          onFocus={(e) => {
+            setFocus(true);
+            input.onFocus?.(e);
+          }}
+          onBlur={(e) => {
+            setFocus(false);
+            input.onBlur?.(e);
+          }}
+          style={[
+            {
+              minHeight: multiline ? 112 : touch,
+              textAlignVertical: multiline ? 'top' : 'center',
+              paddingHorizontal: space.lg,
+              paddingVertical: multiline ? space.md : 0,
+              borderRadius: radius.md,
+              borderWidth: hairline,
+              borderColor: box.borderColor,
+              backgroundColor: box.backgroundColor,
+              color: box.color,
+              fontSize: type.bodyLg,
+              fontFamily: font('regular'),
+            },
+            style,
+          ]}
+        />
+      </Ring>
+      <HelperText error={error} hint={hint} />
+    </View>
+  );
+}
+
+// ---------------------------------------------------------------- AmountField
+
+export interface AmountFieldProps {
   label: string;
   value: string;
   onChangeText: (s: string) => void;
   error?: string | null;
   autoFocus?: boolean;
   optional?: boolean;
-}) {
+  /** Computed hint under the box, e.g. "1 × Rs 3,500". */
+  hint?: string;
+  /** Hint in warning colour (e.g. "paying more than owed"). */
+  hintTone?: 'textMuted' | 'warning';
+  /** 48 tall, no label, smaller digits — for the work & pay rows. */
+  compact?: boolean;
+  disabled?: boolean;
+  /** Called after the blur re-format. */
+  onBlur?: () => void;
+  onSubmitEditing?: () => void;
+  returnKeyType?: TextInputProps['returnKeyType'];
+}
+
+/** Large amount input with an Rs prefix and a number keypad. Re-formats with thousands separators on blur. */
+export function AmountField({ label, value, onChangeText, error, autoFocus, optional, hint, hintTone, compact, disabled, onBlur, onSubmitEditing, returnKeyType }: AmountFieldProps) {
   const c = useColors();
   const t = useT();
   const [focus, setFocus] = useState(false);
+  const box = useBoxColors({ focus, error, disabled });
   return (
-    <View style={{ gap: space.xs }}>
-      <Label text={label} optional={optional} error={error} />
-      <View
-        style={{
-          flexDirection: 'row',
-          alignItems: 'center',
-          borderRadius: radius.md,
-          borderWidth: focus ? 2 : 1.5,
-          borderColor: error ? c.danger : focus ? c.primary : c.borderStrong,
-          backgroundColor: c.card,
-          paddingHorizontal: space.lg,
-          minHeight: 72,
-        }}>
-        <Txt variant="title" weight="semibold" color="textMuted" style={{ marginRight: space.sm }}>
-          {t('rs')}
-        </Txt>
-        <TextInput
-          accessibilityLabel={label}
-          value={value}
-          onChangeText={(s) => onChangeText(s.replace(/[^0-9.,]/g, ''))}
-          keyboardType="decimal-pad"
-          autoFocus={autoFocus}
-          placeholder="0"
-          placeholderTextColor={c.textMuted}
-          onFocus={() => setFocus(true)}
-          onBlur={() => setFocus(false)}
+    <View style={{ gap: 6 }}>
+      {compact ? null : <Label text={label} optional={optional} error={error} />}
+      <Ring focus={focus && !disabled}>
+        <View
           style={{
-            flex: 1,
-            fontSize: type.amount,
-            fontFamily: FONT_MAP.en.bold,
-            color: c.text,
-            paddingVertical: space.sm,
-            fontVariant: ['tabular-nums'],
-          }}
-        />
-      </View>
-      <ErrorText error={error} />
+            flexDirection: 'row',
+            alignItems: 'baseline',
+            borderRadius: radius.md,
+            borderWidth: hairline,
+            borderColor: box.borderColor,
+            backgroundColor: box.backgroundColor,
+            paddingHorizontal: space.lg,
+            minHeight: compact ? touchMin : 72,
+            gap: space.sm,
+          }}>
+          <Txt variant={compact ? 'body' : 'bodyLg'} weight="semibold" color="textMuted">
+            {t('rs')}
+          </Txt>
+          <TextInput
+            accessibilityLabel={label}
+            value={value}
+            editable={!disabled}
+            onChangeText={(s) => onChangeText(s.replace(/[^0-9.,]/g, ''))}
+            keyboardType="decimal-pad"
+            autoFocus={autoFocus}
+            placeholder="0"
+            placeholderTextColor={c.placeholder}
+            returnKeyType={returnKeyType}
+            onSubmitEditing={onSubmitEditing}
+            onFocus={() => setFocus(true)}
+            onBlur={() => {
+              setFocus(false);
+              const cents = parseCents(value);
+              if (value && cents !== null) onChangeText(formatAmount(cents));
+              onBlur?.();
+            }}
+            maxFontSizeMultiplier={1.2}
+            style={{
+              flex: 1,
+              fontSize: compact ? type.bodyLg : type.amount,
+              lineHeight: compact ? 26 : 36,
+              fontFamily: FONT_MAP.en.bold,
+              color: box.color,
+              paddingVertical: compact ? space.sm : space.md,
+              fontVariant: ['tabular-nums'],
+            }}
+          />
+        </View>
+      </Ring>
+      <HelperText error={error} hint={hint} tone={hintTone} />
     </View>
   );
 }
 
-/** Single-choice chips that wrap onto several lines. */
+// ---------------------------------------------------------------- Chips
+
+export interface ChipOption<T extends string> {
+  value: T;
+  label: string;
+  icon?: ReactNode;
+  /** Shown after the label ("Out 3"); a zero count may be paired with `disabled`. */
+  count?: number;
+  disabled?: boolean;
+  /** Spoken instead of the label (e.g. "Half day" for "½"). */
+  accessibilityLabel?: string;
+}
+
+/** Single-choice chips that wrap onto several lines. Selected = ink (slate) fill with a tick. */
 export function Chips<T extends string>({
   label,
   options,
   value,
   onChange,
   error,
+  numeric,
 }: {
   label?: string;
-  options: { value: T; label: string; icon?: ReactNode }[];
+  options: ChipOption<T>[];
   value: T | null;
   onChange: (v: T) => void;
   error?: string | null;
+  /** Labels are numbers (½ · 1 · 1½): render with Latin tabular digits. */
+  numeric?: boolean;
 }) {
   const c = useColors();
   return (
@@ -165,40 +250,218 @@ export function Chips<T extends string>({
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: space.sm }} accessibilityRole="radiogroup">
         {options.map((o) => {
           const on = o.value === value;
+          const off = !!o.disabled;
+          return (
+            <Pressable
+              key={o.value}
+              accessibilityRole="radio"
+              accessibilityState={{ checked: on, disabled: off }}
+              accessibilityLabel={o.accessibilityLabel ?? (o.count != null ? `${o.label} ${o.count}` : o.label)}
+              disabled={off}
+              onPress={() => {
+                Haptics.selectionAsync().catch(() => {});
+                onChange(o.value);
+              }}
+              style={({ pressed }) => ({
+                minHeight: touchMin,
+                paddingHorizontal: space.lg,
+                borderRadius: radius.pill,
+                borderWidth: hairline,
+                borderColor: on ? (pressed ? c.slatePressed : c.slate) : off ? c.border : c.borderStrong,
+                backgroundColor: on ? (pressed ? c.slatePressed : c.slate) : pressed ? c.muted : c.card,
+                flexDirection: 'row',
+                alignItems: 'center',
+                gap: space.sm,
+              })}>
+              {on ? <Check size={18} color={c.onSlate} strokeWidth={2.4} /> : o.icon}
+              <Txt weight={on ? 'semibold' : 'regular'} numeric={numeric} style={{ color: on ? c.onSlate : off ? c.placeholder : c.text, flexShrink: 1 }} numberOfLines={2}>
+                {o.count != null ? `${o.label} ${o.count}` : o.label}
+              </Txt>
+            </Pressable>
+          );
+        })}
+      </View>
+      <HelperText error={error} />
+    </View>
+  );
+}
+
+// ---------------------------------------------------------------- Segmented
+
+/** 2–4 short options in one 48-tall track; the chosen segment is ink. Use Chips for more. */
+export function Segmented<T extends string>({
+  options,
+  value,
+  onChange,
+  label,
+  numeric,
+  style,
+}: {
+  options: { value: T; label: string; accessibilityLabel?: string }[];
+  value: T | null;
+  onChange: (v: T) => void;
+  label?: string;
+  numeric?: boolean;
+  style?: StyleProp<ViewStyle>;
+}) {
+  const c = useColors();
+  return (
+    <View style={[{ gap: 6 }, style]}>
+      {label ? <Label text={label} /> : null}
+      <View
+        accessibilityRole="radiogroup"
+        style={{ flexDirection: 'row', minHeight: touchMin, backgroundColor: c.surface2, borderRadius: radius.md, padding: 3, gap: 2 }}>
+        {options.map((o) => {
+          const on = o.value === value;
           return (
             <Pressable
               key={o.value}
               accessibilityRole="radio"
               accessibilityState={{ checked: on }}
-              accessibilityLabel={o.label}
-              onPress={() => onChange(o.value)}
+              accessibilityLabel={o.accessibilityLabel ?? o.label}
+              onPress={() => {
+                Haptics.selectionAsync().catch(() => {});
+                onChange(o.value);
+              }}
               style={({ pressed }) => ({
-                minHeight: 48,
-                paddingHorizontal: space.lg,
-                borderRadius: radius.pill,
-                borderWidth: 1.5,
-                borderColor: on ? c.primary : c.borderStrong,
-                backgroundColor: on ? c.primarySoft : pressed ? c.muted : c.card,
-                transform: [{ scale: pressed ? motion.pressScale : 1 }],
-                flexDirection: 'row',
+                flex: 1,
+                minHeight: 42,
+                borderRadius: radius.sm,
                 alignItems: 'center',
-                gap: space.xs,
+                justifyContent: 'center',
+                paddingHorizontal: space.sm,
+                backgroundColor: on ? (pressed ? c.slatePressed : c.slate) : pressed ? c.muted : 'transparent',
               })}>
-              {on ? <Check size={16} color={c.primary} strokeWidth={3} /> : o.icon}
-              <Txt weight={on ? 'bold' : 'regular'} style={{ color: on ? c.primary : c.text }}>
+              <Txt weight="semibold" numeric={numeric} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.85} style={{ color: on ? c.onSlate : c.text }}>
                 {o.label}
               </Txt>
             </Pressable>
           );
         })}
       </View>
-      <ErrorText error={error} />
     </View>
   );
 }
 
-/** Date with one-tap Today / Yesterday, plus a calendar for anything else. */
-export function DateField({ label, value, onChange }: { label: string; value: string; onChange: (d: string) => void }) {
+// ---------------------------------------------------------------- Checkbox
+
+/** 28 × 28 box in a 48 × 48 hit area. The label is the row text beside it (pass `label` for a11y). */
+export function Checkbox({
+  checked,
+  onChange,
+  label,
+  disabled,
+  style,
+}: {
+  checked: boolean;
+  onChange: (next: boolean) => void;
+  label: string;
+  disabled?: boolean;
+  style?: StyleProp<ViewStyle>;
+}) {
+  const c = useColors();
+  return (
+    <Pressable
+      accessibilityRole="checkbox"
+      accessibilityState={{ checked, disabled: !!disabled }}
+      accessibilityLabel={label}
+      disabled={disabled}
+      onPress={() => {
+        Haptics.selectionAsync().catch(() => {});
+        onChange(!checked);
+      }}
+      style={[{ width: touchMin, height: touchMin, alignItems: 'center', justifyContent: 'center' }, style]}>
+      <View
+        style={{
+          width: 28,
+          height: 28,
+          borderRadius: radius.sm,
+          borderWidth: 2,
+          borderColor: checked ? c.slate : disabled ? c.border : c.borderStrong,
+          backgroundColor: checked ? c.slate : disabled ? c.surface2 : c.card,
+          alignItems: 'center',
+          justifyContent: 'center',
+        }}>
+        {checked ? <Check size={20} color={c.onSlate} strokeWidth={3} /> : null}
+      </View>
+    </Pressable>
+  );
+}
+
+// ---------------------------------------------------------------- SearchField
+
+/** 48-tall search box with a leading magnifier and a clear button. No label. */
+export function SearchField({
+  value,
+  onChangeText,
+  placeholder,
+  autoFocus,
+  style,
+}: {
+  value: string;
+  onChangeText: (s: string) => void;
+  placeholder?: string;
+  autoFocus?: boolean;
+  style?: StyleProp<ViewStyle>;
+}) {
+  const c = useColors();
+  const t = useT();
+  const font = useFont();
+  const [focus, setFocus] = useState(false);
+  const box = useBoxColors({ focus });
+  const ph = placeholder ?? t('search');
+  return (
+    <Ring focus={focus} style={style}>
+      <View
+        style={{
+          flexDirection: 'row',
+          alignItems: 'center',
+          minHeight: touchMin,
+          borderRadius: radius.md,
+          borderWidth: hairline,
+          borderColor: box.borderColor,
+          backgroundColor: box.backgroundColor,
+          paddingLeft: space.md,
+          paddingRight: space.xs,
+          gap: space.sm,
+        }}>
+        <Search size={20} color={c.textMuted} strokeWidth={2} />
+        <TextInput
+          value={value}
+          onChangeText={onChangeText}
+          placeholder={ph}
+          accessibilityLabel={ph}
+          placeholderTextColor={c.placeholder}
+          returnKeyType="search"
+          autoFocus={autoFocus}
+          autoCorrect={false}
+          onFocus={() => setFocus(true)}
+          onBlur={() => setFocus(false)}
+          style={{ flex: 1, minHeight: touchMin - 2, color: c.text, fontSize: type.body, fontFamily: font('regular'), paddingVertical: 0 }}
+        />
+        {value ? <IconButton icon={X} label={t('close')} size={44} tone="textMuted" onPress={() => onChangeText('')} /> : <View style={{ width: 44 }} />}
+      </View>
+    </Ring>
+  );
+}
+
+// ---------------------------------------------------------------- DateField
+
+/** Date with one-tap Today / Yesterday, plus a calendar chip for anything else. */
+export function DateField({
+  label,
+  value,
+  onChange,
+  maxDay,
+  error,
+}: {
+  label: string;
+  value: string;
+  onChange: (d: string) => void;
+  /** Latest selectable day (YYYY-MM-DD); pass `today()` where future dates make no sense. */
+  maxDay?: string;
+  error?: string | null;
+}) {
   const t = useT();
   const c = useColors();
   const [open, setOpen] = useState(false);
@@ -206,10 +469,11 @@ export function DateField({ label, value, onChange }: { label: string; value: st
   const yd = addDays(td, -1);
   const custom = value !== td && value !== yd;
   const [y, m, d] = value.split('-').map(Number);
+  const max = maxDay ? maxDay.split('-').map(Number) : null;
 
   return (
     <View style={{ gap: space.sm }}>
-      <Label text={label} />
+      <Label text={label} error={error} />
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: space.sm }}>
         <Chips
           options={[
@@ -221,30 +485,31 @@ export function DateField({ label, value, onChange }: { label: string; value: st
         />
         <Pressable
           accessibilityRole="button"
-          accessibilityLabel={label}
+          accessibilityLabel={`${label}: ${formatDay(value)}`}
           onPress={() => setOpen(true)}
-          style={{
-            minHeight: 48,
+          style={({ pressed }) => ({
+            minHeight: touchMin,
             paddingHorizontal: space.lg,
             borderRadius: radius.pill,
-            borderWidth: 1.5,
-            borderColor: custom ? c.primary : c.borderStrong,
-            backgroundColor: custom ? c.primarySoft : c.card,
+            borderWidth: hairline,
+            borderColor: custom ? (pressed ? c.slatePressed : c.slate) : c.borderStrong,
+            backgroundColor: custom ? (pressed ? c.slatePressed : c.slate) : pressed ? c.muted : c.card,
             flexDirection: 'row',
             alignItems: 'center',
-            gap: space.xs,
-          }}>
-          <Calendar size={18} color={custom ? c.primary : c.text} />
-          <Txt numeric weight={custom ? 'bold' : 'regular'} style={{ color: custom ? c.primary : c.text }}>
+            gap: space.sm,
+          })}>
+          <Calendar size={18} color={custom ? c.onSlate : c.textMuted} strokeWidth={2} />
+          <Txt numeric weight={custom ? 'semibold' : 'regular'} style={{ color: custom ? c.onSlate : c.text }}>
             {formatDay(value)}
           </Txt>
         </Pressable>
       </View>
+      <HelperText error={error} />
       {open ? (
         <DateTimePicker
           value={new Date(y, (m || 1) - 1, d || 1)}
           mode="date"
-          maximumDate={new Date(2100, 0, 1)}
+          maximumDate={max ? new Date(max[0], (max[1] || 1) - 1, max[2] || 1) : new Date(2100, 0, 1)}
           onValueChange={(_e, date) => {
             setOpen(false);
             onChange(toDay(date));
@@ -256,8 +521,19 @@ export function DateField({ label, value, onChange }: { label: string; value: st
   );
 }
 
+// ---------------------------------------------------------------- SelectField + PickerSheet
+
+export interface PickerItem {
+  id: string;
+  title: string;
+  subtitle?: string;
+  icon?: LucideIcon;
+  /** Shown but not pickable (e.g. "already on this project"). */
+  disabled?: boolean;
+}
+
 /** A field that opens a searchable list in a bottom sheet. */
-export function SelectField<T extends { id: string; title: string; subtitle?: string }>({
+export function SelectField<T extends PickerItem>({
   label,
   items,
   value,
@@ -266,6 +542,9 @@ export function SelectField<T extends { id: string; title: string; subtitle?: st
   optional,
   placeholder,
   allowNone,
+  disabled,
+  hint,
+  footer,
 }: {
   label: string;
   items: T[];
@@ -275,34 +554,43 @@ export function SelectField<T extends { id: string; title: string; subtitle?: st
   optional?: boolean;
   placeholder?: string;
   allowNone?: boolean;
+  disabled?: boolean;
+  hint?: string;
+  /** Extra content under the sheet's list (e.g. a "New project" button). */
+  footer?: ReactNode;
 }) {
   const c = useColors();
   const [open, setOpen] = useState(false);
+  const box = useBoxColors({ focus: open, error, disabled });
   const selected = items.find((i) => i.id === value);
   return (
-    <View style={{ gap: space.xs }}>
+    <View style={{ gap: 6 }}>
       <Label text={label} optional={optional} error={error} />
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel={`${label}: ${selected?.title ?? placeholder ?? ''}`}
-        onPress={() => setOpen(true)}
-        style={({ pressed }) => ({
-          minHeight: touch,
-          paddingHorizontal: space.md,
-          borderRadius: radius.md,
-          borderWidth: 1.5,
-          borderColor: error ? c.danger : c.borderStrong,
-          backgroundColor: pressed ? c.muted : c.card,
-          flexDirection: 'row',
-          alignItems: 'center',
-          gap: space.sm,
-        })}>
-        <Txt variant="bodyLg" style={{ flex: 1 }} color={selected ? 'text' : 'textMuted'} numberOfLines={1}>
-          {selected?.title ?? placeholder ?? label}
-        </Txt>
-        <ChevronDown size={20} color={c.textMuted} />
-      </Pressable>
-      <ErrorText error={error} />
+      <Ring focus={open}>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={`${label}: ${selected?.title ?? placeholder ?? ''}`}
+          accessibilityState={{ disabled: !!disabled, expanded: open }}
+          disabled={disabled}
+          onPress={() => setOpen(true)}
+          style={({ pressed }) => ({
+            minHeight: touch,
+            paddingHorizontal: space.lg,
+            borderRadius: radius.md,
+            borderWidth: hairline,
+            borderColor: box.borderColor,
+            backgroundColor: pressed ? c.muted : box.backgroundColor,
+            flexDirection: 'row',
+            alignItems: 'center',
+            gap: space.sm,
+          })}>
+          <Txt variant="bodyLg" style={{ flex: 1 }} color={selected ? (disabled ? 'textMuted' : 'text') : 'placeholder'} numberOfLines={1}>
+            {selected?.title ?? placeholder ?? label}
+          </Txt>
+          <ChevronDown size={20} color={c.textMuted} strokeWidth={2} />
+        </Pressable>
+      </Ring>
+      <HelperText error={error} hint={hint} />
       <PickerSheet
         visible={open}
         title={label}
@@ -314,12 +602,37 @@ export function SelectField<T extends { id: string; title: string; subtitle?: st
           onChange(id);
           setOpen(false);
         }}
+        footer={footer}
       />
     </View>
   );
 }
 
-export function PickerSheet<T extends { id: string; title: string; subtitle?: string }>({
+/** Sheet header: grabber, title, close. Shared by PickerSheet and the quick-add sheet. */
+export function SheetHeader({ title, onClose, caption }: { title: string; onClose: () => void; caption?: string }) {
+  const c = useColors();
+  const t = useT();
+  return (
+    <View>
+      <View style={{ alignItems: 'center', paddingTop: space.sm }}>
+        <View style={{ width: 36, height: 4, borderRadius: 2, backgroundColor: c.borderStrong }} />
+      </View>
+      <View style={{ flexDirection: 'row', alignItems: 'center', minHeight: 56, paddingLeft: space.lg, paddingRight: space.sm, gap: space.sm }}>
+        <Txt variant="title" weight="semibold" style={{ flex: 1 }} accessibilityRole="header">
+          {title}
+        </Txt>
+        <IconButton icon={X} label={t('close')} size={44} onPress={onClose} />
+      </View>
+      {caption ? (
+        <Txt variant="caption" color="textMuted" style={{ paddingHorizontal: space.lg, paddingBottom: space.sm }}>
+          {caption}
+        </Txt>
+      ) : null}
+    </View>
+  );
+}
+
+export function PickerSheet<T extends PickerItem>({
   visible,
   title,
   items,
@@ -328,6 +641,7 @@ export function PickerSheet<T extends { id: string; title: string; subtitle?: st
   onClose,
   allowNone,
   footer,
+  searchFrom = 8,
 }: {
   visible: boolean;
   title: string;
@@ -337,87 +651,87 @@ export function PickerSheet<T extends { id: string; title: string; subtitle?: st
   onClose: () => void;
   allowNone?: boolean;
   footer?: ReactNode;
+  /** Show the search box when there are more items than this. */
+  searchFrom?: number;
 }) {
   const c = useColors();
   const t = useT();
   const insets = useSafeAreaInsets();
   const [q, setQ] = useState('');
-  const shown = q ? items.filter((i) => i.title.toLowerCase().includes(q.toLowerCase())) : items;
+  const shown = q ? items.filter((i) => `${i.title} ${i.subtitle ?? ''}`.toLowerCase().includes(q.toLowerCase())) : items;
   const rows = allowNone ? [{ id: '', title: '—' } as T, ...shown] : shown;
+  const hasIcons = items.some((i) => i.icon);
 
   return (
-    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose} statusBarTranslucent>
-      <Pressable style={{ flex: 1, backgroundColor: 'rgba(15,23,42,0.45)' }} onPress={onClose} accessibilityLabel={t('close')} />
+    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose} statusBarTranslucent navigationBarTranslucent>
+      <Pressable style={{ flex: 1, backgroundColor: c.overlay }} onPress={onClose} accessibilityRole="button" accessibilityLabel={t('close')} />
       <View
         style={{
           maxHeight: '75%',
-          backgroundColor: c.bg,
-          borderTopLeftRadius: radius.lg + 8,
-          borderTopRightRadius: radius.lg + 8,
-          paddingBottom: insets.bottom + space.md,
+          backgroundColor: c.surface3,
+          borderTopLeftRadius: radius.xl,
+          borderTopRightRadius: radius.xl,
+          borderTopWidth: hairline,
+          borderTopColor: c.border,
+          paddingBottom: insets.bottom + space.lg,
         }}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', padding: space.lg, paddingBottom: space.sm }}>
-          <Txt variant="title" weight="bold" style={{ flex: 1 }}>
-            {title}
-          </Txt>
-          <IconButton icon={X} label={t('close')} onPress={onClose} />
-        </View>
-        {items.length > 8 ? (
+        <SheetHeader title={title} onClose={onClose} />
+        {items.length > searchFrom ? (
           <View style={{ paddingHorizontal: space.lg, paddingBottom: space.sm }}>
-            <TextInput
-              value={q}
-              onChangeText={setQ}
-              placeholder="…"
-              placeholderTextColor={c.textMuted}
-              style={{
-                minHeight: 48,
-                borderRadius: radius.md,
-                borderWidth: 1.5,
-                borderColor: c.borderStrong,
-                paddingHorizontal: space.md,
-                color: c.text,
-                backgroundColor: c.card,
-                fontSize: type.body,
-              }}
-            />
+            <SearchField value={q} onChangeText={setQ} />
           </View>
         ) : null}
         <FlatList
           data={rows}
           keyExtractor={(i) => i.id || 'none'}
           keyboardShouldPersistTaps="handled"
+          ItemSeparatorComponent={() => <View style={{ height: hairline, backgroundColor: c.border, marginLeft: hasIcons ? 68 : space.lg }} />}
+          ListEmptyComponent={
+            q ? (
+              <Txt variant="caption" color="textMuted" style={{ padding: space.lg }}>
+                {`${t('search')}: "${q}"`}
+              </Txt>
+            ) : undefined
+          }
           renderItem={({ item }) => {
             const on = (item.id || null) === value;
+            const Icon = item.icon;
             return (
               <Pressable
                 accessibilityRole="button"
-                accessibilityState={{ selected: on }}
+                accessibilityState={{ selected: on, disabled: !!item.disabled }}
+                android_ripple={{ color: c.muted }}
                 onPress={() => onPick(item.id || null)}
                 style={({ pressed }) => ({
                   minHeight: touch,
                   paddingHorizontal: space.lg,
-                  paddingVertical: space.sm,
+                  paddingVertical: space.md,
                   flexDirection: 'row',
                   alignItems: 'center',
                   gap: space.md,
                   backgroundColor: pressed ? c.muted : on ? c.primarySoft : 'transparent',
                 })}>
+                {Icon ? (
+                  <View style={{ width: 40, height: 40, borderRadius: radius.md, backgroundColor: c.surface2, alignItems: 'center', justifyContent: 'center' }}>
+                    <Icon size={22} color={c.textMuted} strokeWidth={2} />
+                  </View>
+                ) : null}
                 <View style={{ flex: 1 }}>
-                  <Txt weight={on ? 'bold' : 'regular'} variant="bodyLg">
+                  <Txt weight="semibold" color={item.disabled ? 'textMuted' : 'text'} numberOfLines={2}>
                     {item.title}
                   </Txt>
                   {item.subtitle ? (
-                    <Txt variant="caption" color="textMuted">
+                    <Txt variant="caption" color="textMuted" numberOfLines={1}>
                       {item.subtitle}
                     </Txt>
                   ) : null}
                 </View>
-                {on ? <Check size={22} color={c.primary} strokeWidth={3} /> : null}
+                {on ? <Check size={22} color={c.primary} strokeWidth={2.4} /> : null}
               </Pressable>
             );
           }}
         />
-        {footer ? <View style={{ paddingHorizontal: space.lg, paddingTop: space.sm }}>{footer}</View> : null}
+        {footer ? <View style={{ paddingHorizontal: space.lg, paddingTop: space.lg }}>{footer}</View> : null}
       </View>
     </Modal>
   );
