@@ -4,6 +4,8 @@ Site management app for **Bluemoon Engineering (Pvt) Ltd**, Welimada. It works
 fully offline on the phone: no server, no internet needed on site, no running
 cost.
 
+> Full product and engineering plan (roadmap, architecture, backend, security, costs, handover): [docs/PLAN.md](docs/PLAN.md)
+
 ## What it does
 
 - **Expenses** per project, with photos of bills and receipts
