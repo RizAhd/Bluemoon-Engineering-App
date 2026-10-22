@@ -1,9 +1,8 @@
 import { Stack, useLocalSearchParams } from 'expo-router';
 import { Trash2 } from 'lucide-react-native';
 import { useState } from 'react';
-import { View } from 'react-native';
 
-import { Button } from '@/components/ui/Button';
+import { Button, HeaderButton } from '@/components/ui/Button';
 import { AmountField, Field } from '@/components/ui/form';
 import { Screen } from '@/components/ui/layout';
 import { useFirst } from '@/db';
@@ -12,7 +11,6 @@ import type { Worker } from '@/db/types';
 import { useRecordForm } from '@/hooks/form';
 import { useT } from '@/i18n';
 import { centsToInput, parseCents } from '@/lib/money';
-import { space } from '@/theme';
 
 export default function WorkerForm() {
   const params = useLocalSearchParams<{ id?: string }>();
@@ -36,27 +34,44 @@ function Inner({ existing }: { existing: Worker | null }) {
       setRateError(t('errAmount'));
       return;
     }
-    form.submit(() =>
-      saveWorker({ id: form.id, name, trade, phone, daily_rate_cents: cents, active: existing ? !!existing.active : true }),
-    );
+    form.submit(() => saveWorker({ id: form.id, name, trade, phone, daily_rate_cents: cents, active: existing ? !!existing.active : true }));
   }
 
   return (
     <>
-      <Stack.Screen options={{ title: t(form.isNew ? 'newWorker' : 'editWorker') }} />
-      <Screen
-        footer={
-          <View style={{ flexDirection: 'row', gap: space.sm }}>
-            {!form.isNew ? (
-              <Button kind="danger" icon={Trash2} label={t('delete')} onPress={() => form.confirmDelete(() => deleteRecord('workers', form.id))} />
-            ) : null}
-            <Button label={t('save')} onPress={onSave} style={{ flex: 1 }} />
-          </View>
-        }>
-        <Field label={t('name')} value={name} onChangeText={setName} error={form.err('name')} autoFocus={form.isNew} autoCapitalize="words" />
-        <Field label={t('trade')} optional placeholder={t('tradeHint')} value={trade} onChangeText={setTrade} />
-        <AmountField label={t('dailyRate')} value={rate} onChangeText={(s) => { setRate(s); setRateError(null); }} error={rateError} />
+      <Stack.Screen
+        options={{
+          title: t(form.isNew ? 'newWorker' : 'editWorker'),
+          headerRight: form.isNew
+            ? undefined
+            : () => <HeaderButton icon={Trash2} tone="danger" label={t('delete')} onPress={() => form.confirmDelete(() => deleteRecord('workers', form.id))} />,
+        }}
+      />
+      <Screen footer={<Button label={t('save')} onPress={onSave} full />} gap={20}>
+        <Field
+          label={t('name')}
+          value={name}
+          onChangeText={(s) => {
+            setName(s);
+            form.clearError('name');
+          }}
+          error={form.err('name')}
+          autoFocus={form.isNew}
+          autoCapitalize="words"
+          returnKeyType="next"
+        />
+        <Field label={t('trade')} optional placeholder={t('tradeHint')} value={trade} onChangeText={setTrade} returnKeyType="next" />
         <Field label={t('phone')} optional value={phone} onChangeText={setPhone} keyboardType="phone-pad" />
+        <AmountField
+          label={t('dailyRate')}
+          value={rate}
+          onChangeText={(s) => {
+            setRate(s);
+            setRateError(null);
+            form.clearError('daily_rate');
+          }}
+          error={rateError ?? form.err('daily_rate')}
+        />
       </Screen>
     </>
   );

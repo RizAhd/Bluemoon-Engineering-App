@@ -1,22 +1,26 @@
 import * as Sharing from 'expo-sharing';
 import { router, Stack, useLocalSearchParams } from 'expo-router';
-import { FileOutput, NotebookPen, Pencil, Star } from 'lucide-react-native';
+import { FileOutput, Hammer, HardHat, NotebookPen, Pencil, Star, UserPlus } from 'lucide-react-native';
 import { useState } from 'react';
-import { Alert, Switch, View } from 'react-native';
+import { Switch, View } from 'react-native';
 
 import { PhotoStrip } from '@/components/PhotoStrip';
-import { CategoryBars, ContractBar, Stat } from '@/components/Stats';
+import { CategoryBars, ContractBar, Stat, Tiles } from '@/components/Stats';
 import { Button, HeaderButton } from '@/components/ui/Button';
-import { Badge } from '@/components/ui/feedback';
-import { Card, Screen, SectionTitle } from '@/components/ui/layout';
+import { Badge, EmptyState, toast } from '@/components/ui/feedback';
+import { Card, Divider, ListCard, ListRow, Screen, SectionTitle } from '@/components/ui/layout';
 import { Txt } from '@/components/ui/Txt';
 import { useFirst, useQuery } from '@/db';
-import type { ProjectCost } from '@/db/types';
-import { setCurrentProject, useCurrentProjectId, useProject } from '@/hooks/data';
+import type { ProjectCost, ToolStatus } from '@/db/types';
+import { setCurrentProject, useCurrentProjectId, useProject, useProjectWorkers } from '@/hooks/data';
 import { useT, type TKey } from '@/i18n';
+import { formatDay } from '@/lib/dates';
+import { showError } from '@/lib/errors';
 import { formatLKR } from '@/lib/money';
 import { exportProjectPdf } from '@/lib/pdf';
 import { space, useColors } from '@/theme';
+
+const MAX_ROWS = 5;
 
 export default function ProjectDetail() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -24,25 +28,47 @@ export default function ProjectDetail() {
   const c = useColors();
   const project = useProject(id);
   const current = useCurrentProjectId();
-  const cost = useFirst<ProjectCost>('SELECT * FROM v_project_cost WHERE project_id = ?', [id]);
+  const cost = useFirst<ProjectCost>('SELECT * FROM v_project_cost WHERE project_id = ?', [id ?? '']);
   const cats = useQuery<{ category: string; s: number }>(
     'SELECT category, SUM(amount_cents) AS s FROM expenses WHERE project_id = ? AND deleted_at IS NULL GROUP BY category ORDER BY s DESC',
-    [id],
+    [id ?? ''],
   );
-  const noteCount = useFirst<{ n: number }>('SELECT COUNT(*) AS n FROM site_notes WHERE project_id = ? AND deleted_at IS NULL', [id])?.n ?? 0;
+  const noteCount = useFirst<{ n: number }>('SELECT COUNT(*) AS n FROM site_notes WHERE project_id = ? AND deleted_at IS NULL', [id ?? ''])?.n ?? 0;
+  const workers = useProjectWorkers(id ?? null);
+  const toolsOut = useQuery<ToolStatus & { worker_name: string | null }>(
+    `SELECT s.*, w.name AS worker_name FROM v_tool_status s LEFT JOIN workers w ON w.id = s.worker_id
+     WHERE s.is_out = 1 AND s.project_id = ? ORDER BY s.name COLLATE NOCASE`,
+    [id ?? ''],
+  );
   const [includePhotos, setIncludePhotos] = useState(true);
   const [exporting, setExporting] = useState(false);
 
-  if (!project || !cost) return null;
+  if (!project || !cost) {
+    return (
+      <>
+        <Stack.Screen options={{ title: t('project') }} />
+        <Screen>
+          <EmptyState icon={HardHat} title={t('noProjects')} action={<Button kind="secondary" label={t('close')} onPress={() => router.back()} full />} />
+        </Screen>
+      </>
+    );
+  }
+  const pr = project;
   const total = cost.expense_cents + cost.labour_cents;
+  const activeWorkers = workers.filter((w) => w.active);
+
+  function work(path: '/(tabs)/expenses' | '/(tabs)/workers' | '/(tabs)/tools') {
+    setCurrentProject(pr.id);
+    router.push(path);
+  }
 
   async function onExport() {
     setExporting(true);
     try {
-      const file = await exportProjectPdf(project!.id, { includePhotos });
-      await Sharing.shareAsync(file.uri, { mimeType: 'application/pdf', dialogTitle: project!.name, UTI: 'com.adobe.pdf' });
+      const file = await exportProjectPdf(pr.id, { includePhotos });
+      await Sharing.shareAsync(file.uri, { mimeType: 'application/pdf', dialogTitle: pr.name, UTI: 'com.adobe.pdf' });
     } catch (e) {
-      Alert.alert(t('somethingWrong'), e instanceof Error ? e.message : String(e));
+      showError(e, 'project.exportPdf', t, { id: pr.id, includePhotos });
     } finally {
       setExporting(false);
     }
@@ -52,44 +78,132 @@ export default function ProjectDetail() {
     <>
       <Stack.Screen
         options={{
-          title: project.name,
-          headerRight: () => <HeaderButton icon={Pencil} label={t('editProject')} onPress={() => router.push(`/project/form?id=${project.id}`)} />,
+          title: pr.name,
+          headerRight: () => <HeaderButton icon={Pencil} label={t('editProject')} onPress={() => router.push(`/project/form?id=${pr.id}`)} />,
         }}
       />
       <Screen>
         <View style={{ gap: space.sm }}>
-          <Badge
-            tone={project.status === 'active' ? 'success' : project.status === 'on_hold' ? 'warning' : 'slate'}
-            label={t(`status_${project.status}`)}
-          />
-          {project.client || project.location ? (
-            <Txt color="textMuted">{[project.client, project.location].filter(Boolean).join(' · ')}</Txt>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.sm, flexWrap: 'wrap' }}>
+            <Badge tone={pr.status === 'active' ? 'success' : pr.status === 'on_hold' ? 'warning' : 'slate'} label={t(`status_${pr.status}`)} />
+            {current === pr.id ? <Badge tone="primary" label={t('thisProject')} /> : null}
+          </View>
+          {pr.client || pr.location ? (
+            <Txt variant="caption" color="textMuted">
+              {[pr.client, pr.location].filter(Boolean).join(' · ')}
+            </Txt>
           ) : null}
-          {current !== project.id ? (
-            <Button kind="ghost" compact icon={Star} label={t('setCurrent')} onPress={() => setCurrentProject(project.id)} style={{ alignSelf: 'flex-start' }} />
+          {current !== pr.id ? (
+            <Button
+              kind="ghost"
+              compact
+              icon={Star}
+              label={t('setCurrent')}
+              onPress={() => {
+                setCurrentProject(pr.id);
+                toast(pr.name);
+              }}
+              style={{ alignSelf: 'flex-start' }}
+            />
           ) : null}
         </View>
 
+        <SectionTitle title={t('overview')} first />
         <Card>
-          <Txt color="textMuted" weight="semibold">
-            {t('totalCost')}
-          </Txt>
-          <Txt variant="amountXl" weight="bold" numeric adjustsFontSizeToFit numberOfLines={1}>
+          <Txt eyebrow>{t('totalCost')}</Txt>
+          <Txt variant="amountXl" weight="bold" numeric adjustsFontSizeToFit minimumFontScale={0.7} numberOfLines={1}>
             {formatLKR(total)}
           </Txt>
-          {project.contract_cents ? <ContractBar spent={total} contract={project.contract_cents} /> : null}
-          {project.contract_cents ? (
-            <Txt color={project.contract_cents - total < 0 ? 'danger' : 'textMuted'} numeric>
-              {t('balanceToContract')}: {formatLKR(project.contract_cents - total)}
-            </Txt>
+          {pr.contract_cents ? (
+            <>
+              <Divider />
+              <ContractBar spent={total} contract={pr.contract_cents} />
+              <Txt variant="caption" color={pr.contract_cents - total < 0 ? 'danger' : 'textMuted'} weight="semibold" numeric>
+                {t('balanceToContract')}: {formatLKR(pr.contract_cents - total)}
+              </Txt>
+            </>
           ) : null}
         </Card>
 
-        <View style={{ flexDirection: 'row', gap: space.md }}>
-          <Stat label={t('materialsAndOther')} value={formatLKR(cost.expense_cents)} onPress={() => { setCurrentProject(project.id); router.push('/(tabs)/expenses'); }} />
-          <Stat label={t('labour')} value={formatLKR(cost.labour_cents)} onPress={() => { setCurrentProject(project.id); router.push('/(tabs)/workers'); }} />
-        </View>
-        <Stat label={t('labourPaid')} value={formatLKR(cost.labour_paid_cents)} />
+        <Tiles>
+          <Stat label={t('materialsAndOther')} value={formatLKR(cost.expense_cents)} onPress={() => work('/(tabs)/expenses')} />
+          <Stat label={t('labour')} value={formatLKR(cost.labour_cents)} onPress={() => work('/(tabs)/workers')} />
+        </Tiles>
+        <Tiles>
+          <Stat label={t('labourPaid')} value={formatLKR(cost.labour_paid_cents)} />
+        </Tiles>
+
+        <SectionTitle
+          title={t('projectWorkers')}
+          count={activeWorkers.length}
+          action={<Button kind="ghost" compact icon={UserPlus} label={t('add')} onPress={() => router.push(`/worker/assign?projectId=${pr.id}`)} />}
+        />
+        {activeWorkers.length ? (
+          <ListCard inset>
+            {activeWorkers.slice(0, MAX_ROWS).map((w) => (
+              <ListRow
+                key={w.worker_id}
+                avatar={w.name}
+                title={w.name}
+                subtitle={[w.trade, `${formatLKR(w.rate_cents)} / ${t('day')}`].filter(Boolean).join(' · ')}
+                value={formatLKR(Math.abs(w.balance_cents))}
+                badge={
+                  w.balance_cents > 0 ? (
+                    <Badge tone="danger" label={t('weOwe')} />
+                  ) : w.balance_cents < 0 ? (
+                    <Badge tone="warning" label={t('workerOwes')} />
+                  ) : (
+                    <Badge tone="success" label={t('settled')} />
+                  )
+                }
+                onPress={() => router.push(`/worker/${w.worker_id}`)}
+              />
+            ))}
+            {activeWorkers.length > MAX_ROWS ? (
+              <ListRow icon={HardHat} title={t('seeAll')} value={String(activeWorkers.length)} onPress={() => work('/(tabs)/workers')} />
+            ) : null}
+          </ListCard>
+        ) : (
+          <Card>
+            <EmptyState
+              compact
+              icon={HardHat}
+              title={t('noWorkersOnProject')}
+              hint={t('noWorkersOnProjectHint')}
+              action={<Button kind="secondary" compact icon={UserPlus} label={t('addWorkerToProject')} onPress={() => router.push(`/worker/assign?projectId=${pr.id}`)} />}
+            />
+          </Card>
+        )}
+
+        {toolsOut.length ? (
+          <>
+            <SectionTitle title={t('outHere')} count={toolsOut.length} />
+            <ListCard inset>
+              {toolsOut.slice(0, MAX_ROWS).map((s) => (
+                <ListRow
+                  key={s.tool_id}
+                  icon={Hammer}
+                  iconTone="warning"
+                  title={s.code ? `${s.name} · ${s.code}` : s.name}
+                  subtitle={[`${t('outWith')} ${s.worker_name ?? s.taken_by ?? ''}`.trim(), s.last_day ? formatDay(s.last_day) : null].filter(Boolean).join(' · ')}
+                  onPress={() => router.push(`/tool/${s.tool_id}`)}
+                />
+              ))}
+              {toolsOut.length > MAX_ROWS ? (
+                <ListRow icon={Hammer} title={t('seeAll')} value={String(toolsOut.length)} onPress={() => work('/(tabs)/tools')} />
+              ) : null}
+            </ListCard>
+          </>
+        ) : null}
+
+        <ListCard>
+          <ListRow
+            icon={NotebookPen}
+            title={`${t('siteNotes')} (${noteCount})`}
+            subtitle={noteCount === 0 ? t('noNotes') : undefined}
+            onPress={() => router.push(`/notes?projectId=${pr.id}`)}
+          />
+        </ListCard>
 
         {cats.length ? (
           <>
@@ -100,12 +214,10 @@ export default function ProjectDetail() {
           </>
         ) : null}
 
-        <Button kind="secondary" icon={NotebookPen} label={`${t('siteNotes')} (${noteCount})`} onPress={() => router.push(`/notes?projectId=${project.id}`)} />
-
         <SectionTitle title={t('exportPdf')} />
         <Card>
           <Txt color="textMuted">{t('exportPdfHint')}</Txt>
-          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', minHeight: 48 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', minHeight: 48, gap: space.md }}>
             <Txt weight="semibold" style={{ flex: 1 }}>
               {t('includePhotos')}
             </Txt>
@@ -117,10 +229,11 @@ export default function ProjectDetail() {
               thumbColor={c.card}
             />
           </View>
-          <Button icon={FileOutput} label={exporting ? t('exporting') : t('exportPdf')} loading={exporting} onPress={onExport} />
+          <Button icon={FileOutput} label={exporting ? t('exporting') : t('exportPdf')} loading={exporting} onPress={() => void onExport()} />
         </Card>
 
-        <PhotoStrip ownerTable="projects" ownerId={project.id} label={t('projectDocs')} />
+        <SectionTitle title={t('documents')} />
+        <PhotoStrip ownerTable="projects" ownerId={pr.id} label={t('projectDocs')} />
       </Screen>
     </>
   );

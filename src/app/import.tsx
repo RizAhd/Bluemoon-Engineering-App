@@ -2,18 +2,19 @@ import { File } from 'expo-file-system';
 import { router, useLocalSearchParams } from 'expo-router';
 import { AlertTriangle, CheckCircle2, FileDown, FileQuestion, Paperclip } from 'lucide-react-native';
 import { useEffect, useState } from 'react';
-import { Alert, View } from 'react-native';
+import { View } from 'react-native';
 
 import { Button } from '@/components/ui/Button';
 import { EmptyState, toast } from '@/components/ui/feedback';
 import { PickerSheet } from '@/components/ui/form';
-import { Card, Screen } from '@/components/ui/layout';
+import { Card, ListCard, ListRow, Screen, SectionTitle } from '@/components/ui/layout';
 import { Txt } from '@/components/ui/Txt';
 import type { DataTable } from '@/db/schema';
 import { setCurrentProject, useProjects } from '@/hooks/data';
 import { useT, type TKey } from '@/i18n';
 import { applyBundle, planImport, type Bundle, type ImportPlan } from '@/lib/bundle';
 import { formatDay } from '@/lib/dates';
+import { guard, reportError } from '@/lib/errors';
 import { addFile } from '@/lib/files';
 import { readProjectPdf } from '@/lib/pdf';
 import { space, useColors } from '@/theme';
@@ -30,6 +31,7 @@ const TABLE_LABEL: Record<DataTable, TKey> = {
   projects: 'projects',
   workers: 'workers',
   tools: 'tools',
+  project_workers: 'projectWorkers',
   expenses: 'expenses',
   wage_entries: 'wages',
   tool_movements: 'toolRecords',
@@ -48,40 +50,44 @@ export default function ImportScreen() {
 
   // Opened from "Share to Bluemoon" with a file already chosen.
   useEffect(() => {
-    if (params.uri) analyze(params.uri).then(setState);
+    if (params.uri) {
+      analyze(params.uri)
+        .then(setState)
+        .catch((e) => {
+          reportError(e, 'import.analyze');
+          setState({ step: 'error', key: 'somethingWrong' });
+        });
+    }
   }, [params.uri]);
 
   async function pick() {
-    const res = await File.pickFileAsync({ mimeTypes: 'application/pdf' });
-    if (res.canceled) return;
+    const res = await guard('import.pick', t, () => File.pickFileAsync({ mimeTypes: 'application/pdf' }));
+    if (!res || res.canceled) return;
     setState({ step: 'reading' });
     setState(await analyze(res.result.uri));
   }
 
   async function doImport() {
-    if (state.step !== 'preview') return;
+    if (state.step !== 'preview' || busy) return;
     setBusy(true);
-    try {
-      const plan = await applyBundle(state.bundle.tables, state.files);
-      if (state.bundle.project_id) setCurrentProject(state.bundle.project_id);
-      toast(t('importDone'));
-      setState({ step: 'done', plan, projectId: state.bundle.project_id });
-    } catch {
-      setState({ step: 'error', key: 'pdfDamaged' });
-    } finally {
-      setBusy(false);
-    }
+    const { bundle, files } = state;
+    const plan = await guard('import.apply', t, () => applyBundle(bundle.tables, files));
+    setBusy(false);
+    if (!plan) return; // the preview stays so the user can try again
+    if (bundle.project_id) setCurrentProject(bundle.project_id);
+    toast(t('importDone'));
+    setState({ step: 'done', plan, projectId: bundle.project_id });
   }
 
   async function attach(projectId: string) {
-    if (state.step !== 'foreign') return;
-    try {
-      await addFile('projects', projectId, state.uri, 'application/pdf');
-      toast(t('attached'));
-      router.replace(`/project/${projectId}`);
-    } catch (e) {
-      Alert.alert(t('somethingWrong'), e instanceof Error ? e.message : String(e));
-    }
+    if (state.step !== 'foreign' || busy) return;
+    const { uri } = state;
+    setBusy(true);
+    const ok = await guard('import.attach', t, () => addFile('projects', projectId, uri, 'application/pdf'));
+    setBusy(false);
+    if (!ok) return;
+    toast(t('attached'));
+    router.replace(`/project/${projectId}`);
   }
 
   if (state.step === 'pick' || state.step === 'reading') {
@@ -91,7 +97,7 @@ export default function ImportScreen() {
           icon={FileDown}
           title={t('importPdf')}
           hint={t('importPdfHint')}
-          action={<Button icon={FileDown} label={state.step === 'reading' ? t('reading') : t('choosePdf')} loading={state.step === 'reading'} onPress={pick} full />}
+          action={<Button icon={FileDown} label={state.step === 'reading' ? t('reading') : t('choosePdf')} loading={state.step === 'reading'} onPress={() => void pick()} full />}
         />
       </Screen>
     );
@@ -100,34 +106,29 @@ export default function ImportScreen() {
   if (state.step === 'error') {
     return (
       <Screen>
-        <EmptyState icon={AlertTriangle} title={t('importPdf')} hint={t(state.key)} action={<Button kind="secondary" label={t('choosePdf')} onPress={pick} full />} />
+        <EmptyState icon={AlertTriangle} title={t('errorTitle')} hint={t(state.key)} action={<Button label={t('choosePdf')} onPress={() => void pick()} full />} />
       </Screen>
     );
   }
 
   if (state.step === 'foreign') {
     return (
-      <Screen>
+      <Screen footer={<Button kind="secondary" label={t('choosePdf')} onPress={() => void pick()} disabled={busy} full />}>
         <EmptyState
           icon={FileQuestion}
           title={t('importPdf')}
           hint={t('notOurPdf')}
-          action={
-            <View style={{ gap: space.sm }}>
-              <Button icon={Paperclip} label={t('attachToProject')} onPress={() => setAttachOpen(true)} full />
-              <Button kind="secondary" label={t('choosePdf')} onPress={pick} full />
-            </View>
-          }
+          action={<Button icon={Paperclip} label={t('attachToProject')} onPress={() => setAttachOpen(true)} loading={busy} full />}
         />
         <PickerSheet
           visible={attachOpen}
           title={t('attachToProject')}
           value={null}
-          items={projects.map((p) => ({ id: p.id, title: p.name }))}
+          items={projects.map((p) => ({ id: p.id, title: p.name, subtitle: [p.location, t(`status_${p.status}`)].filter(Boolean).join(' · ') }))}
           onClose={() => setAttachOpen(false)}
           onPick={(id) => {
             setAttachOpen(false);
-            if (id) attach(id);
+            if (id) void attach(id);
           }}
         />
       </Screen>
@@ -136,55 +137,58 @@ export default function ImportScreen() {
 
   if (state.step === 'done') {
     return (
-      <Screen
-        footer={
-          <Button
-            label={t('done')}
-            onPress={() => (state.projectId ? router.replace(`/project/${state.projectId}`) : router.back())}
-          />
-        }>
+      <Screen footer={<Button label={t('done')} onPress={() => (state.projectId ? router.replace(`/project/${state.projectId}`) : router.back())} full />}>
         <EmptyState icon={CheckCircle2} title={t('importDone')} hint={summary(state.plan, t)} />
       </Screen>
     );
   }
 
   const { bundle, plan } = state;
+  const nothing = plan.counts.inserted + plan.counts.updated === 0;
   return (
-    <Screen footer={<Button label={t('importNow')} loading={busy} onPress={doImport} disabled={plan.counts.inserted + plan.counts.updated === 0} />}>
-      <Card>
-        <Txt variant="caption" color="textMuted" weight="semibold">
-          {t('project')}
-        </Txt>
-        <Txt variant="heading" weight="bold">
+    <Screen
+      footer={
+        nothing ? (
+          <Button kind="secondary" label={t('done')} onPress={() => router.back()} full />
+        ) : (
+          <Button label={t('importNow')} loading={busy} onPress={() => void doImport()} full />
+        )
+      }>
+      <Card gap={space.xs}>
+        <Txt eyebrow>{t('project')}</Txt>
+        <Txt variant="title" weight="semibold">
           {bundle.project_name ?? '—'}
         </Txt>
-        <Txt color="textMuted">
-          {t('fromPhone')}: {formatDay(bundle.exported_at.slice(0, 10))}
+        <Txt variant="caption" color="textMuted" numeric>
+          {`${t('fromPhone')}: ${formatDay(bundle.exported_at.slice(0, 10))}`}
         </Txt>
       </Card>
 
-      <Txt variant="title" weight="bold">
-        {t('willChange')}
-      </Txt>
-      <Card>
-        {Object.entries(plan.perTable).map(([table, n]) => (
-          <View key={table} style={{ flexDirection: 'row', alignItems: 'center', gap: space.sm, minHeight: 40 }}>
-            <Txt weight="semibold" style={{ flex: 1 }}>
-              {t(TABLE_LABEL[table as DataTable])}
+      <SectionTitle title={t('willChange')} />
+      <ListCard>
+        {Object.entries(plan.perTable).map(([table, n]) => {
+          const ins = n?.inserted ?? 0;
+          const upd = n?.updated ?? 0;
+          const parts = [ins ? `+${ins} ${t('newRecords')}` : '', upd ? `${upd} ${t('updatedRecords')}` : ''].filter(Boolean);
+          return (
+            <ListRow
+              key={table}
+              title={t(TABLE_LABEL[table as DataTable] ?? 'records')}
+              subtitle={parts.length ? undefined : t('unchanged')}
+              value={parts.length ? parts.join(' · ') : undefined}
+            />
+          );
+        })}
+      </ListCard>
+      {nothing ? (
+        <Card tone="successSoft">
+          <View style={{ flexDirection: 'row', gap: space.md, alignItems: 'center' }}>
+            <CheckCircle2 size={24} color={c.success} strokeWidth={2} />
+            <Txt color="success" weight="semibold" style={{ flex: 1 }}>
+              {t('unchanged')}
             </Txt>
-            {n!.inserted ? <Txt color="success" weight="bold" numeric>{`+${n!.inserted} ${t('newRecords')}`}</Txt> : null}
-            {n!.updated ? <Txt color="warning" weight="bold" numeric>{`${n!.updated} ${t('updatedRecords')}`}</Txt> : null}
-            {!n!.inserted && !n!.updated ? <Txt color="textMuted">{t('unchanged')}</Txt> : null}
           </View>
-        ))}
-      </Card>
-      {plan.counts.inserted + plan.counts.updated === 0 ? (
-        <View style={{ flexDirection: 'row', gap: space.sm, alignItems: 'center' }}>
-          <CheckCircle2 size={20} color={c.success} />
-          <Txt color="success" weight="semibold">
-            {t('unchanged')}
-          </Txt>
-        </View>
+        </Card>
       ) : null}
     </Screen>
   );
@@ -198,7 +202,8 @@ async function analyze(uri: string): Promise<State> {
     if (res.status === 'ok') return { step: 'preview', bundle: res.bundle, files: res.files, plan: planImport(res.bundle.tables) };
     if (res.status === 'not-ours') return { step: 'foreign', uri };
     return { step: 'error', key: res.status === 'newer' ? 'pdfNewer' : 'pdfDamaged' };
-  } catch {
+  } catch (e) {
+    reportError(e, 'import.read', { uri });
     return { step: 'error', key: 'somethingWrong' };
   }
 }

@@ -1,35 +1,97 @@
 import { router, Stack, useLocalSearchParams } from 'expo-router';
-import { Banknote, CalendarCheck, HandCoins, Pencil, Phone } from 'lucide-react-native';
+import { Banknote, Building2, CalendarCheck, HandCoins, Pencil, Phone, Trash2, UserX } from 'lucide-react-native';
+import { useMemo, useState } from 'react';
 import { Alert, Linking, View } from 'react-native';
 
-import { Stat } from '@/components/Stats';
+import { Stat, Tiles } from '@/components/Stats';
 import { Button, HeaderButton } from '@/components/ui/Button';
-import { Badge } from '@/components/ui/feedback';
+import { Badge, EmptyState, toast } from '@/components/ui/feedback';
+import { Chips, PickerSheet } from '@/components/ui/form';
 import { Card, ListCard, ListRow, Screen, SectionTitle } from '@/components/ui/layout';
 import { Txt } from '@/components/ui/Txt';
 import { useFirst, useQuery } from '@/db';
-import { deleteRecord, saveWorker } from '@/db/repo';
-import type { WageEntry, Worker, WorkerBalance } from '@/db/types';
+import { deleteRecord, saveWorker, unassignWorker } from '@/db/repo';
+import type { WageEntry, WageKind, Worker, WorkerBalance } from '@/db/types';
+import { useCurrentProjectId, useProjects, useWorkerProjects } from '@/hooks/data';
 import { useT } from '@/i18n';
 import { formatDay } from '@/lib/dates';
+import { showError } from '@/lib/errors';
 import { formatLKR } from '@/lib/money';
-import { space } from '@/theme';
+import { space, useColors } from '@/theme';
 
 const ICON = { work: CalendarCheck, advance: HandCoins, payment: Banknote } as const;
+const ALL = '__all';
+
+function BalanceBadge({ balance }: { balance: number }) {
+  const t = useT();
+  if (balance > 0) return <Badge tone="danger" label={t('weOwe')} />;
+  if (balance < 0) return <Badge tone="warning" label={t('workerOwes')} />;
+  return <Badge tone="success" label={t('settled')} />;
+}
 
 export default function WorkerDetail() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const t = useT();
-  const worker = useFirst<Worker>('SELECT * FROM workers WHERE id = ? AND deleted_at IS NULL', [id]);
-  const bal = useFirst<WorkerBalance>('SELECT * FROM v_worker_balance WHERE worker_id = ?', [id]);
+  const c = useColors();
+  const pid = useCurrentProjectId();
+  const worker = useFirst<Worker>('SELECT * FROM workers WHERE id = ? AND deleted_at IS NULL', [id ?? '']);
+  const bal = useFirst<WorkerBalance>('SELECT * FROM v_worker_balance WHERE worker_id = ?', [id ?? '']);
+  const wp = useWorkerProjects(id ?? '');
+  const allProjects = useProjects();
   const entries = useQuery<WageEntry & { project_name: string | null }>(
     `SELECT w.*, p.name AS project_name FROM wage_entries w LEFT JOIN projects p ON p.id = w.project_id
      WHERE w.worker_id = ? AND w.deleted_at IS NULL ORDER BY w.day DESC, w.created_at DESC`,
-    [id],
+    [id ?? ''],
   );
+  const [filter, setFilter] = useState<string | null>(null);
+  const [picking, setPicking] = useState<WageKind | null>(null);
 
-  if (!worker || !bal) return null;
+  // Projects that appear in the history, for the filter chips.
+  const historyProjects = useMemo(() => {
+    const seen = new Map<string, string>();
+    entries.forEach((e) => {
+      if (e.project_id && e.project_name && !seen.has(e.project_id)) seen.set(e.project_id, e.project_name);
+    });
+    return [...seen.entries()].map(([pId, name]) => ({ id: pId, name }));
+  }, [entries]);
+
+  if (!worker || !bal) {
+    return (
+      <>
+        <Stack.Screen options={{ title: t('worker') }} />
+        <Screen>
+          <EmptyState icon={Building2} title={t('worker')} action={<Button kind="secondary" label={t('close')} onPress={() => router.back()} full />} />
+        </Screen>
+      </>
+    );
+  }
+
   const b = bal.balance_cents;
+  const tone = b > 0 ? 'dangerSoft' : b < 0 ? 'warningSoft' : 'successSoft';
+  const toneText = b > 0 ? 'danger' : b < 0 ? 'warning' : 'success';
+  const activeFilter = filter ?? (pid && historyProjects.some((p) => p.id === pid) ? pid : ALL);
+  const shown = activeFilter === ALL ? entries : entries.filter((e) => e.project_id === activeFilter);
+  const onCurrent = !!pid && wp.some((p) => p.project_id === pid);
+
+  /** Which project an action belongs to: current project if the worker is on it, the only one, else ask. */
+  function actionProject(): string | null {
+    if (pid && wp.some((p) => p.project_id === pid)) return pid;
+    if (wp.length === 1) return wp[0].project_id;
+    if (wp.length === 0 && pid) return pid;
+    return null;
+  }
+
+  function go(kind: WageKind, projectId: string) {
+    const owed = wp.find((p) => p.project_id === projectId)?.balance_cents ?? 0;
+    const amount = kind === 'payment' && owed > 0 ? `&amount=${owed}` : '';
+    router.push(`/wage/form?workerId=${worker!.id}&kind=${kind}&projectId=${projectId}${amount}`);
+  }
+
+  function act(kind: WageKind) {
+    const projectId = actionProject();
+    if (projectId) go(kind, projectId);
+    else setPicking(kind);
+  }
 
   function onEntry(e: WageEntry) {
     Alert.alert(t(`wage_${e.kind}`), `${formatDay(e.day)} · ${formatLKR(e.amount_cents)}`, [
@@ -41,11 +103,61 @@ export default function WorkerDetail() {
         onPress: () =>
           Alert.alert(t('confirmDelete'), t('confirmDeleteBody'), [
             { text: t('cancel'), style: 'cancel' },
-            { text: t('delete'), style: 'destructive', onPress: () => deleteRecord('wage_entries', e.id) },
+            {
+              text: t('delete'),
+              style: 'destructive',
+              onPress: () => {
+                try {
+                  deleteRecord('wage_entries', e.id);
+                  toast(t('deleted'));
+                } catch (err) {
+                  showError(err, 'worker.deleteEntry', t, { id: e.id });
+                }
+              },
+            },
           ]),
       },
     ]);
   }
+
+  function toggleActive() {
+    try {
+      saveWorker({
+        id: worker!.id,
+        name: worker!.name,
+        phone: worker!.phone,
+        trade: worker!.trade,
+        daily_rate_cents: worker!.daily_rate_cents,
+        active: !worker!.active,
+      });
+    } catch (e) {
+      showError(e, 'worker.toggleActive', t, { id: worker!.id });
+    }
+  }
+
+  function removeFromCurrent() {
+    if (!pid) return;
+    Alert.alert(t('removeFromProject'), t('removeFromProjectBody'), [
+      { text: t('cancel'), style: 'cancel' },
+      {
+        text: t('removeFromProject'),
+        style: 'destructive',
+        onPress: () => {
+          try {
+            unassignWorker(pid, worker!.id);
+            toast(t('deleted'));
+          } catch (e) {
+            showError(e, 'worker.unassign', t, { projectId: pid, workerId: worker!.id });
+          }
+        },
+      },
+    ]);
+  }
+
+  const pickerItems = (wp.length ? wp.map((p) => ({ id: p.project_id, title: p.project_name })) : allProjects.map((p) => ({ id: p.id, title: p.name }))).map((p) => ({
+    ...p,
+    icon: Building2,
+  }));
 
   return (
     <>
@@ -56,60 +168,104 @@ export default function WorkerDetail() {
         }}
       />
       <Screen>
-        <Card tone={b > 0 ? 'dangerSoft' : b < 0 ? 'warningSoft' : 'successSoft'} style={{ borderColor: 'transparent' }}>
-          <Txt weight="semibold" color={b > 0 ? 'danger' : b < 0 ? 'warning' : 'success'}>
-            {b > 0 ? t('weOwe') : b < 0 ? t('workerOwes') : t('settled')}
+        <Card tone={tone}>
+          <Txt eyebrow style={{ color: c[toneText] }}>
+            {t('balanceAllProjects')}
           </Txt>
-          <Txt variant="amountXl" weight="bold" numeric color={b > 0 ? 'danger' : b < 0 ? 'warning' : 'success'}>
+          <Txt variant="amount" weight="bold" numeric color={toneText} adjustsFontSizeToFit minimumFontScale={0.7} numberOfLines={1}>
             {formatLKR(Math.abs(b))}
           </Txt>
-          <Txt color="textMuted">
-            {[worker.trade, worker.daily_rate_cents ? `${t('dailyRate')} ${formatLKR(worker.daily_rate_cents)}` : null].filter(Boolean).join(' · ')}
-          </Txt>
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: space.sm }}>
+            <BalanceBadge balance={b} />
+            {!worker.active ? <Badge label={t('inactive')} /> : null}
+          </View>
+          {worker.trade || worker.daily_rate_cents ? (
+            <Txt variant="caption" color="textMuted">
+              {[worker.trade, worker.daily_rate_cents ? `${t('dailyRate')} ${formatLKR(worker.daily_rate_cents)}` : null].filter(Boolean).join(' · ')}
+            </Txt>
+          ) : null}
+          {worker.phone ? <Button kind="ghost" compact icon={Phone} label={worker.phone} onPress={() => Linking.openURL(`tel:${worker.phone}`).catch((e) => showError(e, 'worker.call', t))} style={{ alignSelf: 'flex-start' }} /> : null}
         </Card>
 
-        <View style={{ flexDirection: 'row', gap: space.sm }}>
+        <Tiles>
           <Stat label={t('earned')} value={formatLKR(bal.earned_cents)} />
           <Stat label={t('advances')} value={formatLKR(bal.advance_cents)} />
           <Stat label={t('paid')} value={formatLKR(bal.paid_cents)} />
-        </View>
+        </Tiles>
 
         <View style={{ gap: space.sm }}>
-          <Button icon={CalendarCheck} label={t('recordWork')} onPress={() => router.push(`/wage/form?workerId=${worker.id}&kind=work`)} />
+          <Button icon={CalendarCheck} label={t('recordWork')} onPress={() => act('work')} full />
           <View style={{ flexDirection: 'row', gap: space.sm }}>
-            <Button kind="secondary" icon={HandCoins} label={t('giveAdvance')} onPress={() => router.push(`/wage/form?workerId=${worker.id}&kind=advance`)} style={{ flex: 1 }} />
-            <Button kind="secondary" icon={Banknote} label={t('payWages')} onPress={() => router.push(`/wage/form?workerId=${worker.id}&kind=payment${b > 0 ? `&amount=${b}` : ''}`)} style={{ flex: 1 }} />
+            <Button kind="secondary" icon={HandCoins} label={t('giveAdvance')} onPress={() => act('advance')} style={{ flex: 1 }} />
+            <Button kind="secondary" icon={Banknote} label={t('payWages')} onPress={() => act('payment')} style={{ flex: 1 }} />
           </View>
-          {worker.phone ? <Button kind="ghost" icon={Phone} label={worker.phone} onPress={() => Linking.openURL(`tel:${worker.phone}`)} /> : null}
         </View>
 
-        <SectionTitle title={t('history')} />
-        {entries.length ? (
-          <ListCard>
-            {entries.map((e) => (
+        {wp.length ? (
+          <>
+            <SectionTitle title={t('perProject')} count={wp.length} />
+            <ListCard inset>
+              {wp.map((p) => (
+                <ListRow
+                  key={p.project_id}
+                  icon={Building2}
+                  title={p.project_name}
+                  subtitle={`${formatLKR(p.rate_cents)} / ${t('day')} · ${t('daysCount', { n: p.days_total })}`}
+                  value={p.balance_cents ? formatLKR(Math.abs(p.balance_cents)) : undefined}
+                  badge={<BalanceBadge balance={p.balance_cents} />}
+                  onPress={() => router.push(`/worker/assign?projectId=${p.project_id}&workerId=${worker.id}`)}
+                />
+              ))}
+            </ListCard>
+          </>
+        ) : null}
+
+        <SectionTitle title={t('history')} count={entries.length || undefined} />
+        {historyProjects.length > 1 ? (
+          <Chips
+            value={activeFilter}
+            onChange={setFilter}
+            options={[{ value: ALL, label: t('all') }, ...historyProjects.map((p) => ({ value: p.id, label: p.name }))]}
+          />
+        ) : null}
+        {shown.length ? (
+          <ListCard inset>
+            {shown.map((e) => (
               <ListRow
                 key={e.id}
                 icon={ICON[e.kind]}
-                iconTone={e.kind === 'work' ? 'slate' : 'primary'}
-                title={`${t(`wage_${e.kind}`)}${e.kind === 'work' && e.days ? ` · ${e.days} ${t('days')}` : ''}`}
-                subtitle={[formatDay(e.day), e.project_name, e.note].filter(Boolean).join(' · ')}
+                title={`${t(`wage_${e.kind}`)}${e.kind === 'work' && e.days ? ` · ${t('daysCount', { n: e.days })}` : ''}`}
+                subtitle={[formatDay(e.day), activeFilter === ALL ? e.project_name : null, e.note].filter(Boolean).join(' · ')}
                 value={`${e.kind === 'work' ? '+' : '−'}${formatLKR(e.amount_cents)}`}
-                valueTone={e.kind === 'work' ? 'text' : 'primary'}
+                valueTone={e.kind === 'work' ? 'text' : 'textMuted'}
                 onPress={() => onEntry(e)}
               />
             ))}
           </ListCard>
         ) : (
-          <Txt color="textMuted">{t('recordWork')} · {t('giveAdvance')} · {t('payWages')}</Txt>
+          <Txt variant="caption" color="textMuted">
+            {`${t('recordWork')} · ${t('giveAdvance')} · ${t('payWages')}`}
+          </Txt>
         )}
 
-        <Button
-          kind="ghost"
-          label={worker.active ? t('markInactive') : t('markActive')}
-          onPress={() => saveWorker({ ...worker, active: !worker.active })}
-        />
-        {!worker.active ? <Badge label={t('inactive')} /> : null}
+        <View style={{ gap: space.sm, marginTop: space.md }}>
+          <Button kind="ghost" icon={UserX} label={worker.active ? t('markInactive') : t('markActive')} onPress={toggleActive} full />
+          {onCurrent ? <Button kind="danger" icon={Trash2} label={t('removeFromProject')} onPress={removeFromCurrent} full /> : null}
+        </View>
       </Screen>
+
+      <PickerSheet
+        visible={picking != null}
+        title={t('chooseProject')}
+        value={null}
+        items={pickerItems}
+        onClose={() => setPicking(null)}
+        onPick={(projectId) => {
+          const kind = picking;
+          setPicking(null);
+          if (kind && projectId) go(kind, projectId);
+        }}
+      />
     </>
   );
 }

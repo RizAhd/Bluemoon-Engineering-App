@@ -1,10 +1,10 @@
 import { Stack, useLocalSearchParams } from 'expo-router';
-import { Trash2 } from 'lucide-react-native';
 import { useState } from 'react';
 import { View } from 'react-native';
+import { Trash2 } from 'lucide-react-native';
 
-import { Button } from '@/components/ui/Button';
-import { AmountField, Chips, Field } from '@/components/ui/form';
+import { Button, HeaderButton } from '@/components/ui/Button';
+import { AmountField, Field, Segmented } from '@/components/ui/form';
 import { Screen } from '@/components/ui/layout';
 import { useFirst } from '@/db';
 import { deleteRecord, saveProject } from '@/db/repo';
@@ -48,8 +48,8 @@ function Inner({ existing }: { existing: Project | null }) {
         client,
         location,
         contract_cents: cents,
-        start_date: start || null,
-        end_date: end || null,
+        start_date: start.trim() || null,
+        end_date: end.trim() || null,
         status,
         notes,
       });
@@ -59,29 +59,69 @@ function Inner({ existing }: { existing: Project | null }) {
 
   return (
     <>
-      <Stack.Screen options={{ title: t(form.isNew ? 'newProject' : 'editProject') }} />
-      <Screen
-        footer={
-          <View style={{ flexDirection: 'row', gap: space.sm }}>
-            {!form.isNew ? (
-              <Button kind="danger" icon={Trash2} label={t('delete')} onPress={() => form.confirmDelete(() => deleteRecord('projects', form.id))} />
-            ) : null}
-            <Button label={t('save')} onPress={onSave} style={{ flex: 1 }} />
-          </View>
-        }>
-        <Field label={t('projectName')} value={name} onChangeText={setName} error={form.err('name')} autoFocus={form.isNew} placeholder="e.g. Welimada school building" />
-        <Field label={t('client')} optional value={client} onChangeText={setClient} />
-        <Field label={t('location')} optional value={location} onChangeText={setLocation} />
-        <AmountField label={t('contractValue')} optional value={contract} onChangeText={(s) => { setContract(s); setContractError(null); }} error={contractError} />
-        <View style={{ flexDirection: 'row', gap: space.sm }}>
+      <Stack.Screen
+        options={{
+          title: t(form.isNew ? 'newProject' : 'editProject'),
+          headerRight: form.isNew
+            ? undefined
+            : () => <HeaderButton icon={Trash2} tone="danger" label={t('delete')} onPress={() => form.confirmDelete(() => deleteRecord('projects', form.id))} />,
+        }}
+      />
+      <Screen footer={<Button label={t('save')} onPress={onSave} full />}>
+        <Field
+          label={t('projectName')}
+          value={name}
+          onChangeText={(s) => {
+            setName(s);
+            form.clearError('name');
+          }}
+          error={form.err('name')}
+          autoFocus={form.isNew}
+          returnKeyType="next"
+        />
+        <Field label={t('client')} optional value={client} onChangeText={setClient} returnKeyType="next" />
+        <Field label={t('location')} optional value={location} onChangeText={setLocation} returnKeyType="next" />
+        <AmountField
+          label={t('contractValue')}
+          optional
+          value={contract}
+          onChangeText={(s) => {
+            setContract(s);
+            setContractError(null);
+          }}
+          error={contractError}
+        />
+        <View style={{ flexDirection: 'row', gap: space.md }}>
           <View style={{ flex: 1 }}>
-            <Field label={t('startDate')} optional value={start} onChangeText={setStart} placeholder="2026-10-21" keyboardType="numbers-and-punctuation" error={form.err('start_date')} />
+            <Field
+              label={t('startDate')}
+              optional
+              value={start}
+              onChangeText={(s) => {
+                setStart(s);
+                form.clearError('start_date');
+              }}
+              placeholder="2026-10-21"
+              keyboardType="numbers-and-punctuation"
+              error={form.err('start_date')}
+            />
           </View>
           <View style={{ flex: 1 }}>
-            <Field label={t('endDate')} optional value={end} onChangeText={setEnd} placeholder="2027-03-31" keyboardType="numbers-and-punctuation" error={form.err('end_date')} />
+            <Field
+              label={t('endDate')}
+              optional
+              value={end}
+              onChangeText={(s) => {
+                setEnd(s);
+                form.clearError('end_date');
+              }}
+              placeholder="2027-03-31"
+              keyboardType="numbers-and-punctuation"
+              error={form.err('end_date')}
+            />
           </View>
         </View>
-        <Chips
+        <Segmented
           label={t('status')}
           value={status}
           onChange={setStatus}

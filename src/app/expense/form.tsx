@@ -1,10 +1,9 @@
 import { Stack, useLocalSearchParams } from 'expo-router';
-import { Trash2 } from 'lucide-react-native';
+import { Building2, Trash2 } from 'lucide-react-native';
 import { useState } from 'react';
-import { View } from 'react-native';
 
 import { PhotoStrip } from '@/components/PhotoStrip';
-import { Button } from '@/components/ui/Button';
+import { Button, IconButton } from '@/components/ui/Button';
 import { AmountField, Chips, DateField, Field, SelectField } from '@/components/ui/form';
 import { Screen } from '@/components/ui/layout';
 import { useFirst } from '@/db';
@@ -15,14 +14,13 @@ import { useRecordForm } from '@/hooks/form';
 import { useT } from '@/i18n';
 import { today } from '@/lib/dates';
 import { centsToInput, parseCents } from '@/lib/money';
-import { space } from '@/theme';
 
 export default function ExpenseForm() {
   const params = useLocalSearchParams<{ id?: string }>();
-  const existing = useFirst<Expense>('SELECT * FROM expenses WHERE id = ?', [params.id ?? '']);
+  const existing = useFirst<Expense>('SELECT * FROM expenses WHERE id = ? AND deleted_at IS NULL', [params.id ?? '']);
   // Wait for the row before building the form, so the inputs start with its values.
   if (params.id && !existing) return null;
-  return <ExpenseFormInner existing={existing} />;
+  return <ExpenseFormInner key={existing?.id ?? 'new'} existing={existing} />;
 }
 
 function ExpenseFormInner({ existing }: { existing: Expense | null }) {
@@ -56,34 +54,54 @@ function ExpenseFormInner({ existing }: { existing: Expense | null }) {
 
   return (
     <>
-      <Stack.Screen options={{ title: t(form.isNew ? 'newExpense' : 'editExpense') }} />
-      <Screen
-        footer={
-          <View style={{ flexDirection: 'row', gap: space.sm }}>
-            {!form.isNew ? (
-              <Button kind="danger" icon={Trash2} label={t('delete')} onPress={() => form.confirmDelete(() => deleteRecord('expenses', form.id))} />
-            ) : null}
-            <Button label={t('save')} onPress={onSave} style={{ flex: 1 }} />
-          </View>
-        }>
-        <AmountField label={t('amount')} value={amount} onChangeText={setAmount} error={form.err('amount')} autoFocus={form.isNew} />
+      <Stack.Screen
+        options={{
+          title: t(form.isNew ? 'newExpense' : 'editExpense'),
+          headerRight: form.isNew
+            ? undefined
+            : () => (
+                <IconButton
+                  icon={Trash2}
+                  label={t('delete')}
+                  tone="danger"
+                  size={44}
+                  pressedBg="headerDeep"
+                  onPress={() => form.confirmDelete(() => deleteRecord('expenses', form.id))}
+                />
+              ),
+        }}
+      />
+      <Screen footer={<Button label={t('save')} onPress={onSave} full />}>
+        <AmountField
+          label={t('amount')}
+          value={amount}
+          onChangeText={(v) => {
+            setAmount(v);
+            form.clearError('amount');
+          }}
+          error={form.err('amount')}
+          autoFocus={form.isNew}
+        />
         <Chips
           label={t('category')}
           value={category}
           onChange={setCategory}
           options={EXPENSE_CATEGORIES.map((c) => ({ value: c, label: t(`cat_${c}`) }))}
         />
-        <PhotoStrip ownerTable="expenses" ownerId={form.id} label={t('receiptPhotos')} />
+        <PhotoStrip ownerTable="expenses" ownerId={form.id} label={t('receiptPhotos')} context="expense.photos" />
+        <DateField label={t('date')} value={day} onChange={setDay} />
         <SelectField
           label={t('project')}
-          items={projects.map((p) => ({ id: p.id, title: p.name, subtitle: p.location ?? undefined }))}
+          items={projects.map((p) => ({ id: p.id, title: p.name, icon: Building2, subtitle: [p.location, t(`status_${p.status}`)].filter(Boolean).join(' · ') }))}
           value={projectId}
-          onChange={setProjectId}
+          onChange={(id) => {
+            setProjectId(id);
+            form.clearError('project_id');
+          }}
           error={form.err('project_id')}
           placeholder={t('chooseProject')}
         />
-        <DateField label={t('date')} value={day} onChange={setDay} />
-        <Field label={t('paidTo')} optional placeholder={t('paidToHint')} value={paidTo} onChangeText={setPaidTo} />
+        <Field label={t('paidTo')} optional hint={t('paidToHint')} value={paidTo} onChangeText={setPaidTo} />
         <Chips
           label={t('method')}
           value={method}

@@ -1,10 +1,9 @@
 import { Stack, useLocalSearchParams } from 'expo-router';
-import { Cloud, CloudRain, Sun, Trash2 } from 'lucide-react-native';
+import { Building2, Cloud, CloudRain, Sun, Trash2 } from 'lucide-react-native';
 import { useState } from 'react';
-import { View } from 'react-native';
 
 import { PhotoStrip } from '@/components/PhotoStrip';
-import { Button } from '@/components/ui/Button';
+import { Button, IconButton } from '@/components/ui/Button';
 import { Chips, DateField, Field, SelectField } from '@/components/ui/form';
 import { Screen } from '@/components/ui/layout';
 import { useFirst } from '@/db';
@@ -14,15 +13,15 @@ import { useCurrentProjectId, useProjects } from '@/hooks/data';
 import { useRecordForm } from '@/hooks/form';
 import { useT } from '@/i18n';
 import { today } from '@/lib/dates';
-import { space, useColors } from '@/theme';
+import { useColors } from '@/theme';
 
 type Weather = 'sunny' | 'cloudy' | 'rain';
 
 export default function NoteForm() {
   const params = useLocalSearchParams<{ id?: string; projectId?: string }>();
-  const existing = useFirst<SiteNote>('SELECT * FROM site_notes WHERE id = ?', [params.id ?? '']);
+  const existing = useFirst<SiteNote>('SELECT * FROM site_notes WHERE id = ? AND deleted_at IS NULL', [params.id ?? '']);
   if (params.id && !existing) return null;
-  return <Inner existing={existing} projectParam={params.projectId} />;
+  return <Inner key={existing?.id ?? 'new'} existing={existing} projectParam={params.projectId} />;
 }
 
 function Inner({ existing, projectParam }: { existing: SiteNote | null; projectParam?: string }) {
@@ -36,40 +35,59 @@ function Inner({ existing, projectParam }: { existing: SiteNote | null; projectP
   const [body, setBody] = useState(existing?.body ?? '');
   const [weather, setWeather] = useState<Weather | null>((existing?.weather as Weather) ?? null);
 
+  const chipIcon = (Icon: typeof Sun) => <Icon size={18} color={c.textMuted} strokeWidth={2} />;
+
   return (
     <>
-      <Stack.Screen options={{ title: t(form.isNew ? 'newNote' : 'siteNotes') }} />
-      <Screen
-        footer={
-          <View style={{ flexDirection: 'row', gap: space.sm }}>
-            {!form.isNew ? (
-              <Button kind="danger" icon={Trash2} label={t('delete')} onPress={() => form.confirmDelete(() => deleteRecord('site_notes', form.id))} />
-            ) : null}
-            <Button
-              label={t('save')}
-              onPress={() => form.submit(() => saveNote({ id: form.id, project_id: projectId, day, body, weather }))}
-              style={{ flex: 1 }}
-            />
-          </View>
-        }>
+      <Stack.Screen
+        options={{
+          title: t(form.isNew ? 'newNote' : 'siteNotes'),
+          headerRight: form.isNew
+            ? undefined
+            : () => (
+                <IconButton
+                  icon={Trash2}
+                  label={t('delete')}
+                  tone="danger"
+                  size={44}
+                  pressedBg="headerDeep"
+                  onPress={() => form.confirmDelete(() => deleteRecord('site_notes', form.id))}
+                />
+              ),
+        }}
+      />
+      <Screen footer={<Button label={t('save')} onPress={() => form.submit(() => saveNote({ id: form.id, project_id: projectId, day, body, weather }))} full />}>
         <SelectField
           label={t('project')}
-          items={projects.map((p) => ({ id: p.id, title: p.name }))}
+          items={projects.map((p) => ({ id: p.id, title: p.name, icon: Building2, subtitle: [p.location, t(`status_${p.status}`)].filter(Boolean).join(' · ') }))}
           value={projectId}
-          onChange={setProjectId}
+          onChange={(id) => {
+            setProjectId(id);
+            form.clearError('project_id');
+          }}
           error={form.err('project_id')}
           placeholder={t('chooseProject')}
         />
-        <DateField label={t('date')} value={day} onChange={setDay} />
-        <Field label={t('whatHappened')} value={body} onChangeText={setBody} multiline error={form.err('body')} autoFocus={form.isNew} />
+        <DateField label={t('date')} value={day} onChange={setDay} maxDay={today()} error={form.err('day')} />
+        <Field
+          label={t('whatHappened')}
+          value={body}
+          onChangeText={(s) => {
+            setBody(s);
+            if (form.err('body')) form.clearError('body');
+          }}
+          multiline
+          error={form.err('body')}
+          autoFocus={form.isNew}
+        />
         <Chips
           label={t('weather')}
           value={weather}
           onChange={setWeather}
           options={[
-            { value: 'sunny', label: t('weather_sunny'), icon: <Sun size={16} color={c.text} /> },
-            { value: 'cloudy', label: t('weather_cloudy'), icon: <Cloud size={16} color={c.text} /> },
-            { value: 'rain', label: t('weather_rain'), icon: <CloudRain size={16} color={c.text} /> },
+            { value: 'sunny', label: t('weather_sunny'), icon: chipIcon(Sun) },
+            { value: 'cloudy', label: t('weather_cloudy'), icon: chipIcon(Cloud) },
+            { value: 'rain', label: t('weather_rain'), icon: chipIcon(CloudRain) },
           ]}
         />
         <PhotoStrip ownerTable="site_notes" ownerId={form.id} label={t('photoProof')} />
