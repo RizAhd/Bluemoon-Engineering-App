@@ -4,16 +4,23 @@ Site management app for **Bluemoon Engineering (Pvt) Ltd**, Welimada. It works
 fully offline on the phone: no server, no internet needed on site, no running
 cost.
 
+> Owner's guide (plain language, daily routine, backups): [docs/OWNER-GUIDE.md](docs/OWNER-GUIDE.md)
 > Full product and engineering plan (roadmap, architecture, backend, security, costs, handover): [docs/PLAN.md](docs/PLAN.md)
+> Design system and screen flows: [design-system/bluemoon-site/](design-system/bluemoon-site/)
 
 ## What it does
 
+Everything is **per project**. The project selector in the header scopes every tab.
+
+- **Projects** tab: all sites with status, cost and contract progress; a hub per project
+- **Workers per project**: each site has its own roster and daily rates
+- **Today's work & pay**: tick who worked (½ / 1 / 1½ / 2 days), pay the same day, fix yesterday
 - **Expenses** per project, with photos of bills and receipts
-- **Workers**: daily wages, advances and payments, with the balance owed
-- **Tools**: issue and return, who has what and where, with photo proof
+- **Tools**: issue and return per project, who has what, with photo proof
 - **Site notes**: daily notes, weather and photos
 - **Project cost summary**: totals by category, labour, contract progress
-- **Sinhala, English and Tamil**, light and dark themes
+- **Friendly errors**: every failure is logged, shown in the user's language, and shareable (Menu → Report a problem)
+- **Sinhala, English and Tamil**, bright light theme and a true dark theme
 
 ## How the data stays safe
 
