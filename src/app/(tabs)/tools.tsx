@@ -59,7 +59,8 @@ export default function ToolsScreen() {
       title={item.code ? `${item.name} · ${item.code}` : item.name}
       subtitle={
         item.is_out
-          ? [`${t('outWith')} ${item.worker_name ?? item.taken_by ?? ''}`.trim(), item.project_name, item.last_day ? formatDay(item.last_day) : null]
+          ? // The project name only says something when the tool is on another project than the one chosen.
+            [`${t('outWith')} ${item.worker_name ?? item.taken_by ?? ''}`.trim(), item.project_id !== pid ? item.project_name : null, item.last_day ? formatDay(item.last_day) : null]
               .filter(Boolean)
               .join(' · ')
           : undefined

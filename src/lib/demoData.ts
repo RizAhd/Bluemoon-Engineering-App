@@ -1,9 +1,17 @@
 /**
  * Realistic sample data for development and screenshots. Only reachable from the
  * More screen when __DEV__ is true, so it never appears in a real build.
- * Safe to run twice: it does nothing if the first demo project already exists.
+ * Safe to run twice: it adds the site data only if the first demo project is missing and the two
+ * estimates only if the first demo estimate is missing.
  */
 import { first, tx } from '@/db';
+import {
+  applyStandardSchedule,
+  saveEstimate,
+  saveEstimateItem,
+  saveEstimatePayment,
+  setEstimateStatus,
+} from '@/db/estimates';
 import {
   assignWorker,
   moveTool,
@@ -21,8 +29,59 @@ import { addDays, today } from '@/lib/dates';
 
 const rs = (n: number) => Math.round(n * 100);
 
+const DEMO_DRAFT_TITLE = 'Boundary wall, Welimada';
+const DEMO_ACCEPTED_TITLE = 'Retaining wall, Bandarawela';
+
+/** Two quotations: a draft with several lines and the standard 30/40/30 schedule, and an accepted one that is not linked to a project. */
+function seedDemoEstimates() {
+  const td = today();
+  const line = (estimate_id: string, description: string, unit: string, qty_milli: number, rate: number) =>
+    saveEstimateItem({ estimate_id, description, unit, qty_milli, rate_cents: rs(rate) });
+
+  const draft = saveEstimate({
+    client_name: 'Mr. K. Wijesekara',
+    client_phone: '0771234000',
+    client_address: '12, Temple Road, Welimada',
+    title: DEMO_DRAFT_TITLE,
+    location: 'Welimada',
+    issue_day: addDays(td, -3),
+    notes: 'Price includes materials and labour. Excludes the gate.',
+  });
+  line(draft, 'Site clearing and setting out', 'ls', 1000, 25_000);
+  line(draft, 'Excavation for strip foundation', 'm³', 18_500, 1_800);
+  line(draft, 'Concrete grade 20 for foundation', 'm³', 9_250, 28_500);
+  line(draft, 'Hollow block wall, 150 mm', 'm²', 120_000, 4_800);
+  line(draft, 'Reinforcement bars', 'kg', 650_000, 420);
+  line(draft, 'Cement plaster, both faces', 'm²', 240_000, 1_350);
+  line(draft, 'Weather-shield paint, two coats', 'm²', 240_000, 520);
+  saveEstimate({ id: draft, discount_cents: rs(20_000) });
+  applyStandardSchedule(draft);
+
+  const accepted = saveEstimate({
+    client_name: 'Nuwara View Hotel',
+    client_phone: '0572225566',
+    title: DEMO_ACCEPTED_TITLE,
+    location: 'Bandarawela',
+    issue_day: addDays(td, -20),
+    tax_bp: 1800,
+  });
+  line(accepted, 'Rubble masonry retaining wall', 'm³', 42_000, 14_500);
+  line(accepted, 'Weep holes and drainage layer', 'm', 36_000, 1_250);
+  saveEstimatePayment({ estimate_id: accepted, label: 'Advance', percent_bp: 5000 });
+  saveEstimatePayment({ estimate_id: accepted, label: 'On completion', percent_bp: 5000 });
+  setEstimateStatus(accepted, 'sent');
+  setEstimateStatus(accepted, 'accepted');
+}
+
 export function seedDemoData(): { created: boolean } {
-  if (first('SELECT 1 AS ok FROM projects WHERE name = ?', ['Welimada Primary School Building'])) return { created: false };
+  const hasSite = !!first('SELECT 1 AS ok FROM projects WHERE name = ?', ['Welimada Primary School Building']);
+  const hasEstimates = !!first('SELECT 1 AS ok FROM estimates WHERE title = ?', [DEMO_DRAFT_TITLE]);
+  if (hasSite && hasEstimates) return { created: false };
+  // A phone seeded before estimates existed only gets the estimates.
+  if (hasSite) {
+    tx(seedDemoEstimates);
+    return { created: true };
+  }
   const td = today();
   const d = (n: number) => addDays(td, -n);
 
@@ -118,6 +177,8 @@ export function seedDemoData(): { created: boolean } {
     saveNote({ project_id: school, day: d(0), body: 'First-floor slab shuttering completed on the east side. Waiting for the bar-bending inspection before pouring.', weather: 'sunny' });
     saveNote({ project_id: school, day: d(1), body: 'Rain after 3 pm, work stopped for the day. Covered the cement bags.', weather: 'rain' });
     saveNote({ project_id: culvert, day: d(0), body: 'Old pipes removed. RDA engineer visited and approved the new levels.', weather: 'cloudy' });
+
+    if (!hasEstimates) seedDemoEstimates();
   });
   return { created: true };
 }

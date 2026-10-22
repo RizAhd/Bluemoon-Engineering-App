@@ -1,6 +1,6 @@
 import { router, type Href } from 'expo-router';
 import type { LucideIcon } from 'lucide-react-native';
-import { ArrowUpFromLine, ClipboardCheck, HandCoins, NotebookPen, Receipt, UserPlus } from 'lucide-react-native';
+import { ArrowUpFromLine, ClipboardCheck, FileText, HandCoins, NotebookPen, Receipt, UserPlus } from 'lucide-react-native';
 import { Pressable, View } from 'react-native';
 import Animated, { FadeIn, SlideInDown } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -20,6 +20,7 @@ const items = (pid: string | null): { icon: LucideIcon; label: TKey; href: Href;
   { icon: NotebookPen, label: 'newNote', href: '/note/form' },
   // With a project chosen a new worker goes onto it with a rate (as on the Workers tab); a bare worker would be hidden from its roster.
   { icon: UserPlus, label: 'newWorker', href: pid ? `/worker/assign?projectId=${pid}` : '/worker/form' },
+  { icon: FileText, label: 'newEstimate', href: '/estimate/form' },
 ];
 
 /** Quick-add sheet: a list of the things a supervisor records most, opened by the FAB. */

@@ -13,18 +13,18 @@ export class ValidationError extends Error {
   }
 }
 
-function req(value: string | null | undefined, field: string, key: string): string {
+export function req(value: string | null | undefined, field: string, key: string): string {
   const v = (value ?? '').trim();
   if (!v) throw new ValidationError(field, key);
   return v;
 }
 
-function opt(value: string | null | undefined): string | null {
+export function opt(value: string | null | undefined): string | null {
   const v = (value ?? '').trim();
   return v ? v : null;
 }
 
-function day(value: string, field = 'day'): string {
+export function day(value: string, field = 'day'): string {
   if (!isValidDay(value)) throw new ValidationError(field, 'errDate');
   return value;
 }
@@ -41,7 +41,7 @@ function contract(value: number | null | undefined): number | null {
   return value;
 }
 
-function exists(table: string, id: string | null | undefined): boolean {
+export function exists(table: string, id: string | null | undefined): boolean {
   if (!id) return false;
   return !!first(`SELECT 1 AS ok FROM ${table} WHERE id = ? AND deleted_at IS NULL`, [id]);
 }

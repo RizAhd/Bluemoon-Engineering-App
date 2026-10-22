@@ -1,6 +1,6 @@
 import * as Application from 'expo-application';
 import { router } from 'expo-router';
-import { Bug, Database, FileDown, NotebookPen, ShieldCheck } from 'lucide-react-native';
+import { Bug, Database, FileDown, FileText, Landmark, NotebookPen, ShieldCheck } from 'lucide-react-native';
 import { Alert, View } from 'react-native';
 
 import { BrandLogo } from '@/components/Brand';
@@ -42,6 +42,8 @@ export default function MoreScreen() {
   return (
     <Screen paddingBottom={space.xxl}>
       <ListCard inset>
+        <ListRow icon={FileText} title={t('estimates')} subtitle={t('estimatesHint')} onPress={() => router.push('/estimate')} />
+        <ListRow icon={Landmark} title={t('companyAndBank')} subtitle={t('companyAndBankHint')} onPress={() => router.push('/company')} />
         <ListRow icon={ShieldCheck} iconTone={backupTone} title={t('backup')} subtitle={backupSubtitle} onPress={() => router.push('/backup')} />
         <ListRow icon={FileDown} title={t('importPdf')} subtitle={t('importPdfHint')} onPress={() => router.push('/import')} />
         <ListRow icon={NotebookPen} title={t('siteNotes')} onPress={() => router.push('/notes')} />

@@ -57,6 +57,9 @@ export function Button({ label, onPress, kind = 'primary', icon: Icon, loading, 
           borderWidth: 2,
           borderColor: focus && !off ? c.focusRing : 'transparent',
           margin: -2,
+          // A ghost button reads as text: pull it out by its own padding so its words line up with
+          // the text around it instead of sitting indented inside cards.
+          ...(kind === 'ghost' && !full ? { marginHorizontal: -((compact ? space.lg : 20) + 2) } : null),
         },
         style,
       ]}>
@@ -86,7 +89,7 @@ export function Button({ label, onPress, kind = 'primary', icon: Icon, loading, 
             flexDirection: 'row',
             gap: space.sm,
           })}>
-          {Icon ? <Icon size={compact ? 20 : 22} color={fg} strokeWidth={2} style={{ opacity: loading ? 0 : 1 }} /> : null}
+          {Icon ? <Icon size={compact ? 18 : 20} color={fg} strokeWidth={2} style={{ opacity: loading ? 0 : 1 }} /> : null}
           <View style={{ flexShrink: 1, opacity: loading ? 0 : 1 }}>
             <Txt weight="semibold" variant={compact ? 'body' : 'bodyLg'} style={{ color: fg }} numberOfLines={2} center>
               {label}
@@ -118,7 +121,7 @@ export interface IconButtonProps {
   style?: StyleProp<ViewStyle>;
 }
 
-/** Round icon button with a required label for screen readers. 48 × 48 (44 in headers), icon 24. */
+/** Round icon button with a required label for screen readers. 48 × 48 (44 in headers), icon 22. */
 export function IconButton({ icon: Icon, label, onPress, size = touchMin, tone = 'text', pressedBg = 'muted', disabled, style }: IconButtonProps) {
   const c = useColors();
   const press = usePressScale();
@@ -151,7 +154,7 @@ export function IconButton({ icon: Icon, label, onPress, size = touchMin, tone =
           },
           style,
         ]}>
-        <Icon size={24} color={disabled ? c.placeholder : c[tone]} strokeWidth={2} />
+        <Icon size={22} color={disabled ? c.placeholder : c[tone]} strokeWidth={2} />
       </Pressable>
     </Animated.View>
   );

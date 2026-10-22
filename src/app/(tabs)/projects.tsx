@@ -3,14 +3,14 @@ import { Building2, Plus, Search } from 'lucide-react-native';
 import { useMemo, useState } from 'react';
 import { View } from 'react-native';
 
+import { ListControls, oneOf, useListPrefs } from '@/components/ListControls';
 import { TabHeader } from '@/components/ProjectSwitcher';
 import { Button } from '@/components/ui/Button';
 import { Badge, EmptyState } from '@/components/ui/feedback';
-import { Chips, SearchField } from '@/components/ui/form';
+import { SearchField } from '@/components/ui/form';
 import { GroupLabel, ListCard, ListRow, Screen } from '@/components/ui/layout';
-import { useQuery } from '@/db';
 import type { ProjectCost, ProjectStatus } from '@/db/types';
-import { useCurrentProjectId } from '@/hooks/data';
+import { PROJECT_SORTS, useCurrentProjectId, useProjectList, type ProjectSort } from '@/hooks/data';
 import { useT } from '@/i18n';
 import { formatLKR } from '@/lib/money';
 import { radius, space, useColors } from '@/theme';
@@ -21,6 +21,9 @@ type Filter = 'all' | ProjectStatus;
 const STATUSES: ProjectStatus[] = ['active', 'on_hold', 'completed'];
 /** The search box appears above this many projects (FLOWS section 2). */
 const SEARCH_FROM = 5;
+
+/** What the Projects tab remembers (settings `list_projects_<field>`); these are the defaults. */
+const DEFAULTS = { status: 'all', sort: 'name' };
 
 function total(p: Row) {
   return p.expense_cents + p.labour_cents;
@@ -41,17 +44,22 @@ function MiniBar({ spent, contract }: { spent: number; contract: number }) {
   );
 }
 
-/** Projects tab: the full list. Tapping a row opens its hub and does not change the current project; the hub's actions do. */
+/**
+ * Projects tab: the full list, grouped by status, in the chosen order (name, newest, highest cost, most of the
+ * contract used). Tapping a row opens its hub and does not change the current project; the hub's actions do.
+ *
+ * There is no month filter here on purpose: a project's figures are its whole-life totals, so "projects with records
+ * in March" next to all-time totals would read as March's costs. Month views live on Expenses and in the project hub.
+ */
 export default function ProjectsScreen() {
   const t = useT();
   const c = useColors();
   const pid = useCurrentProjectId();
-  const [filter, setFilter] = useState<Filter>('all');
+  const { prefs, set, reset } = useListPrefs('projects', DEFAULTS);
+  const filter = oneOf<Filter>(prefs.status, ['all', ...STATUSES], 'all');
+  const sort = oneOf<ProjectSort>(prefs.sort, PROJECT_SORTS, 'name');
   const [q, setQ] = useState('');
-  const rows = useQuery<Row>(
-    `SELECT v.*, p.location, p.client FROM v_project_cost v JOIN projects p ON p.id = v.project_id
-     ORDER BY CASE v.status WHEN 'active' THEN 0 WHEN 'on_hold' THEN 1 ELSE 2 END, v.name COLLATE NOCASE`,
-  );
+  const rows: Row[] = useProjectList(sort);
 
   const goNew = () => router.push('/project/form');
   // The search text only applies while its field is on screen, so it can never filter the list invisibly.
@@ -70,6 +78,8 @@ export default function ProjectsScreen() {
 
   // Opening a project to look at it must not move the app's current project; the hub's actions do that.
   const open = (p: Row) => router.push(`/project/${p.project_id}`);
+
+  const applied = [activeFilter !== 'all' ? t(`status_${activeFilter}`) : null, sort !== 'name' ? t(`sort_${sort}`) : null].filter((s): s is string => !!s);
 
   const renderRow = (p: Row) => {
     const current = p.project_id === pid;
@@ -100,17 +110,24 @@ export default function ProjectsScreen() {
       <TabHeader title={t('projects')} showProject={false} />
       <Screen hairlineTop={false} gap={space.md}>
         {rows.length === 0 ? (
-          <EmptyState icon={Building2} title={t('noProjects')} hint={t('noProjectsHint')} action={<Button icon={Plus} label={t('newProject')} onPress={goNew} full />} />
+          // The floating "New project" button is the screen's one primary action here, so the empty state's own is secondary.
+          <EmptyState icon={Building2} title={t('noProjects')} hint={t('noProjectsHint')} action={<Button kind="secondary" icon={Plus} label={t('newProject')} onPress={goNew} full />} />
         ) : (
           <>
             {rows.length > SEARCH_FROM ? <SearchField value={q} onChangeText={setQ} placeholder={t('search')} /> : null}
-            <Chips
-              value={activeFilter}
-              onChange={setFilter}
-              options={[
-                { value: 'all', label: t('all') },
-                ...STATUSES.map((s) => ({ value: s, label: t(`status_${s}`), count: counts[s], disabled: counts[s] === 0 })),
-              ]}
+            <ListControls
+              quick={{
+                value: activeFilter,
+                onChange: (v) => set('status', v),
+                options: [
+                  { value: 'all', label: t('all') },
+                  ...STATUSES.map((s) => ({ value: s, label: t(`status_${s}`), count: counts[s], disabled: counts[s] === 0 })),
+                ],
+              }}
+              sort={{ value: sort, onChange: (v) => set('sort', v), options: PROJECT_SORTS.map((s) => ({ value: s, label: t(`sort_${s}`) })) }}
+              sheetCount={sort !== 'name' ? 1 : 0}
+              applied={applied}
+              onClear={reset}
             />
             {visible.length === 0 ? (
               <EmptyState icon={Search} title={`0 ${t('projects')}`} hint={query ? `"${q.trim()}"` : undefined} />

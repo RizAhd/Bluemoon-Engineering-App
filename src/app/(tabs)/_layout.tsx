@@ -36,7 +36,10 @@ export default function TabLayout() {
   const pathname = usePathname();
   const keyboardOpen = useKeyboardOpen();
   const hasProjects = useProjects().length > 0;
-  const barHeight = sizes.tabBar + insets.bottom;
+  // Phones with full-screen gestures and the gesture line hidden (many Redmi / Xiaomi) report a
+  // bottom inset of 0, which left the labels touching the screen edge where swipe-home starts.
+  const bottomInset = Math.max(insets.bottom, space.md);
+  const barHeight = sizes.tabBar + bottomInset;
 
   // The FAB's job follows the tab: "New project" on Projects, "Add" everywhere else.
   const onProjects = pathname.startsWith('/projects');
@@ -60,7 +63,7 @@ export default function TabLayout() {
             borderTopColor: c.border,
             height: barHeight,
             paddingTop: space.sm,
-            paddingBottom: insets.bottom,
+            paddingBottom: bottomInset,
             elevation: 0,
             shadowOpacity: 0,
           },
@@ -109,7 +112,7 @@ export default function TabLayout() {
             shadowRadius: 8,
             shadowOffset: { width: 0, height: 4 },
           })}>
-          <Plus size={24} color={c.onPrimary} strokeWidth={2.5} />
+          <Plus size={22} color={c.onPrimary} strokeWidth={2.5} />
           {narrow ? null : (
             <Txt weight="semibold" style={{ color: c.onPrimary }} numberOfLines={1} maxFontSizeMultiplier={1.3}>
               {fabLabel}
@@ -126,7 +129,7 @@ function TabIcon({ icon: Icon, color, focused }: { icon: typeof Sun; color: Colo
   const c = useColors();
   return (
     <View style={{ width: 56, height: 32, borderRadius: radius.xl, backgroundColor: focused ? c.primarySoft : 'transparent', alignItems: 'center', justifyContent: 'center' }}>
-      <Icon size={24} color={color} strokeWidth={2} />
+      <Icon size={22} color={color} strokeWidth={2} />
     </View>
   );
 }

@@ -71,8 +71,8 @@ export function Badge({ label, tone = 'slate', icon: Icon }: { label: string; to
         borderRadius: radius.sm,
         backgroundColor: c[bg[tone]],
       }}>
-      {Icon ? <Icon size={16} color={fg} strokeWidth={2.4} /> : null}
-      <Txt variant="caption" weight="semibold" style={{ color: fg, lineHeight: 20 }} numberOfLines={1}>
+      {Icon ? <Icon size={14} color={fg} strokeWidth={2.4} /> : null}
+      <Txt variant="caption" weight="semibold" style={{ color: fg }} numberOfLines={1}>
         {label}
       </Txt>
     </View>
@@ -152,7 +152,7 @@ export function ToastHost() {
           borderRadius: radius.md,
           maxWidth: '100%',
         }}>
-        <Icon size={20} color={fg} strokeWidth={2} />
+        <Icon size={18} color={fg} strokeWidth={2} />
         <Txt weight="semibold" style={{ color: fg, flexShrink: 1, paddingVertical: space.sm }}>
           {msg.text}
         </Txt>
@@ -176,7 +176,7 @@ export function ToastHost() {
             accessibilityLabel="×"
             onPress={close}
             style={({ pressed }) => ({ width: 44, height: 44, alignItems: 'center', justifyContent: 'center', borderRadius: 22, backgroundColor: pressed ? c.muted : 'transparent' })}>
-            <X size={20} color={fg} strokeWidth={2} />
+            <X size={18} color={fg} strokeWidth={2} />
           </Pressable>
         ) : null}
       </Animated.View>

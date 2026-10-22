@@ -10,7 +10,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useT } from '@/i18n';
 import { addDays, formatDay, toDay, today } from '@/lib/dates';
 import { formatAmount, parseCents } from '@/lib/money';
-import { FONT_MAP, hairline, radius, space, touch, touchMin, type, useColors, useFont } from '@/theme';
+import { FONT_MAP, hairline, lineHeight, radius, space, touch, touchMin, type, useColors, useFont } from '@/theme';
 
 import { IconButton } from './Button';
 import { usePressScale } from './PressScale';
@@ -18,7 +18,7 @@ import { Txt } from './Txt';
 
 // ---------------------------------------------------------------- shared bits
 
-/** Field label: caption 14/600 `text` (stays `text` on error), optional marker in textMuted 400. */
+/** Field label: caption 13/600 `text` (stays `text` on error), optional marker in textMuted 400. */
 export function Label({ text, optional }: { text: string; optional?: boolean; error?: string | null }) {
   const t = useT();
   return (
@@ -39,7 +39,7 @@ export function HelperText({ error, hint, tone = 'textMuted' }: { error?: string
   if (error)
     return (
       <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: space.xs }} accessibilityLiveRegion="polite">
-        <AlertCircle size={16} color={c.danger} strokeWidth={2.4} style={{ marginTop: 2 }} />
+        <AlertCircle size={14} color={c.danger} strokeWidth={2.4} style={{ marginTop: 2 }} />
         <Txt variant="caption" color="danger" weight="semibold" style={{ flex: 1 }}>
           {error}
         </Txt>
@@ -181,7 +181,11 @@ export function AmountField({ label, value, onChangeText, error, autoFocus, opti
           </Txt>
           <TextInput
             accessibilityLabel={label}
-            value={value}
+            // Shown with thousands separators while not being edited ("2,200", not "2200").
+            value={focus || !value ? value : (() => {
+              const cents = parseCents(value);
+              return cents === null ? value : formatAmount(cents);
+            })()}
             editable={!disabled}
             onChangeText={(s) => onChangeText(s.replace(/[^0-9.,]/g, ''))}
             keyboardType="decimal-pad"
@@ -201,7 +205,8 @@ export function AmountField({ label, value, onChangeText, error, autoFocus, opti
             style={{
               flex: 1,
               fontSize: compact ? type.bodyLg : type.amount,
-              lineHeight: compact ? 26 : 36,
+              // Android draws the placeholder off-centre when a lineHeight is set, so the empty "0" sat higher than "Rs".
+              lineHeight: value ? (compact ? lineHeight.bodyLg.latin : lineHeight.amount.latin) : undefined,
               fontFamily: FONT_MAP.en.bold,
               color: box.color,
               paddingVertical: compact ? space.sm : space.md,
@@ -256,7 +261,7 @@ function Chip<T extends string>({ option: o, on, numeric, onChange }: { option: 
           alignItems: 'center',
           gap: space.sm,
         })}>
-        {on ? <Check size={18} color={c.onSlate} strokeWidth={2.4} /> : o.icon}
+        {on ? <Check size={16} color={c.onSlate} strokeWidth={2.4} /> : o.icon}
         <Txt weight={on ? 'semibold' : 'regular'} numeric={numeric} style={{ color: on ? c.onSlate : off ? c.placeholder : c.text, flexShrink: 1 }} numberOfLines={2}>
           {o.count != null ? `${o.label} ${o.count}` : o.label}
         </Txt>
@@ -434,7 +439,7 @@ export function SearchField({
           paddingRight: space.xs,
           gap: space.sm,
         }}>
-        <Search size={20} color={c.textMuted} strokeWidth={2} />
+        <Search size={18} color={c.textMuted} strokeWidth={2} />
         <TextInput
           value={value}
           onChangeText={onChangeText}
@@ -507,7 +512,7 @@ export function DateField({
             alignItems: 'center',
             gap: space.sm,
           })}>
-          <Calendar size={18} color={custom ? c.onSlate : c.textMuted} strokeWidth={2} />
+          <Calendar size={16} color={custom ? c.onSlate : c.textMuted} strokeWidth={2} />
           <Txt numeric weight={custom ? 'semibold' : 'regular'} style={{ color: custom ? c.onSlate : c.text }}>
             {formatDay(value)}
           </Txt>
@@ -596,7 +601,7 @@ export function SelectField<T extends PickerItem>({
           <Txt variant="bodyLg" style={{ flex: 1 }} color={selected ? (disabled ? 'textMuted' : 'text') : 'placeholder'} numberOfLines={1}>
             {selected?.title ?? placeholder ?? label}
           </Txt>
-          <ChevronDown size={20} color={c.textMuted} strokeWidth={2} />
+          <ChevronDown size={18} color={c.textMuted} strokeWidth={2} />
         </Pressable>
       </Ring>
       <HelperText error={error} hint={hint} />
@@ -722,7 +727,7 @@ export function PickerSheet<T extends PickerItem>({
                 })}>
                 {Icon ? (
                   <View style={{ width: 40, height: 40, borderRadius: radius.md, backgroundColor: c.surface2, alignItems: 'center', justifyContent: 'center' }}>
-                    <Icon size={22} color={c.textMuted} strokeWidth={2} />
+                    <Icon size={20} color={c.textMuted} strokeWidth={2} />
                   </View>
                 ) : null}
                 <View style={{ flex: 1 }}>
@@ -735,7 +740,7 @@ export function PickerSheet<T extends PickerItem>({
                     </Txt>
                   ) : null}
                 </View>
-                {on ? <Check size={22} color={c.primary} strokeWidth={2.4} /> : null}
+                {on ? <Check size={20} color={c.primary} strokeWidth={2.4} /> : null}
               </Pressable>
             );
           }}

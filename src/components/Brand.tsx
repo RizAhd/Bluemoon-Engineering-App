@@ -18,12 +18,25 @@ const LOCKUP = {
   dark: require('../../assets/images/logo-white.png'),
 } as const;
 
+/** "BLUEMOON / ENGINEERING (PVT) LTD" cut from the lockup (the splash shows it under the mark). */
+const WORDMARK = {
+  light: require('../../assets/images/splash-wordmark.png'),
+  dark: require('../../assets/images/splash-wordmark-white.png'),
+} as const;
+
 const MARK_ASPECT = 640 / 653;
 const LOCKUP_ASPECT = 1200 / 1211;
+const WORDMARK_ASPECT = 600 / 156;
 
-/** The building mark alone, e.g. next to a screen title. `size` is the height in dp. */
-export function BrandMark({ size = 32, style }: { size?: number; style?: StyleProp<ImageStyle> }) {
-  const scheme = useScheme();
+type Scheme = 'light' | 'dark';
+
+/**
+ * The building mark alone, e.g. next to a screen title. `size` is the height in dp.
+ * `scheme` overrides the app theme (the splash follows the system, like the native splash).
+ */
+export function BrandMark({ size = 32, style, scheme: forced }: { size?: number; style?: StyleProp<ImageStyle>; scheme?: Scheme }) {
+  const appScheme = useScheme();
+  const scheme = forced ?? appScheme;
   return (
     <Image
       source={MARK[scheme]}
@@ -45,6 +58,19 @@ export function BrandLogo({ width = 200, style }: { width?: number; style?: Styl
       accessibilityRole="image"
       accessibilityLabel="Bluemoon Engineering (Pvt) Ltd"
       style={[{ width, height: width / LOCKUP_ASPECT }, style]}
+    />
+  );
+}
+
+/** The company name alone, as drawn in the logo. `width` is in dp; `scheme` as for BrandMark. */
+export function BrandWordmark({ width = 144, scheme, style }: { width?: number; scheme: Scheme; style?: StyleProp<ImageStyle> }) {
+  return (
+    <Image
+      source={WORDMARK[scheme]}
+      contentFit="contain"
+      accessibilityRole="image"
+      accessibilityLabel="Bluemoon Engineering (Pvt) Ltd"
+      style={[{ width, height: width / WORDMARK_ASPECT }, style]}
     />
   );
 }

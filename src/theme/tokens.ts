@@ -112,38 +112,38 @@ export const hairline = 1;
 export const gutter = { base: 16, wide: 24, wideFrom: 600, contentMax: 640 } as const;
 
 export const type = {
-  caption: 14,
-  body: 16,
-  bodyLg: 18,
-  title: 20,
-  heading: 24,
-  amount: 30,
-  amountXl: 40,
+  caption: 13,
+  body: 15,
+  bodyLg: 17,
+  title: 18,
+  heading: 22,
+  amount: 28,
+  amountXl: 36,
 } as const;
 
-/** Line height per variant: Latin, and +2 for Sinhala / Tamil so marks never clip. */
+/** Line height per variant (even numbers, near the 4 pt grid): Latin, and +2 for Sinhala / Tamil so marks never clip. */
 export const lineHeight = {
-  caption: { latin: 20, complex: 22 },
-  body: { latin: 24, complex: 26 },
-  bodyLg: { latin: 26, complex: 28 },
-  title: { latin: 28, complex: 30 },
-  heading: { latin: 32, complex: 34 },
-  amount: { latin: 36, complex: 36 },
-  amountXl: { latin: 48, complex: 48 },
+  caption: { latin: 18, complex: 20 },
+  body: { latin: 22, complex: 24 },
+  bodyLg: { latin: 24, complex: 26 },
+  title: { latin: 26, complex: 28 },
+  heading: { latin: 30, complex: 32 },
+  amount: { latin: 34, complex: 34 },
+  amountXl: { latin: 44, complex: 44 },
 } as const satisfies Record<keyof typeof type, { latin: number; complex: number }>;
 
 /**
  * Letter spacing in dp, Latin text only (Sinhala / Tamil must stay at 0 or marks mis-shape).
- * Small text opens up slightly (+0.5 to 1 %), large text tightens (-1 % at 18-20, -2 % at 24+).
+ * Small text opens up slightly (+0.5 to 1 %), large text tightens (-1 % at 17-18, -2 % at 22+).
  */
 export const tracking = {
   caption: 0.1,
   body: 0,
-  bodyLg: -0.18,
-  title: -0.2,
-  heading: -0.48,
-  amount: -0.6,
-  amountXl: -0.8,
+  bodyLg: -0.17,
+  title: -0.18,
+  heading: -0.44,
+  amount: -0.56,
+  amountXl: -0.72,
 } as const satisfies Record<keyof typeof type, number>;
 
 /** How far system font scaling may enlarge each variant. */
@@ -157,8 +157,8 @@ export const fontScaleMax = {
   amountXl: 1.2,
 } as const satisfies Record<keyof typeof type, number>;
 
-/** Tab-bar labels are the only text under 14. */
-export const tabLabel = { size: 13, lineHeight: 18 } as const;
+/** Tab-bar labels are the only text under 13 (the PDF's floor for menu labels is 12). */
+export const tabLabel = { size: 12, lineHeight: 16 } as const;
 
 export type Weight = 'regular' | 'semibold' | 'bold';
 

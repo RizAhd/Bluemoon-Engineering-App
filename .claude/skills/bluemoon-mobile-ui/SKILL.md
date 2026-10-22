@@ -23,16 +23,17 @@ Use `<Txt variant=…>`; it already applies size, line height and tracking.
 
 | Variant | Size / line | Tracking (Latin only) | Use |
 |---|---|---|---|
-| caption | 14 / 20 | +0.1 | labels, helper text, dates |
-| body | 16 / 24 | 0 | default text, rows, inputs |
-| bodyLg | 18 / 26 | −0.18 (−1 %) | section titles, button labels |
-| title | 20 / 28 | −0.2 (−1 %) | card titles, stat values |
-| heading | 24 / 32 | −0.48 (−2 %) | screen titles |
-| amount | 30 / 36 | −0.6 (−2 %) | money |
-| amountXl | 40 / 48 | −0.8 (−2 %) | the one hero number |
+| caption | 13 / 18 (20 Sinhala/Tamil) | +0.1 | labels, helper text, dates |
+| body | 15 / 22 (24) | 0 | default text, rows, inputs |
+| bodyLg | 17 / 24 (26) | −0.17 (−1 %) | section titles, button labels, input text |
+| title | 18 / 26 (28) | −0.18 (−1 %) | card titles, stat values |
+| heading | 22 / 30 (32) | −0.44 (−2 %) | screen titles |
+| amount | 28 / 34 (34) | −0.56 (−2 %) | money |
+| amountXl | 36 / 44 (44) | −0.72 (−2 %) | the one hero number |
 
-- Headlines 1.2–1.4× line height, body 1.4–1.6×, captions 1.3–1.4×. Line heights sit on the 4 pt grid.
-- Nothing below 14 except tab labels (13). The PDF's floor for menu labels is 12.
+- Headlines 1.2–1.4× line height, body 1.4–1.6×, captions 1.3–1.4×. Line heights are even numbers, on or next to the 4 pt grid.
+- Nothing below 13 except tab labels (12 / 16). The PDF's floor for menu labels is 12. Native stack header titles use bodyLg (17).
+- Icon sizes follow the text: 14 beside captions, 16–18 beside body, 20 in a 40 icon slot, 22 in icon buttons and the tab bar.
 - Small text gets slightly *more* tracking, large text slightly *less*.
 - **Sinhala and Tamil: no letter-spacing, no uppercase, +2 line height.** Tracking breaks conjunct shaping and clips stacked marks. `Txt` handles this; never set `letterSpacing` by hand.
 - Money and counts use `numeric` (Latin tabular digits) in every language.

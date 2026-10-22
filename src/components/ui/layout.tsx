@@ -130,7 +130,7 @@ export function Divider({ strong, inset = 0, style }: { strong?: boolean; inset?
 
 // ---------------------------------------------------------------- titles
 
-/** bodyLg 18/600 section heading with an optional right action (compact ghost Button or IconButton 44). */
+/** bodyLg 17/600 section heading with an optional right action (compact ghost Button or IconButton 44). */
 export function SectionTitle({ title, action, first, count }: { title: string; action?: ReactNode; first?: boolean; count?: number }) {
   return (
     <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: space.sm, marginTop: first ? 0 : space.sm, minHeight: 32 }}>
@@ -159,7 +159,8 @@ export function GroupLabel({ label, value, first }: { label: string; value?: str
         {label}
       </Txt>
       {value ? (
-        <Txt eyebrow numeric>
+        // Same look as the eyebrow but never upper-cased: "Rs 704,750", not "RS 704,750".
+        <Txt variant="caption" weight="semibold" color="textMuted" numeric>
           {value}
         </Txt>
       ) : null}
@@ -212,7 +213,7 @@ export interface ListRowProps {
   leading?: ReactNode;
   title: string;
   subtitle?: string;
-  /** Trailing numeric value (body 16/600). */
+  /** Trailing numeric value (body 15/600). */
   value?: string;
   /** Only together with a badge that says why. */
   valueTone?: keyof Palette;
@@ -296,7 +297,7 @@ export function ListRow({
           </View>
         ) : Icon ? (
           <View style={{ width: sizes.iconSlot, height: sizes.iconSlot, borderRadius: radius.md, backgroundColor: slot.bg, alignItems: 'center', justifyContent: 'center' }}>
-            <Icon size={22} color={slot.fg} strokeWidth={2} />
+            <Icon size={20} color={slot.fg} strokeWidth={2} />
           </View>
         ) : null}
         <View style={{ flex: 1, gap: 2 }}>
@@ -318,16 +319,16 @@ export function ListRow({
                   {value}
                 </Txt>
               ) : null}
-              <ExpandIcon size={20} color={c.textMuted} strokeWidth={2} />
+              <ExpandIcon size={18} color={c.textMuted} strokeWidth={2} />
             </View>
           ) : value ? (
             <Txt weight="semibold" numeric color={valueTone} style={{ flexShrink: 0 }}>
               {value}
             </Txt>
           ) : selected ? (
-            <Check size={22} color={c.primary} strokeWidth={2.4} />
+            <Check size={20} color={c.primary} strokeWidth={2.4} />
           ) : tappable && !noChevron ? (
-            <ChevronRight size={20} color={c.textMuted} strokeWidth={2} />
+            <ChevronRight size={18} color={c.textMuted} strokeWidth={2} />
           ) : null)}
       </View>
       {children}
@@ -400,11 +401,11 @@ export function InfoLine({
         borderRadius: radius.sm,
         backgroundColor: pressed ? c.muted : 'transparent',
       })}>
-      <Icon size={18} color={c[tone]} strokeWidth={2} />
+      <Icon size={16} color={c[tone]} strokeWidth={2} />
       <Txt variant="caption" color={tone} style={{ flex: 1 }}>
         {text}
       </Txt>
-      {onPress ? <ChevronRight size={16} color={c.textMuted} strokeWidth={2} /> : null}
+      {onPress ? <ChevronRight size={14} color={c.textMuted} strokeWidth={2} /> : null}
     </Pressable>
   );
 }

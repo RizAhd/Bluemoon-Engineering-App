@@ -33,11 +33,13 @@ import { reportError } from '@/lib/errors';
 
 import { BUNDLE_FORMAT, BUNDLE_VERSION, collectProject, filesOf, readFileBytes, sha256Hex, type Bundle } from './bundle';
 import { A4_H, A4_W, applyLetterhead } from './letterhead';
+import { printedPdfBytes } from './printBytes';
 import { buildReportHtml } from './reportHtml';
 import { decodeUtf8, encodeUtf8 } from './utf8';
 
-const DATA_NAME = 'bluemoon-data.json';
-const HASH_NAME = 'bluemoon-data.sha256';
+/** The attachment names every Bluemoon PDF (project and estimate) carries its data under. */
+export const DATA_NAME = 'bluemoon-data.json';
+export const HASH_NAME = 'bluemoon-data.sha256';
 /** Every photo is held in memory while the PDF is built; more than this risks an out-of-memory kill. */
 export const MAX_PDF_PHOTOS = 60;
 
@@ -53,8 +55,8 @@ export interface ExportOptions {
 
 let letterheadCache: Uint8Array | null = null;
 
-/** The letterhead picture (bundled with the app). Cached after the first load. */
-async function loadLetterhead(): Promise<Uint8Array> {
+/** The letterhead picture (bundled with the app). Cached after the first load. Shared with the estimate PDF. */
+export async function loadLetterhead(): Promise<Uint8Array> {
   if (letterheadCache) return letterheadCache;
   const asset = Asset.fromModule(require('../../assets/brand/letterhead.jpeg'));
   await asset.downloadAsync();
@@ -107,9 +109,9 @@ export async function exportProjectPdf(projectId: string, opts: ExportOptions): 
     day: today(),
   });
   // A4 explicitly: expo-print defaults to US Letter.
-  const printed = await Print.printToFileAsync({ html, base64: false, width: Math.round(A4_W), height: Math.round(A4_H) });
+  const printed = await Print.printToFileAsync({ html, base64: true, width: Math.round(A4_W), height: Math.round(A4_H) });
   try {
-    return await buildPdf(printed.uri, project, bundle, photos, letterhead, opts.onNotice);
+    return await buildPdf(printedPdfBytes(printed), project, bundle, photos, letterhead, opts.onNotice);
   } finally {
     try {
       const tmp = new File(printed.uri);
@@ -121,14 +123,14 @@ export async function exportProjectPdf(projectId: string, opts: ExportOptions): 
 }
 
 async function buildPdf(
-  printedUri: string,
+  printedPdf: Uint8Array,
   project: Project,
   bundle: Bundle,
   photos: Attachment[],
   letterhead: Uint8Array | null,
   onNotice?: ExportOptions['onNotice'],
 ): Promise<File> {
-  let report = new File(printedUri).bytesSync();
+  let report = printedPdf;
   if (letterhead) {
     try {
       report = await applyLetterhead(report, letterhead);
@@ -165,11 +167,33 @@ async function buildPdf(
 
 // ---------------------------------------------------------------- import
 
+/**
+ * What a readable Bluemoon PDF comes back as. `bundle.kind` says what it carries:
+ *  - 'project': a project report; `bundle.project_id` / `project_name` and all its tables
+ *  - 'estimate': an estimate (quotation); `bundle.estimate_id` / `estimate_number`, and the rows of
+ *    that estimate in `bundle.tables.estimates` (exactly one, the one named by `estimate_id`),
+ *    `estimate_items` and `estimate_payments`. It has no project name and no photos (`files` is empty).
+ *  - 'backup': a full backup
+ * Merge with `planImport(bundle.tables)` / `applyBundle(bundle.tables, files)` for every kind.
+ */
 export type PdfReadResult =
   | { status: 'ok'; bundle: Bundle; files: Map<string, Uint8Array> }
   | { status: 'not-ours' }
   | { status: 'damaged' }
   | { status: 'newer' };
+
+/** A bundle that carries one estimate. */
+export type EstimateBundle = Bundle & { kind: 'estimate'; estimate_id: string };
+
+export function isEstimateBundle(bundle: Bundle): bundle is EstimateBundle {
+  return bundle.kind === 'estimate' && typeof bundle.estimate_id === 'string' && bundle.estimate_id !== '';
+}
+
+/** The estimate row of an estimate bundle (the one `estimate_id` names), or null when there is none. */
+export function estimateRowOf(bundle: Bundle): Record<string, string | number | null> | null {
+  const rows = Array.isArray(bundle.tables?.estimates) ? bundle.tables.estimates : [];
+  return rows.find((r) => r.id === bundle.estimate_id) ?? null;
+}
 
 export async function readProjectPdf(bytes: Uint8Array): Promise<PdfReadResult> {
   try {
@@ -190,6 +214,8 @@ export async function readProjectPdf(bytes: Uint8Array): Promise<PdfReadResult> 
     }
     if (bundle.format !== BUNDLE_FORMAT) return { status: 'not-ours' };
     if (bundle.version > BUNDLE_VERSION) return { status: 'newer' };
+    // An estimate PDF must carry the estimate it names; anything else cannot be imported.
+    if (bundle.kind === 'estimate' && !(isEstimateBundle(bundle) && estimateRowOf(bundle))) return { status: 'damaged' };
 
     files.delete(DATA_NAME);
     files.delete(HASH_NAME);

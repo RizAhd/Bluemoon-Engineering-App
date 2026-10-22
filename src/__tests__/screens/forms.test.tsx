@@ -68,7 +68,7 @@ smokeScreen('project/form', () => <ProjectForm />, {
         SCHOOL,
         'Zonal Education Office, Welimada',
         'Welimada',
-        '18500000',
+        /^18,500,000$/m, // the contract value box, shown with separators
         addDays(today(), -60),
         tr('save'),
       ],
@@ -77,7 +77,7 @@ smokeScreen('project/form', () => <ProjectForm />, {
     {
       name: 'edit a completed project',
       prepare: () => setRouteParams({ id: projectId(DRAIN) }),
-      expect: (tr) => [DRAIN, '2750000', addDays(today(), -40), tr('status_completed')],
+      expect: (tr) => [DRAIN, /^2,750,000$/m, addDays(today(), -40), tr('status_completed')],
     },
     {
       name: 'an id that does not exist renders nothing',
@@ -128,7 +128,7 @@ smokeScreen('expense/form', () => <ExpenseForm />, {
     {
       name: 'edit shows the stored values',
       prepare: () => setRouteParams({ id: expenseId('Lanka Cement Depot, Welimada') }),
-      expect: (tr) => [tr('editExpense'), '185000', 'Lanka Cement Depot, Welimada', '50 bags OPC cement', SCHOOL, tr('method_bank')],
+      expect: (tr) => [tr('editExpense'), /^185,000$/m, 'Lanka Cement Depot, Welimada', '50 bags OPC cement', SCHOOL, tr('method_bank')],
       check: (tr) => expect(screen.getAllByLabelText(tr('delete'))).toHaveLength(1),
     },
     {
@@ -157,13 +157,13 @@ smokeScreen('worker/form', () => <WorkerForm />, {
     {
       name: 'edit shows the stored values',
       prepare: () => setRouteParams({ id: workerId('Nimal Perera') }),
-      expect: (tr) => [tr('editWorker'), 'Nimal Perera', 'Mason', '0771234567', '3500'],
+      expect: (tr) => [tr('editWorker'), 'Nimal Perera', 'Mason', '0771234567', /^3,500$/m],
       check: (tr) => expect(screen.getAllByLabelText(tr('delete'))).toHaveLength(1),
     },
     {
       name: 'edit a worker with no phone',
       prepare: () => setRouteParams({ id: workerId('Kamal Silva') }),
-      expect: (tr) => ['Kamal Silva', 'Helper', '2200'],
+      expect: (tr) => ['Kamal Silva', 'Helper', /^2,200$/m],
     },
     {
       name: 'an id that does not exist renders nothing',
@@ -203,7 +203,7 @@ smokeScreen('worker/assign', () => <AssignWorkerScreen />, {
     {
       name: 'edit the rate of a worker already on the project',
       prepare: () => setRouteParams({ projectId: projectId(SCHOOL), workerId: workerId('Nimal Perera') }),
-      expect: (tr) => ['Nimal Perera', 'Mason', '3500', tr('removeFromProject'), tr('rateOnThisProject')],
+      expect: (tr) => ['Nimal Perera', 'Mason', /^3,500$/m, tr('removeFromProject'), tr('rateOnThisProject')],
     },
     {
       name: 'no project chosen yet',
@@ -229,7 +229,7 @@ smokeScreen('wage/form', () => <WageForm />, {
         '1½',
         `${tr('dailyRate')} Rs 3,500`,
         `1 × Rs 3,500`,
-        '3500',
+        /^3,500$/m, // the amount box itself
         tr('date'),
         tr('note'),
         tr('save'),
@@ -244,23 +244,23 @@ smokeScreen('wage/form', () => <WageForm />, {
     {
       name: 'pay wages with the owed amount pre-filled',
       prepare: () => setRouteParams({ workerId: workerId('Nimal Perera'), projectId: projectId(SCHOOL), kind: 'payment', amount: '350000' }),
-      expect: (tr) => [tr('payWages'), 'Nimal Perera', '3500'],
+      expect: (tr) => [tr('payWages'), 'Nimal Perera', /^3,500$/m],
     },
     {
       name: 'edit a work entry',
       prepare: () => setRouteParams({ id: wageEntryId('Ruwan Jayasinghe', 'work') }),
-      expect: (tr) => [tr('recordWork'), 'Ruwan Jayasinghe', SCHOOL, '1.5', '5400'],
+      expect: (tr) => [tr('recordWork'), 'Ruwan Jayasinghe', SCHOOL, '1.5', /^5,400$/m],
       check: (tr) => expect(screen.getAllByLabelText(tr('delete'))).toHaveLength(1),
     },
     {
       name: 'edit a payment',
       prepare: () => setRouteParams({ id: wageEntryId('Nimal Perera', 'payment') }),
-      expect: (tr) => [tr('payWages'), 'Weekly pay', '14000'],
+      expect: (tr) => [tr('payWages'), 'Weekly pay', /^14,000$/m],
     },
     {
       name: 'edit an advance',
       prepare: () => setRouteParams({ id: wageEntryId('Kamal Silva', 'advance') }),
-      expect: (tr) => [tr('giveAdvance'), 'Advance for medicine', '5000'],
+      expect: (tr) => [tr('giveAdvance'), 'Advance for medicine', /^5,000$/m],
     },
     {
       name: 'opened with nothing chosen',

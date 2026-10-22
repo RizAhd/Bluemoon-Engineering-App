@@ -65,7 +65,7 @@ smokeScreen("wage/today (Today's work & pay)", () => <TodaysWorkScreen />, {
         tr('payNow'),
         'Rs 3,500', // Nimal: one day
         'Rs 5,400', // Ruwan: 1.5 days
-        '3500',
+        /^3,500$/m, // Nimal's amount box
         `${tr('toPayToday')} Rs 3,500`, // hint under Nimal's empty pay box
         tr('workersToday'),
         tr('wages'),
@@ -169,7 +169,7 @@ describe('wage/today: tick a worker, pick days, pay, save', () => {
     await fireEvent.press(screen.getByLabelText('Asanka Perera'));
     await waitFor(() => expect(workRows()).toHaveLength(1));
     expect(workRows()[0]).toMatchObject({ days: 1, amount_cents: 300_000, worker_id: site.asanka, project_id: site.project, day: today() });
-    expect(inputValue('Amount')).toBe('3000');
+    expect(inputValue('Amount')).toBe('3,000');
     expect(inputValue('Pay now')).toBe(''); // money is never pre-filled
     expect(visibleText()).toContain('To pay today Rs 3,000');
 
@@ -178,7 +178,7 @@ describe('wage/today: tick a worker, pick days, pay, save', () => {
     await waitFor(() => expect(workRows()[0].days).toBe(1.5));
     expect(workRows()).toHaveLength(1); // the same entry, not a second one
     expect(workRows()[0].amount_cents).toBe(450_000);
-    expect(inputValue('Amount')).toBe('4500');
+    expect(inputValue('Amount')).toBe('4,500');
 
     // pay only part of it
     await typeInto('Pay now', '2,000');
@@ -220,7 +220,7 @@ describe('wage/today: tick a worker, pick days, pay, save', () => {
     await renderScreen(<TodaysWorkScreen />);
     expectClean('reopened');
     expect(visibleText()).toContain('Already recorded for this day');
-    expect(inputValue('Amount')).toBe('3000');
+    expect(inputValue('Amount')).toBe('3,000');
     expect(inputValue('Pay now')).toBe('');
     expect(visibleText()).toContain('Paid today Rs 1,000');
     expect(visibleText()).toContain('To pay today Rs 2,000');
@@ -241,8 +241,8 @@ describe('wage/today: tick a worker, pick days, pay, save', () => {
     await pressLabel('All worked today');
     await waitFor(() => expect(workRows()).toHaveLength(2));
     expect(screen.getAllByLabelText('Amount')).toHaveLength(2);
-    expect(inputValue('Amount', 0)).toBe('3000');
-    expect(inputValue('Amount', 1)).toBe('2500');
+    expect(inputValue('Amount', 0)).toBe('3,000');
+    expect(inputValue('Amount', 1)).toBe('2,500');
 
     await pressLabel('Pay all · Rs 5,500');
     const shown = alert.mock.calls.at(-1);
@@ -355,7 +355,7 @@ describe('wage/today: tick a worker, pick days, pay, save', () => {
     await pressLabel('Undo');
     await waitFor(() => expect(workRows()).toHaveLength(1));
     expect(workRows()[0]).toMatchObject({ days: 1.5, amount_cents: 480_000 });
-    expect(inputValue('Amount')).toBe('4800');
+    expect(inputValue('Amount')).toBe('4,800');
   });
 
   it('the project picker switches the sheet to another project', async () => {

@@ -327,11 +327,108 @@ export const migrations: string[] = [
     ON we.worker_id = pw.worker_id AND we.project_id = pw.project_id AND we.deleted_at IS NULL
   GROUP BY pw.project_id, pw.worker_id;
   `,
+
+  // 5 — estimates (quotations): header, bill of quantities, payment schedule (docs/ESTIMATES.md)
+  `
+  CREATE TABLE estimates (
+    ${common},
+    number TEXT NOT NULL CHECK (length(trim(number)) > 0),
+    client_name TEXT NOT NULL CHECK (length(trim(client_name)) > 0),
+    client_phone TEXT,
+    client_address TEXT,
+    title TEXT NOT NULL CHECK (length(trim(title)) > 0),
+    location TEXT,
+    issue_day TEXT NOT NULL CHECK (issue_day GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]'),
+    valid_days INTEGER NOT NULL DEFAULT 30 CHECK (valid_days BETWEEN 1 AND 365),
+    discount_cents INTEGER NOT NULL DEFAULT 0 CHECK (discount_cents >= 0),
+    -- basis points: 1800 = 18 %
+    tax_bp INTEGER NOT NULL DEFAULT 0 CHECK (tax_bp BETWEEN 0 AND 10000),
+    status TEXT NOT NULL DEFAULT 'draft' CHECK (status IN ('draft','sent','accepted','declined')),
+    terms TEXT,
+    notes TEXT,
+    -- set when the accepted estimate was turned into a project
+    project_id TEXT REFERENCES projects(id)
+  );
+  CREATE INDEX ix_estimates_status_day ON estimates(status, issue_day);
+  CREATE INDEX ix_estimates_project ON estimates(project_id);
+
+  -- Quantity is in thousandths (1000 = 1 unit, so 12.5 m2 = 12500), money in cents: nothing is a float.
+  CREATE TABLE estimate_items (
+    ${common},
+    estimate_id TEXT NOT NULL REFERENCES estimates(id),
+    position INTEGER NOT NULL DEFAULT 0,
+    description TEXT NOT NULL CHECK (length(trim(description)) > 0),
+    unit TEXT,
+    qty_milli INTEGER NOT NULL CHECK (qty_milli BETWEEN 1 AND 1000000000),
+    rate_cents INTEGER NOT NULL DEFAULT 0 CHECK (rate_cents BETWEEN 0 AND 5000000000)
+  );
+  CREATE INDEX ix_estimate_items_estimate ON estimate_items(estimate_id);
+
+  -- A stage's share of the total in basis points (3000 = 30 %).
+  CREATE TABLE estimate_payments (
+    ${common},
+    estimate_id TEXT NOT NULL REFERENCES estimates(id),
+    position INTEGER NOT NULL DEFAULT 0,
+    label TEXT NOT NULL CHECK (length(trim(label)) > 0),
+    percent_bp INTEGER NOT NULL CHECK (percent_bp BETWEEN 1 AND 10000)
+  );
+  CREATE INDEX ix_estimate_payments_estimate ON estimate_payments(estimate_id);
+
+  -- One row per live estimate, with or without items. Every amount is whole cents and every
+  -- division rounds half up in integer arithmetic (all operands are non-negative):
+  --   line amount = (qty_milli * rate_cents + 500) / 1000
+  --   taxable     = max(0, subtotal - discount)
+  --   tax         = (taxable * tax_bp + 5000) / 10000
+  --   total       = taxable + tax
+  -- Screens, the PDF and the contract value of a new project all read these numbers; nothing recomputes them.
+  CREATE VIEW v_estimate_total AS
+  SELECT c.estimate_id,
+         c.item_count,
+         c.subtotal_cents,
+         c.discount_cents,
+         c.tax_cents,
+         c.taxable_cents + c.tax_cents AS total_cents,
+         c.scheduled_bp
+  FROM (
+    SELECT b.estimate_id,
+           b.item_count,
+           b.subtotal_cents,
+           b.discount_cents,
+           b.scheduled_bp,
+           b.taxable_cents,
+           (b.taxable_cents * b.tax_bp + 5000) / 10000 AS tax_cents
+    FROM (
+      SELECT a.estimate_id,
+             a.item_count,
+             a.subtotal_cents,
+             a.discount_cents,
+             a.tax_bp,
+             a.scheduled_bp,
+             CASE WHEN a.subtotal_cents > a.discount_cents THEN a.subtotal_cents - a.discount_cents ELSE 0 END AS taxable_cents
+      FROM (
+        SELECT e.id AS estimate_id,
+               (SELECT COUNT(*) FROM estimate_items i
+                WHERE i.estimate_id = e.id AND i.deleted_at IS NULL) AS item_count,
+               COALESCE((SELECT SUM((i.qty_milli * i.rate_cents + 500) / 1000) FROM estimate_items i
+                         WHERE i.estimate_id = e.id AND i.deleted_at IS NULL), 0) AS subtotal_cents,
+               e.discount_cents AS discount_cents,
+               e.tax_bp AS tax_bp,
+               COALESCE((SELECT SUM(p.percent_bp) FROM estimate_payments p
+                         WHERE p.estimate_id = e.id AND p.deleted_at IS NULL), 0) AS scheduled_bp
+        FROM estimates e
+        WHERE e.deleted_at IS NULL
+      ) a
+    ) b
+  ) c;
+  `,
 ];
 
 /** Tables that hold business data, in an order where parents come before children. */
 export const DATA_TABLES = [
   'projects',
+  'estimates',
+  'estimate_items',
+  'estimate_payments',
   'workers',
   'tools',
   'project_workers',

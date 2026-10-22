@@ -301,7 +301,7 @@ describe('wage form: a worker who is not on the roster can still be paid', () =>
     setRouteParams({ workerId: worker, kind: 'work' });
     await renderScreen(<WageForm />);
     expect(hasLabel(`${E('worker')}: Nimal Outsider`)).toBe(true);
-    expect(visibleText()).toContain('2000'); // no roster row: the worker's usual rate
+    expect(visibleText()).toMatch(/^2,000$/m); // no roster row: the amount box holds the worker's usual rate
     await pressLabel(E('save'));
     expect(payments()).toEqual([{ kind: 'work', worker_id: worker, project_id: project, amount_cents: 200_000, day: today() }]);
   });

@@ -347,7 +347,7 @@ describe('restoreNewestAutoBackup', () => {
 function resetDbKeepingBackups() {
   const d = getDb();
   d.execSync('PRAGMA foreign_keys = OFF');
-  for (const t of ['attachments', 'site_notes', 'tool_movements', 'wage_entries', 'expenses', 'project_workers', 'tools', 'workers', 'projects']) d.execSync(`DELETE FROM ${t}`);
+  for (const t of ['attachments', 'site_notes', 'tool_movements', 'wage_entries', 'expenses', 'project_workers', 'tools', 'workers', 'estimate_payments', 'estimate_items', 'estimates', 'projects']) d.execSync(`DELETE FROM ${t}`);
   d.execSync('PRAGMA foreign_keys = ON');
   closeDb();
 }

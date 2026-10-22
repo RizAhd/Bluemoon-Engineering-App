@@ -1,22 +1,41 @@
 import { router } from 'expo-router';
-import { Building2, ChevronRight, ClipboardCheck, HardHat, Plus, UserPlus } from 'lucide-react-native';
+import { Building2, ChevronRight, ClipboardCheck, HardHat, Plus, Search, UserPlus } from 'lucide-react-native';
 import { useState } from 'react';
 import { View } from 'react-native';
 
+import { ListControls, oneOf, useListPrefs } from '@/components/ListControls';
 import { HeaderAction, TabHeader } from '@/components/ProjectSwitcher';
 import { Stat, Tiles } from '@/components/Stats';
 import { Button } from '@/components/ui/Button';
 import { Badge, EmptyState } from '@/components/ui/feedback';
-import { PickerSheet } from '@/components/ui/form';
+import { Chips, PickerSheet } from '@/components/ui/form';
 import { Card, GroupLabel, ListCard, ListRow, Screen } from '@/components/ui/layout';
 import { Txt } from '@/components/ui/Txt';
-import { useQuery } from '@/db';
-import type { ProjectWorkerBalance, WorkerBalance } from '@/db/types';
-import { setCurrentProject, useCurrentProjectId, useProjects, useProjectWorkers, useWageDay } from '@/hooks/data';
-import { useT } from '@/i18n';
+import {
+  BALANCE_FILTERS,
+  setCurrentProject,
+  useCurrentProjectId,
+  useProjects,
+  useProjectWorkers,
+  useWageDay,
+  useWorkerList,
+  WORKER_SORTS,
+  WORKER_STATUS_FILTERS,
+  type BalanceFilter,
+  type WorkerListRow,
+  type WorkerSort,
+  type WorkerStatusFilter,
+} from '@/hooks/data';
+import { useT, type TKey } from '@/i18n';
 import { today } from '@/lib/dates';
 import { formatLKR } from '@/lib/money';
 import { space, useColors } from '@/theme';
+
+/** What the Workers tab remembers (settings `list_workers_<field>`), the same with a project or "All projects". */
+const DEFAULTS = { balance: 'all', status: 'all', sort: 'name' };
+
+const BALANCE_LABEL: Record<Exclude<BalanceFilter, 'all'>, TKey> = { pay: 'weOwe', advance: 'workerOwes', settled: 'settled' };
+const STATUS_LABEL: Record<Exclude<WorkerStatusFilter, 'all'>, TKey> = { active: 'workerActive', left: 'workerLeft' };
 
 function BalanceBadge({ balance }: { balance: number }) {
   const t = useT();
@@ -51,7 +70,9 @@ function WorkPayCard({ subtitle, onPress }: { subtitle: string; onPress: () => v
 
 /**
  * Workers tab. With a current project: that project's roster with per-project balances.
- * With "All projects": every worker with their overall balance.
+ * With "All projects": every worker with their overall balance. Both can be narrowed to "to pay", "advance over"
+ * or "settled" and to working / left, and sorted by name, most to pay, most days worked or highest rate.
+ * With no project at all there is only one thing to do first, so the screen says just that.
  */
 export default function WorkersScreen() {
   const t = useT();
@@ -61,22 +82,16 @@ export default function WorkersScreen() {
   const projects = useProjects();
   const roster = useProjectWorkers(pid);
   const dayRows = useWageDay(pid, td);
-  const all = useQuery<WorkerBalance>('SELECT * FROM v_worker_balance ORDER BY active DESC, name COLLATE NOCASE');
   const [picking, setPicking] = useState(false);
 
-  // A worker marked as left (workers.active = 0) is inactive on every roster, whatever the assignment says.
-  const workerActive = new Map(all.map((w) => [w.worker_id, !!w.active]));
-  const rows: { id: string; name: string; trade: string | null; rate: number; balance: number; active: boolean }[] = pid
-    ? roster.map((r: ProjectWorkerBalance) => ({
-        id: r.worker_id,
-        name: r.name,
-        trade: r.trade,
-        rate: r.rate_cents,
-        balance: r.balance_cents,
-        active: !!r.active && (workerActive.get(r.worker_id) ?? true),
-      }))
-    : all.map((r) => ({ id: r.worker_id, name: r.name, trade: r.trade, rate: r.daily_rate_cents, balance: r.balance_cents, active: !!r.active }));
-  const active = rows.filter((r) => r.active);
+  const { prefs, set, reset } = useListPrefs('workers', DEFAULTS);
+  const balance = oneOf<BalanceFilter>(prefs.balance, BALANCE_FILTERS, 'all');
+  const status = oneOf<WorkerStatusFilter>(prefs.status, WORKER_STATUS_FILTERS, 'all');
+  const sort = oneOf<WorkerSort>(prefs.sort, WORKER_SORTS, 'name');
+  const list = useWorkerList(pid, { sort, balance, status });
+  const rows = list.rows;
+
+  const active = rows.filter((r) => !!r.active);
   const inactive = rows.filter((r) => !r.active);
   const weOwe = rows.reduce((s, r) => s + Math.max(0, r.balance), 0);
   const workerOwes = rows.reduce((s, r) => s + Math.max(0, -r.balance), 0);
@@ -94,19 +109,20 @@ export default function WorkersScreen() {
 
   const addToProject = () => router.push(`/worker/assign?projectId=${pid}`);
   const newWorker = () => router.push('/worker/form');
+  const newProject = () => router.push('/project/form');
   const openWorkPay = () => {
     if (!pid) setPicking(true);
     else if (roster.length === 0) addToProject();
     else router.push('/wage/today');
   };
 
-  const renderRow = (r: (typeof rows)[number]) => (
+  const renderRow = (r: WorkerListRow) => (
     <ListRow
       key={r.id}
       avatar={r.name}
       muted={!r.active}
       title={r.name}
-      subtitle={[r.trade, r.rate ? `${formatLKR(r.rate)} / ${t('day')}` : null].filter(Boolean).join(' · ')}
+      subtitle={[r.trade, r.rate ? `${formatLKR(r.rate)} / ${t('day')}` : null, sort === 'days' ? t('daysCount', { n: r.days }) : null].filter(Boolean).join(' · ')}
       value={r.balance ? formatLKR(Math.abs(r.balance)) : undefined}
       badge={
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: space.xs }}>
@@ -118,7 +134,14 @@ export default function WorkersScreen() {
     />
   );
 
-  const empty = rows.length === 0;
+  const noProjects = projects.length === 0;
+  const empty = list.total === 0;
+  const applied = [
+    balance !== 'all' ? t(BALANCE_LABEL[balance]) : null,
+    status !== 'all' ? t(STATUS_LABEL[status]) : null,
+    sort !== 'name' ? t(`sort_${sort}`) : null,
+  ].filter((s): s is string => !!s);
+  const sheetCount = [status !== 'all', sort !== 'name'].filter(Boolean).length;
 
   return (
     <View style={{ flex: 1, backgroundColor: c.bg }}>
@@ -133,67 +156,96 @@ export default function WorkersScreen() {
         }
       />
       <Screen hairlineTop={false} gap={space.md}>
-        {!pid ? (
-          <Card tone="warningSoft">
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.md }}>
-              <Building2 size={24} color={c.warning} strokeWidth={2} />
-              <View style={{ flex: 1, gap: 2 }}>
-                <Txt weight="semibold" color="warning">
-                  {t('noProjectSelected')}
-                </Txt>
-                <Txt variant="caption" color="textMuted">
-                  {t('chooseProjectFirstHint')}
-                </Txt>
-              </View>
-            </View>
-            {projects.length ? <Button kind="secondary" compact icon={Building2} label={t('chooseProject')} onPress={() => setPicking(true)} /> : null}
-          </Card>
-        ) : null}
-
-        {!pid || !empty ? <WorkPayCard subtitle={workPaySubtitle} onPress={openWorkPay} /> : null}
-
-        {empty ? (
-          pid ? (
-            <EmptyState
-              icon={HardHat}
-              title={t('noWorkersOnProject')}
-              hint={t('noWorkersOnProjectHint')}
-              action={<Button icon={UserPlus} label={t('addWorkerToProject')} onPress={addToProject} full />}
-            />
-          ) : (
-            <EmptyState
-              icon={HardHat}
-              title={t('noWorkers')}
-              hint={t('noWorkersHint')}
-              action={<Button icon={UserPlus} label={t('newWorker')} onPress={newWorker} full />}
-            />
-          )
+        {noProjects && empty ? (
+          // Nothing can be recorded for a worker before there is a project: one empty state, one action.
+          <EmptyState icon={Building2} title={t('addProjectFirst')} hint={t('addProjectFirstHint')} action={<Button icon={Plus} label={t('newProject')} onPress={newProject} full />} />
         ) : (
           <>
-            <Tiles>
-              <Stat label={t('weOwe')} value={formatLKR(weOwe)} tone={weOwe > 0 ? 'danger' : 'text'} />
-              <Stat label={t('workerOwes')} value={formatLKR(workerOwes)} caption={`${active.length} ${t('workers')}`} />
-            </Tiles>
-
-            {!pid ? (
-              <Txt variant="caption" color="textMuted">
-                {t('balanceAllProjects')}
-              </Txt>
+            {!pid && !noProjects ? (
+              <Card tone="warningSoft">
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.md }}>
+                  <Building2 size={24} color={c.warning} strokeWidth={2} />
+                  <View style={{ flex: 1, gap: 2 }}>
+                    <Txt weight="semibold" color="warning">
+                      {t('noProjectSelected')}
+                    </Txt>
+                    <Txt variant="caption" color="textMuted">
+                      {t('chooseProjectFirstHint')}
+                    </Txt>
+                  </View>
+                </View>
+                <Button kind="secondary" compact icon={Building2} label={t('chooseProject')} onPress={() => setPicking(true)} />
+              </Card>
             ) : null}
 
-            {active.length ? (
-              <View style={{ gap: space.sm }}>
-                <GroupLabel label={`${pid ? t('projectWorkers') : t('allWorkers')} (${active.length})`} />
-                <ListCard inset>{active.map(renderRow)}</ListCard>
-              </View>
-            ) : null}
+            {!noProjects && (!pid || !empty) ? <WorkPayCard subtitle={workPaySubtitle} onPress={openWorkPay} /> : null}
 
-            {inactive.length ? (
-              <View style={{ gap: space.sm }}>
-                <GroupLabel label={`${t('inactive')} (${inactive.length})`} />
-                <ListCard inset>{inactive.map(renderRow)}</ListCard>
-              </View>
-            ) : null}
+            {empty ? (
+              pid ? (
+                <EmptyState
+                  icon={HardHat}
+                  title={t('noWorkersOnProject')}
+                  hint={t('noWorkersOnProjectHint')}
+                  action={<Button icon={UserPlus} label={t('addWorkerToProject')} onPress={addToProject} full />}
+                />
+              ) : (
+                <EmptyState icon={HardHat} title={t('noWorkers')} hint={t('noWorkersHint')} action={<Button icon={UserPlus} label={t('newWorker')} onPress={newWorker} full />} />
+              )
+            ) : (
+              <>
+                <ListControls
+                  quick={{
+                    value: balance,
+                    onChange: (v) => set('balance', v),
+                    options: [
+                      { value: 'all', label: t('all') },
+                      { value: 'pay', label: t('weOwe'), count: list.counts.pay, disabled: !list.counts.pay && balance !== 'pay' },
+                      { value: 'advance', label: t('workerOwes'), count: list.counts.advance, disabled: !list.counts.advance && balance !== 'advance' },
+                      { value: 'settled', label: t('settled'), count: list.counts.settled, disabled: !list.counts.settled && balance !== 'settled' },
+                    ],
+                  }}
+                  sort={{ value: sort, onChange: (v) => set('sort', v), options: WORKER_SORTS.map((s) => ({ value: s, label: t(`sort_${s}`) })) }}
+                  sheetCount={sheetCount}
+                  applied={applied}
+                  onClear={reset}>
+                  <Chips<WorkerStatusFilter>
+                    label={t('status')}
+                    value={status}
+                    onChange={(v) => set('status', v)}
+                    options={WORKER_STATUS_FILTERS.map((s) => ({ value: s, label: s === 'all' ? t('all') : t(STATUS_LABEL[s]) }))}
+                  />
+                </ListControls>
+
+                <Tiles>
+                  <Stat label={t('weOwe')} value={formatLKR(weOwe)} tone={weOwe > 0 ? 'danger' : 'text'} />
+                  <Stat label={t('workerOwes')} value={formatLKR(workerOwes)} caption={`${active.length} ${t('workers')}`} />
+                </Tiles>
+
+                {!pid ? (
+                  <Txt variant="caption" color="textMuted">
+                    {t('balanceAllProjects')}
+                  </Txt>
+                ) : null}
+
+                {rows.length === 0 ? (
+                  <EmptyState icon={Search} title={t('noMatches')} hint={t('noMatchesHint')} action={<Button kind="secondary" compact label={t('clearFilters')} onPress={reset} />} compact />
+                ) : null}
+
+                {active.length ? (
+                  <View style={{ gap: space.sm }}>
+                    <GroupLabel label={`${pid ? t('projectWorkers') : t('allWorkers')} (${active.length})`} />
+                    <ListCard inset>{active.map(renderRow)}</ListCard>
+                  </View>
+                ) : null}
+
+                {inactive.length ? (
+                  <View style={{ gap: space.sm }}>
+                    <GroupLabel label={`${t('inactive')} (${inactive.length})`} />
+                    <ListCard inset>{inactive.map(renderRow)}</ListCard>
+                  </View>
+                ) : null}
+              </>
+            )}
           </>
         )}
       </Screen>
@@ -216,7 +268,7 @@ export default function WorkersScreen() {
             label={t('newProject')}
             onPress={() => {
               setPicking(false);
-              router.push('/project/form');
+              newProject();
             }}
           />
         }

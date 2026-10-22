@@ -325,8 +325,9 @@ smokeScreen('Workers tab (empty phone)', () => <WorkersScreen />, {
   db: 'empty',
   variants: [
     {
+      // With no project at all there is one clear way forward (no banner, no day-sheet row).
       name: 'empty state with the primary action',
-      expect: (tr) => [tr('workers'), tr('noWorkers'), tr('noWorkersHint'), tr('newWorker'), tr('noProjectSelected')],
+      expect: (tr) => [tr('workers'), tr('addProjectFirst'), tr('addProjectFirstHint'), tr('newProject')],
     },
   ],
 });

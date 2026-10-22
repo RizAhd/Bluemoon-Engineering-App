@@ -46,7 +46,7 @@ export function Stat({ label, value, onPress, tone = 'text', caption, style }: S
         <Txt eyebrow numberOfLines={2} style={{ flexShrink: 1 }}>
           {label}
         </Txt>
-        {onPress ? <ChevronRight size={16} color={c.textMuted} strokeWidth={2} style={{ marginTop: 2 }} /> : null}
+        {onPress ? <ChevronRight size={14} color={c.textMuted} strokeWidth={2} style={{ marginTop: 2 }} /> : null}
       </View>
       <Txt variant="title" weight="bold" numeric adjustsFontSizeToFit minimumFontScale={0.7} numberOfLines={1} color={tone}>
         {value}

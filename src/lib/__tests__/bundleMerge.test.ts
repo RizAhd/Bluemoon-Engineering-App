@@ -157,7 +157,7 @@ describe('handing it over again', () => {
   it('a whole-phone transfer twice is also a no-op the second time', async () => {
     seedDemo();
     const first = await transfer(a, b);
-    expect(first.counts.inserted).toBe(65); // 3 projects, 6 workers, 5 tools, 7 assignments, 12 expenses, 25 wages, 4 movements, 3 notes
+    expect(first.counts.inserted).toBe(81); // 3 projects, 6 workers, 5 tools, 7 assignments, 12 expenses, 25 wages, 4 movements, 3 notes, and 2 estimates with 9 lines and 5 stages
     const state = dump(b);
     const second = await transfer(a, b);
     expect(second.counts.inserted + second.counts.updated).toBe(0);

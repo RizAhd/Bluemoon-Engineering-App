@@ -64,11 +64,11 @@ export function ProjectPill({ allowAll = true, onChange, style }: ProjectPillPro
           },
           style,
         ]}>
-        <Icon size={20} color={project ? c.primary : c.textMuted} strokeWidth={2} />
+        <Icon size={18} color={project ? c.primary : c.textMuted} strokeWidth={2} />
         <Txt weight="semibold" numberOfLines={1} style={{ flexShrink: 1 }}>
           {name}
         </Txt>
-        <ChevronDown size={20} color={c.textMuted} strokeWidth={2} />
+        <ChevronDown size={18} color={c.textMuted} strokeWidth={2} />
       </Pressable>
 
       <PickerSheet
@@ -156,7 +156,7 @@ export function TabHeader({ title, subtitle, allowAll = true, showProject = true
       }}>
       <View style={{ paddingHorizontal: gutter, gap: space.sm, maxWidth, width: '100%', alignSelf: 'center' }}>
         <View style={{ flexDirection: 'row', alignItems: 'center', minHeight: sizes.headerButton, gap: space.md }}>
-          {brand ? <BrandMark size={36} /> : null}
+          {brand ? <BrandMark size={32} /> : null}
           <View style={{ flex: 1, gap: 2 }}>
             <Txt variant="heading" weight="semibold" accessibilityRole="header" color="onHeader" numberOfLines={1} maxFontSizeMultiplier={1.3}>
               {title}

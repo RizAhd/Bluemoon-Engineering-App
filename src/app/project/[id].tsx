@@ -1,6 +1,6 @@
 import * as Sharing from 'expo-sharing';
 import { router, Stack, useLocalSearchParams } from 'expo-router';
-import { FileOutput, Hammer, HardHat, NotebookPen, Pencil, Star, UserPlus } from 'lucide-react-native';
+import { FileOutput, FileText, Hammer, HardHat, NotebookPen, Pencil, Star, UserPlus } from 'lucide-react-native';
 import { useState } from 'react';
 import { Pressable, View } from 'react-native';
 
@@ -12,8 +12,8 @@ import { Checkbox } from '@/components/ui/form';
 import { Card, Divider, ListCard, ListRow, Screen, SectionTitle } from '@/components/ui/layout';
 import { Txt } from '@/components/ui/Txt';
 import { setSetting, useFirst, useQuery, useSetting } from '@/db';
-import type { ProjectCost, ToolStatus } from '@/db/types';
-import { setCurrentProject, useCurrentProjectId, useProject, useProjectWorkers } from '@/hooks/data';
+import type { Estimate, ProjectCost, ToolStatus } from '@/db/types';
+import { setCurrentProject, useCurrentProjectId, useEstimateTotal, useProject, useProjectEstimates, useProjectWorkers } from '@/hooks/data';
 import { useT, type TKey } from '@/i18n';
 import { formatDay } from '@/lib/dates';
 import { showError } from '@/lib/errors';
@@ -46,6 +46,20 @@ function ExportOption({ label, hint, checked, onChange }: { label: string; hint:
   );
 }
 
+/** A link back to the estimate this project was made from: "Estimate EST-2026-001" and its total. */
+function LinkedEstimate({ estimate }: { estimate: Estimate }) {
+  const t = useT();
+  const total = useEstimateTotal(estimate.id);
+  return (
+    <ListRow
+      icon={FileText}
+      title={`${t('estimate')} ${estimate.number}`}
+      value={total ? formatLKR(total.total_cents) : undefined}
+      onPress={() => router.push(`/estimate/${estimate.id}`)}
+    />
+  );
+}
+
 export default function ProjectDetail() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const t = useT();
@@ -58,6 +72,7 @@ export default function ProjectDetail() {
   );
   const noteCount = useFirst<{ n: number }>('SELECT COUNT(*) AS n FROM site_notes WHERE project_id = ? AND deleted_at IS NULL', [id ?? ''])?.n ?? 0;
   const workers = useProjectWorkers(id ?? null);
+  const estimates = useProjectEstimates(id);
   // "Mark inactive" only changes workers.active, and the roster view reports project_workers.active, so ask for the worker's own flag too.
   const inactiveWorkerIds = useQuery<{ id: string }>('SELECT id FROM workers WHERE active = 0 AND deleted_at IS NULL');
   const toolsOut = useQuery<ToolStatus & { worker_name: string | null }>(
@@ -164,6 +179,14 @@ export default function ProjectDetail() {
         <Tiles>
           <Stat label={t('labourPaid')} value={formatLKR(cost.labour_paid_cents)} />
         </Tiles>
+
+        {estimates.length ? (
+          <ListCard inset>
+            {estimates.map((e) => (
+              <LinkedEstimate key={e.id} estimate={e} />
+            ))}
+          </ListCard>
+        ) : null}
 
         <SectionTitle
           title={t('projectWorkers')}

@@ -439,7 +439,8 @@ describe('upgrading a version-2 database (assignments already exist)', () => {
 describe('upgrading a version-3 database (migration 4: a worker who left is inactive on the roster)', () => {
   const stamp = '2026-10-10T04:00:00.000Z';
   const base = (id: string) => ({ id, created_at: stamp, updated_at: stamp, version: 1, device_id: 'dev' });
-  const ALL_TABLES = [...DATA_TABLES, 'audit_log', 'settings'] as const;
+  // the tables a version-3 phone has (estimates arrived with version 5)
+  const ALL_TABLES = [...DATA_TABLES.filter((t) => !t.startsWith('estimate')), 'audit_log', 'settings'] as const;
   const ROSTER = 'SELECT * FROM v_project_worker_balance ORDER BY project_id, worker_id';
 
   type Reader = { getAllSync: <T>(sql: string) => T[] };

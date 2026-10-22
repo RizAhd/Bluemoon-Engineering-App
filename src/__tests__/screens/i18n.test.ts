@@ -3,7 +3,7 @@
  * language (a Sinhala sentence that lost its {days} would print the raw braces), and no stray
  * "undefined" or template leftovers.
  */
-import { EXPENSE_CATEGORIES, PAY_METHODS } from '@/db/types';
+import { ESTIMATE_STATUSES, EXPENSE_CATEGORIES, PAY_METHODS } from '@/db/types';
 import { en } from '@/i18n/en';
 import { si } from '@/i18n/si';
 import { ta } from '@/i18n/ta';
@@ -38,12 +38,32 @@ describe('i18n dictionaries', () => {
   });
 });
 
+describe('estimate (quotation) strings', () => {
+  // everything added for the estimates feature sits after 'developedBy' in the English file
+  const estimateKeys = keys.slice(keys.indexOf('developedBy') + 1);
+
+  it('there are some, and the status words are the four the database holds', () => {
+    expect(estimateKeys.length).toBeGreaterThan(80);
+    expect(estimateKeys).toEqual(expect.arrayContaining(ESTIMATE_STATUSES.map((s) => `estStatus_${s}`)));
+  });
+
+  it.each(['si', 'ta'] as const)('%s has its own words for every one of them (none is an English copy)', (lang) => {
+    for (const key of estimateKeys) expect([key, dicts[lang][key] !== dicts.en[key]]).toEqual([key, true]);
+  });
+
+  it.each(['si', 'ta'] as const)('%s writes the stage names the standard schedule makes in English, as the screen shows them', (lang) => {
+    // "Use standard schedule" fills Advance / Progress payment / On completion in English; the replace question must name them the same way
+    for (const word of ['Advance', 'Progress payment', 'On completion']) expect(dicts[lang].replaceScheduleBody).toContain(word);
+  });
+});
+
 describe('keys the screens build at run time', () => {
   // `t(`cat_${category}`)` and friends are not checked by the compiler, so every value the database can hold is listed here.
   const built: Record<string, readonly string[]> = {
     cat_: EXPENSE_CATEGORIES,
     method_: PAY_METHODS,
     status_: ['active', 'on_hold', 'completed'],
+    estStatus_: ESTIMATE_STATUSES,
     wage_: ['work', 'advance', 'payment'],
     weather_: ['sunny', 'cloudy', 'rain'],
     theme_: ['system', 'light', 'dark'],

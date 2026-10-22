@@ -165,7 +165,7 @@ describe('restorePart', () => {
     const path = place(b, 'snap.zip', await a.backup.dataSnapshot());
     const res = await b.backup.restorePart(path);
     expect(res).toMatchObject({ part: 1, parts: 1, photos: 0 });
-    expect(res.plan.counts).toEqual({ inserted: 65, updated: 0, skipped: 0 });
+    expect(res.plan.counts).toEqual({ inserted: 81, updated: 0, skipped: 0 }); // the 65 records of the site data and the 16 of the two demo estimates
     expect(dump(b)).toEqual(dump(a));
     expect(b.db.all('SELECT * FROM v_project_cost ORDER BY project_id')).toEqual(a.db.all('SELECT * FROM v_project_cost ORDER BY project_id'));
     expect(b.db.all('SELECT * FROM v_worker_balance ORDER BY worker_id')).toEqual(a.db.all('SELECT * FROM v_worker_balance ORDER BY worker_id'));
@@ -178,7 +178,7 @@ describe('restorePart', () => {
     await b.backup.restorePart(path);
     const state = dump(b);
     const again = await b.backup.restorePart(path);
-    expect(again.plan.counts).toEqual({ inserted: 0, updated: 0, skipped: 65 });
+    expect(again.plan.counts).toEqual({ inserted: 0, updated: 0, skipped: 81 });
     expect(dump(b)).toEqual(state);
   });
 
@@ -224,7 +224,7 @@ describe('restorePart', () => {
 
       const res = await b.backup.restorePart(late);
 
-      expect(res.plan.counts).toEqual({ inserted: 0, updated: 1, skipped: 64 });
+      expect(res.plan.counts).toEqual({ inserted: 0, updated: 1, skipped: 80 });
       expect(b.db.first('SELECT deleted_at IS NOT NULL AS gone FROM expenses WHERE id = ?', [e])).toEqual({ gone: 1 });
       expect(count(b, 'expenses')).toBe(12);
     });

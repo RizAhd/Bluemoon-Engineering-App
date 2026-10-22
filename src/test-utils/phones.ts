@@ -27,9 +27,15 @@ interface Modules {
   demo: typeof import('@/lib/demoData');
   dates: typeof import('@/lib/dates');
   i18n: typeof import('@/i18n');
+  estimates: typeof import('@/db/estimates');
+  company: typeof import('@/lib/company');
   /** Only loaded for a second phone when asked for (`openPhone({ pdf: true })`); always available on the main phone. */
   pdf: typeof import('@/lib/pdf');
+  /** Loaded together with `pdf`: the estimate (quotation) PDF export. */
+  estimatePdf: typeof import('@/lib/estimatePdf');
 }
+
+type PdfModules = Pick<Modules, 'pdf' | 'estimatePdf'>;
 
 /** Everything is required eagerly: a second phone's modules must be loaded inside its isolateModules block. */
 function loadModules(withPdf: boolean): Modules {
@@ -44,8 +50,13 @@ function loadModules(withPdf: boolean): Modules {
     demo: require('@/lib/demoData'),
     dates: require('@/lib/dates'),
     i18n: require('@/i18n'),
+    estimates: require('@/db/estimates'),
+    company: require('@/lib/company'),
   } as Modules;
-  if (withPdf) mods.pdf = require('@/lib/pdf');
+  if (withPdf) {
+    mods.pdf = require('@/lib/pdf');
+    mods.estimatePdf = require('@/lib/estimatePdf');
+  }
   return mods;
 }
 
@@ -90,13 +101,17 @@ export class Phone {
   readonly demo: Modules['demo'];
   readonly dates: Modules['dates'];
   readonly i18n: Modules['i18n'];
-  private readonly getPdf: () => Modules['pdf'];
-  private boundPdf: Modules['pdf'] | null = null;
+  /** src/db/estimates.ts (estimates, lines, stages, status, project from estimate) bound to this phone. */
+  readonly estimates: Modules['estimates'];
+  /** src/lib/company.ts (the company and bank details in the settings table) bound to this phone. */
+  readonly company: Modules['company'];
+  private readonly getPdf: () => PdfModules;
+  private boundPdf: PdfModules | null = null;
 
   constructor(
     readonly storage: PhoneStorage,
-    mods: Omit<Modules, 'pdf'>,
-    loadPdf: () => Modules['pdf'],
+    mods: Omit<Modules, keyof PdfModules>,
+    loadPdf: () => PdfModules,
   ) {
     const b = <T extends object>(m: T) => bindToPhone(storage, m);
     this.db = b(mods.db);
@@ -109,7 +124,15 @@ export class Phone {
     this.demo = b(mods.demo);
     this.dates = b(mods.dates);
     this.i18n = b(mods.i18n);
-    this.getPdf = () => (this.boundPdf ??= b(loadPdf()));
+    this.estimates = b(mods.estimates);
+    this.company = b(mods.company);
+    this.getPdf = () => {
+      if (!this.boundPdf) {
+        const m = loadPdf();
+        this.boundPdf = { pdf: b(m.pdf), estimatePdf: b(m.estimatePdf) };
+      }
+      return this.boundPdf;
+    };
   }
 
   get id(): string {
@@ -118,7 +141,12 @@ export class Phone {
 
   /** src/lib/pdf.ts bound to this phone. Throws on a second phone opened without `pdf: true`. */
   get pdf(): Modules['pdf'] {
-    return this.getPdf();
+    return this.getPdf().pdf;
+  }
+
+  /** src/lib/estimatePdf.ts bound to this phone (`exportEstimatePdf`). Throws on a second phone opened without `pdf: true`. */
+  get estimatePdf(): Modules['estimatePdf'] {
+    return this.getPdf().estimatePdf;
   }
 
   /** Run any code with this phone active (e.g. `phone.run(() => new File(Paths.document, 'x'))`). */
@@ -195,7 +223,7 @@ let main: Phone | null = null;
 export function mainPhone(): Phone {
   if (!main) {
     // Same registry as the test file, so these are the very modules the test imported.
-    main = new Phone(world().main, loadModules(false), () => require('@/lib/pdf'));
+    main = new Phone(world().main, loadModules(false), () => ({ pdf: require('@/lib/pdf'), estimatePdf: require('@/lib/estimatePdf') }));
   }
   return main;
 }
@@ -215,8 +243,8 @@ export function openPhone(options: OpenPhoneOptions = {}): Phone {
   if (!mods) throw new Error('openPhone: the data layer failed to load');
   const loaded = mods;
   return new Phone(storage, loaded, () => {
-    if (!loaded.pdf) throw new Error('This phone was opened without pdf: true. Use openPhone({ pdf: true }).');
-    return loaded.pdf;
+    if (!loaded.pdf || !loaded.estimatePdf) throw new Error('This phone was opened without pdf: true. Use openPhone({ pdf: true }).');
+    return { pdf: loaded.pdf, estimatePdf: loaded.estimatePdf };
   });
 }
 

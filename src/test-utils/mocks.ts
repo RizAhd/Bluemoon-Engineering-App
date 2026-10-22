@@ -128,11 +128,14 @@ export function imagePickerMock() {
 
 // ---------------------------------------------------------------- expo-print
 
-/** Writes a valid one-page A4 PDF (with a line of text) into the cache; the html it was asked to render is in `mock.calls`. */
+/**
+ * Writes a valid one-page A4 PDF (with a line of text) into the cache; the html it was asked to render is in `mock.calls`.
+ * Like the real module, `base64: true` also returns the file's bytes as base64.
+ */
 export function printMock() {
   return {
     __esModule: true,
-    printToFileAsync: jest.fn(async (_options?: { html?: string }) => {
+    printToFileAsync: jest.fn(async (options?: { html?: string; base64?: boolean }) => {
       // eslint-disable-next-line @typescript-eslint/no-require-imports
       const { PDFDocument, StandardFonts } = require('pdf-lib') as typeof import('pdf-lib');
       const doc = await PDFDocument.create();
@@ -145,7 +148,7 @@ export function printMock() {
       const out = new File(printDir, `${randomUUID()}.pdf`);
       out.create();
       out.writeSync(bytes);
-      return { uri: out.uri, numberOfPages: 1 };
+      return { uri: out.uri, numberOfPages: 1, ...(options?.base64 ? { base64: Buffer.from(bytes).toString('base64') } : {}) };
     }),
     printAsync: jest.fn(async () => undefined),
     selectPrinterAsync: jest.fn(async () => undefined),

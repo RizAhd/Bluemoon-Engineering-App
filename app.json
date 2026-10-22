@@ -56,7 +56,7 @@
         {
           "backgroundColor": "#FFFFFF",
           "image": "./assets/images/splash-logo.png",
-          "imageWidth": 240,
+          "imageWidth": 120,
           "dark": {
             "backgroundColor": "#0B1120",
             "image": "./assets/images/splash-logo-white.png"

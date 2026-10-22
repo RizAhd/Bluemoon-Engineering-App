@@ -41,7 +41,10 @@ export default function BackupScreen() {
      + (SELECT COUNT(*) FROM expenses WHERE deleted_at IS NULL)
      + (SELECT COUNT(*) FROM wage_entries WHERE deleted_at IS NULL)
      + (SELECT COUNT(*) FROM tool_movements WHERE deleted_at IS NULL)
-     + (SELECT COUNT(*) FROM site_notes WHERE deleted_at IS NULL) AS records,
+     + (SELECT COUNT(*) FROM site_notes WHERE deleted_at IS NULL)
+     + (SELECT COUNT(*) FROM estimates WHERE deleted_at IS NULL)
+     + (SELECT COUNT(*) FROM estimate_items WHERE deleted_at IS NULL)
+     + (SELECT COUNT(*) FROM estimate_payments WHERE deleted_at IS NULL) AS records,
        (SELECT COUNT(*) FROM attachments WHERE deleted_at IS NULL) AS photos,
        (SELECT COALESCE(SUM(size),0) FROM attachments WHERE deleted_at IS NULL) AS bytes`,
   );

@@ -278,6 +278,11 @@ describe('root layout', () => {
     for (const key of ['settingsAndMore', 'project', 'expense', 'worker', 'wages', 'todaysWork', 'tool', 'siteNotes', 'importPdf', 'backup', 'reportProblem'] as const) {
       expect(visibleText()).toContain(tr(key));
     }
+    // the animated splash covers the app and hides the native splash on its own first frame
+    expect(SplashScreen.hideAsync).not.toHaveBeenCalled();
+    await act(async () => {
+      fireEvent(screen.getByTestId('animated-splash'), 'layout', { nativeEvent: { layout: { x: 0, y: 0, width: 360, height: 800 } } });
+    });
     await waitFor(() => expect(SplashScreen.hideAsync).toHaveBeenCalled());
   });
 
@@ -402,10 +407,16 @@ describe('automatic theme and fonts', () => {
     phone.mockReturnValue('light');
   });
 
-  it('shows nothing until the fonts are loaded', async () => {
-    (useFonts as jest.Mock).mockReturnValueOnce([false, null]);
-    await renderScreen(<RootLayout />);
-    expect(screen.toJSON()).toBeNull();
+  it('shows only the splash until the fonts are loaded', async () => {
+    (useFonts as jest.Mock).mockReturnValue([false, null]);
+    try {
+      await renderScreen(<RootLayout />);
+      expect(screen.getByTestId('animated-splash')).toBeTruthy();
+      expect(screen.queryAllByTestId('stack-route')).toHaveLength(0);
+      expect(visibleText()).toBe('');
+    } finally {
+      (useFonts as jest.Mock).mockReturnValue([true, null]);
+    }
   });
 });
 

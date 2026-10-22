@@ -9,9 +9,10 @@ import { File } from 'expo-file-system';
 
 import { all, classifyRow, getDb, mergeRow, notify, tx, type MergeResult } from '@/db';
 import { DATA_TABLES, type DataTable } from '@/db/schema';
-import type { Attachment } from '@/db/types';
+import type { Attachment, Estimate, EstimateItem } from '@/db/types';
 
 import { reportError } from './errors';
+import { estimateSums } from './estimate';
 import { fileFor, isSafeFileName, writeAttachmentBytes } from './files';
 
 export const BUNDLE_FORMAT = 'bluemoon-bundle';
@@ -22,17 +23,40 @@ type Row = Record<string, string | number | null>;
 export interface Bundle {
   format: typeof BUNDLE_FORMAT;
   version: number;
-  kind: 'project' | 'backup';
+  kind: 'project' | 'backup' | 'estimate';
   exported_at: string;
   device_id: string;
   project_id?: string;
   project_name?: string;
+  /** Set when kind is 'estimate'. */
+  estimate_id?: string;
+  estimate_number?: string;
   tables: Partial<Record<DataTable, Row[]>>;
 }
 
 export async function sha256Hex(bytes: Uint8Array): Promise<string> {
   const buf = await Crypto.digest(Crypto.CryptoDigestAlgorithm.SHA256, bytes as Uint8Array<ArrayBuffer>);
   return Array.from(new Uint8Array(buf), (b) => b.toString(16).padStart(2, '0')).join('');
+}
+
+/**
+ * One estimate with its lines and stages, the deleted ones too (a removed line must reach the other
+ * phone). Nothing else travels with it: a project it was turned into has its own bundle.
+ */
+export function collectEstimate(estimateId: string): Bundle['tables'] {
+  return {
+    estimates: all<Row>('SELECT * FROM estimates WHERE id = ?', [estimateId]),
+    estimate_items: estimateChildren('estimate_items', [estimateId]),
+    estimate_payments: estimateChildren('estimate_payments', [estimateId]),
+  };
+}
+
+function estimateChildren(table: 'estimate_items' | 'estimate_payments', estimateIds: string[]): Row[] {
+  if (!estimateIds.length) return [];
+  return all<Row>(
+    `SELECT * FROM ${table} WHERE estimate_id IN (${estimateIds.map(() => '?').join(',')}) ORDER BY estimate_id, position, created_at, id`,
+    estimateIds,
+  );
 }
 
 /** Rows for one project and everything they refer to (workers, tools, photos). */
@@ -45,6 +69,9 @@ export function collectProject(projectId: string): Bundle['tables'] {
   // v_tool_status uses each tool's latest movement, so carry the tool's whole history.
   const moves = allMovesOfTools(new Set(projectMoves.map((m) => String(m.tool_id))));
   const notes = all<Row>('SELECT * FROM site_notes WHERE project_id = ?', [projectId]);
+  // the estimate this project came from, with its lines and stages
+  const estimates = all<Row>('SELECT * FROM estimates WHERE project_id = ?', [projectId]);
+  const estimateIds = estimates.map((e) => String(e.id));
 
   const workerIds = new Set<string>();
   wages.forEach((w) => workerIds.add(String(w.worker_id)));
@@ -70,6 +97,9 @@ export function collectProject(projectId: string): Bundle['tables'] {
 
   return {
     projects,
+    estimates,
+    estimate_items: estimateChildren('estimate_items', estimateIds),
+    estimate_payments: estimateChildren('estimate_payments', estimateIds),
     workers,
     tools,
     project_workers: assignments,
@@ -138,6 +168,44 @@ export function planImport(tables: Bundle['tables']): ImportPlan {
   return { counts, perTable, badFiles: [] };
 }
 
+/** What an estimate in a bundle looks like on the import preview. */
+export interface EstimatePreview {
+  id: string;
+  number: string;
+  client_name: string;
+  title: string;
+  status: Estimate['status'];
+  issue_day: string;
+  item_count: number;
+  total_cents: number;
+  /** Whether the same id is already on this phone (so the import updates it instead of adding it). */
+  on_this_phone: boolean;
+}
+
+/**
+ * The live estimates of a bundle with their totals, worked out from the bundle's own rows with the same
+ * sums as v_estimate_total. For the import preview, before anything is written.
+ */
+export function previewEstimates(tables: Bundle['tables']): EstimatePreview[] {
+  const items = ((tables.estimate_items ?? []) as unknown as EstimateItem[]).filter((i) => !i.deleted_at);
+  return ((tables.estimates ?? []) as unknown as Estimate[])
+    .filter((e) => !e.deleted_at)
+    .map((e) => {
+      const lines = items.filter((i) => i.estimate_id === e.id);
+      return {
+        id: e.id,
+        number: e.number,
+        client_name: e.client_name,
+        title: e.title,
+        status: e.status,
+        issue_day: e.issue_day,
+        item_count: lines.length,
+        total_cents: estimateSums(lines, e.discount_cents, e.tax_bp).total_cents,
+        on_this_phone: !!getDb().getFirstSync('SELECT 1 FROM estimates WHERE id = ?', [e.id]),
+      };
+    });
+}
+
 export class BundleFileError extends Error {}
 
 /**
@@ -172,7 +240,9 @@ export async function applyBundle(tables: Bundle['tables'], files: Map<string, U
   }
 
   // A tool's history (carried whole, so its status is right) can mention a project this phone does
-  // not have: that one reference is allowed to dangle until the project arrives. Every other
+  // not have, and so can an estimate that was turned into a project on the sender's phone: those two
+  // references are allowed to dangle until the project arrives (the link is kept, so the estimate is not
+  // offered as a project a second time, and it resolves when the project is imported later). Every other
   // reference is still enforced, but after the merge instead of row by row. PRAGMA foreign_keys
   // can only change outside a transaction.
   const d = getDb();
@@ -189,11 +259,11 @@ export async function applyBundle(tables: Bundle['tables'], files: Map<string, U
   return plan;
 }
 
-/** Every reference must point at a row, except a tool movement's project. Throws (and so rolls the import back) otherwise. */
+/** Every reference must point at a row, except a tool movement's or an estimate's project. Throws (and so rolls the import back) otherwise. */
 function assertReferences(d: ReturnType<typeof getDb>) {
   const broken = d
     .getAllSync<{ table: string; parent: string }>('PRAGMA foreign_key_check')
-    .filter((v) => !(v.table === 'tool_movements' && v.parent === 'projects'));
+    .filter((v) => !((v.table === 'tool_movements' || v.table === 'estimates') && v.parent === 'projects'));
   if (broken.length) {
     const what = [...new Set(broken.map((v) => `${v.table} -> ${v.parent}`))].join(', ');
     throw new Error(`FOREIGN KEY constraint failed: ${what}`);

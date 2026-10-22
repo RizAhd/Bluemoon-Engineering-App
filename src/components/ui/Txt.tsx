@@ -13,7 +13,7 @@ export interface TxtProps extends TextProps {
   numeric?: boolean;
   center?: boolean;
   /**
-   * Small label above a stat, group or card ("TOTAL COST"): caption 14/600 textMuted,
+   * Small label above a stat, group or card ("TOTAL COST"): caption 13/600 textMuted,
    * uppercase + tracked in English only (Sinhala / Tamil have no case and tracking breaks shaping).
    */
   eyebrow?: boolean;

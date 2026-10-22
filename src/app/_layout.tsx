@@ -14,18 +14,20 @@ import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
 import * as SystemUI from 'expo-system-ui';
 import { useEffect, useState } from 'react';
+import { View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
+import { AnimatedSplash } from '@/components/AnimatedSplash';
 import { AutoBackupRunner } from '@/components/AutoBackupRunner';
 import { ErrorScreen } from '@/components/ErrorScreen';
 import { RecoveryPrompt } from '@/components/RecoveryPrompt';
 import { ShareReceiver } from '@/components/ShareReceiver';
 import { ToastHost } from '@/components/ui/feedback';
-import { getDb } from '@/db';
+import { getDb, getSetting } from '@/db';
 import { useT } from '@/i18n';
 import { installGlobalErrorHandlers, reportError, setFatalErrorListener } from '@/lib/errors';
-import { motion, useColors, useFont, useScheme } from '@/theme';
+import { motion, type, useColors, useFont, useScheme } from '@/theme';
 
 SplashScreen.preventAutoHideAsync().catch(() => {});
 installGlobalErrorHandlers();
@@ -34,6 +36,8 @@ installGlobalErrorHandlers();
 export function ErrorBoundary({ error, retry }: ErrorBoundaryProps) {
   useEffect(() => {
     reportError(error, 'boundary');
+    // A crash before the splash overlay drew must not leave the native splash covering this screen.
+    SplashScreen.hideAsync().catch(() => {});
   }, [error]);
   return (
     <ErrorScreen
@@ -56,8 +60,17 @@ function openDb(): string | null {
   }
 }
 
+/** The database was set aside at start-up: RecoveryPrompt asks about it at once, so no splash. */
+function recoveringAtStart(): boolean {
+  try {
+    return !!getSetting('recovered_from_corruption');
+  } catch {
+    return false;
+  }
+}
+
 export default function RootLayout() {
-  const [fontsLoaded] = useFonts({
+  const [fontsLoaded, fontError] = useFonts({
     NotoSans_400Regular,
     NotoSans_600SemiBold,
     NotoSans_700Bold,
@@ -73,6 +86,13 @@ export default function RootLayout() {
   // Uncaught fatal JS errors show the recovery screen instead of closing the app.
   const [fatal, setFatal] = useState<Error | null>(null);
   const dbReady = !dbError;
+  // A font that fails to load falls back to the system font rather than a splash that never ends.
+  const fontsReady = fontsLoaded || !!fontError;
+  const [recovering] = useState(() => !dbError && recoveringAtStart());
+  // The animated splash runs once per start; an error or recovery screen ends it for good.
+  const [splashDone, setSplashDone] = useState(false);
+  const blocked = !!dbError || !!fatal || recovering;
+  if (blocked && !splashDone) setSplashDone(true);
 
   useEffect(() => {
     setFatalErrorListener((err) => setFatal(err));
@@ -80,16 +100,15 @@ export default function RootLayout() {
   }, []);
 
   useEffect(() => {
-    if ((fontsLoaded && dbReady) || dbError) SplashScreen.hideAsync().catch(() => {});
-  }, [fontsLoaded, dbReady, dbError]);
+    // Normally the overlay hides the native splash on its first frame; without the overlay, do it here.
+    if (blocked) SplashScreen.hideAsync().catch(() => {});
+  }, [blocked]);
 
+  let content = null;
   if (dbError) {
-    return <ErrorScreen error={dbError} titleKey="errorTitle" bodyKey="dbError" onRetry={() => setDbError(openDb())} />;
-  }
-  if (!fontsLoaded) return null;
-
-  if (fatal) {
-    return (
+    content = <ErrorScreen error={dbError} titleKey="errorTitle" bodyKey="dbError" onRetry={() => setDbError(openDb())} />;
+  } else if (fatal) {
+    content = (
       <ErrorScreen
         error={fatal}
         onRetry={() => setFatal(null)}
@@ -99,14 +118,21 @@ export default function RootLayout() {
         }}
       />
     );
+  } else if (fontsReady) {
+    content = (
+      <GestureHandlerRootView style={{ flex: 1 }}>
+        <SafeAreaProvider>
+          <AppStack />
+        </SafeAreaProvider>
+      </GestureHandlerRootView>
+    );
   }
 
   return (
-    <GestureHandlerRootView style={{ flex: 1 }}>
-      <SafeAreaProvider>
-        <AppStack />
-      </SafeAreaProvider>
-    </GestureHandlerRootView>
+    <View style={{ flex: 1 }}>
+      {content}
+      {splashDone ? null : <AnimatedSplash ready={fontsReady && dbReady} onDone={() => setSplashDone(true)} />}
+    </View>
   );
 }
 
@@ -135,7 +161,7 @@ function AppStack() {
           headerStyle: { backgroundColor: c.header },
           headerShadowVisible: false,
           headerTintColor: c.text,
-          headerTitleStyle: { fontFamily: font('semibold'), fontSize: 18, color: c.onHeader },
+          headerTitleStyle: { fontFamily: font('semibold'), fontSize: type.bodyLg, color: c.onHeader },
           headerBackButtonDisplayMode: 'minimal',
           contentStyle: { backgroundColor: c.bg },
           animation: 'slide_from_right',
@@ -163,6 +189,12 @@ function AppStack() {
         <Stack.Screen name="import" options={{ title: t('importPdf') }} />
         <Stack.Screen name="backup" options={{ title: t('backup') }} />
         <Stack.Screen name="problem" options={{ title: t('reportProblem') }} />
+        <Stack.Screen name="company" options={{ title: t('companyAndBank') }} />
+        <Stack.Screen name="estimate/index" options={{ title: t('estimates') }} />
+        <Stack.Screen name="estimate/form" options={{ title: t('estimate') }} />
+        <Stack.Screen name="estimate/[id]" options={{ title: t('estimate') }} />
+        <Stack.Screen name="estimate/item" options={{ title: t('item') }} />
+        <Stack.Screen name="estimate/payment" options={{ title: t('paymentStage') }} />
       </Stack>
       <ToastHost />
       <ShareReceiver />

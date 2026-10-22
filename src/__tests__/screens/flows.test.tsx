@@ -128,7 +128,7 @@ describe('expense form: a validation error, then a good save', () => {
     setRouteParams({ id });
     const alert = mockAlert();
     await renderScreen(<ExpenseForm />);
-    expect(inputValue(E('amount'))).toBe('185000');
+    expect(inputValue(E('amount'))).toBe('185,000');
     await typeInto(E('amount'), '190,000');
     await pressLabel(E('save'));
     expect(rows<{ amount_cents: number; version: number }>('SELECT amount_cents, version FROM expenses WHERE id = ?', [id])).toEqual([{ amount_cents: 19_000_000, version: 2 }]);
@@ -287,7 +287,7 @@ describe('worker/assign: add a worker to a project', () => {
     // choose Saman: his usual rate is filled in, and can be changed for this project
     await choose(E('worker'), E('worker'), 'Saman Kumara');
     expect(hasLabel(`${E('worker')}: Saman Kumara`)).toBe(true);
-    expect(inputValue(E('rateOnThisProject'))).toBe('3500');
+    expect(inputValue(E('rateOnThisProject'))).toBe('3,500');
     await typeInto(E('rateOnThisProject'), '3,800');
     await pressLabel(E('save'));
 
@@ -323,7 +323,7 @@ describe('worker/assign: add a worker to a project', () => {
     setRouteParams({ projectId: school, workerId: nimal });
     const alert = mockAlert();
     await renderScreen(<AssignWorkerScreen />);
-    expect(inputValue(E('rateOnThisProject'))).toBe('3500');
+    expect(inputValue(E('rateOnThisProject'))).toBe('3,500');
     await typeInto(E('rateOnThisProject'), '3,700');
     await pressLabel(E('save'));
     expect(rows('SELECT rate_cents FROM project_workers WHERE project_id = ? AND worker_id = ? AND deleted_at IS NULL', [school, nimal])).toEqual([{ rate_cents: 370_000 }]);
@@ -402,9 +402,9 @@ describe('wage form', () => {
     expect(router.back).not.toHaveBeenCalled();
 
     await choose(E('worker'), E('worker'), 'Asanka Perera');
-    expect(inputValue(E('amount'))).toBe('3000');
+    expect(inputValue(E('amount'))).toBe('3,000');
     await pressLabel(E('oneAndHalf'));
-    expect(inputValue(E('amount'))).toBe('4500');
+    expect(inputValue(E('amount'))).toBe('4,500');
     expect(visibleText()).toContain('1.5 × Rs 3,000');
 
     await pressLabel(E('save'));

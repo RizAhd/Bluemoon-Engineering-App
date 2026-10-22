@@ -4,6 +4,7 @@ import { AlertTriangle, CheckCircle2, FileDown, FileQuestion, Paperclip } from '
 import { useEffect, useState } from 'react';
 import { View } from 'react-native';
 
+import { EstimateStatusBadge } from '@/components/EstimateBits';
 import { Button } from '@/components/ui/Button';
 import { EmptyState, toast } from '@/components/ui/feedback';
 import { PickerSheet } from '@/components/ui/form';
@@ -12,20 +13,21 @@ import { Txt } from '@/components/ui/Txt';
 import type { DataTable } from '@/db/schema';
 import { setCurrentProject, useProjects } from '@/hooks/data';
 import { useT, type TKey } from '@/i18n';
-import { applyBundle, planImport, type Bundle, type ImportPlan } from '@/lib/bundle';
+import { applyBundle, planImport, previewEstimates, type Bundle, type EstimatePreview, type ImportPlan } from '@/lib/bundle';
 import { formatDay, toDay } from '@/lib/dates';
 import { guard, reportError } from '@/lib/errors';
 import { addFile } from '@/lib/files';
-import { readProjectPdf } from '@/lib/pdf';
+import { formatLKR } from '@/lib/money';
+import { isEstimateBundle, readProjectPdf } from '@/lib/pdf';
 import { space, useColors } from '@/theme';
 
 type State =
   | { step: 'pick' }
   | { step: 'reading' }
-  | { step: 'preview'; bundle: Bundle; files: Map<string, Uint8Array>; plan: ImportPlan }
+  | { step: 'preview'; bundle: Bundle; files: Map<string, Uint8Array>; plan: ImportPlan; estimate: EstimatePreview | null }
   | { step: 'foreign'; uri: string }
   | { step: 'error'; key: TKey }
-  | { step: 'done'; plan: ImportPlan; projectId?: string };
+  | { step: 'done'; plan: ImportPlan; projectId?: string; estimateId?: string };
 
 const TABLE_LABEL: Record<DataTable, TKey> = {
   projects: 'projects',
@@ -37,6 +39,9 @@ const TABLE_LABEL: Record<DataTable, TKey> = {
   tool_movements: 'toolRecords',
   site_notes: 'siteNotes',
   attachments: 'receiptPhotos',
+  estimates: 'estimates',
+  estimate_items: 'estimateItems',
+  estimate_payments: 'estimateStages',
 };
 
 export default function ImportScreen() {
@@ -76,7 +81,7 @@ export default function ImportScreen() {
     if (!plan) return; // the preview stays so the user can try again
     if (bundle.project_id) setCurrentProject(bundle.project_id);
     toast(t('importDone'));
-    setState({ step: 'done', plan, projectId: bundle.project_id });
+    setState({ step: 'done', plan, projectId: bundle.project_id, estimateId: isEstimateBundle(bundle) ? bundle.estimate_id : undefined });
   }
 
   async function attach(projectId: string) {
@@ -137,13 +142,20 @@ export default function ImportScreen() {
 
   if (state.step === 'done') {
     return (
-      <Screen footer={<Button label={t('done')} onPress={() => (state.projectId ? router.replace(`/project/${state.projectId}`) : router.back())} full />}>
+      <Screen
+        footer={
+          <Button
+            label={t('done')}
+            onPress={() => (state.estimateId ? router.replace(`/estimate/${state.estimateId}`) : state.projectId ? router.replace(`/project/${state.projectId}`) : router.back())}
+            full
+          />
+        }>
         <EmptyState icon={CheckCircle2} title={t('importDone')} hint={summary(state.plan, t)} />
       </Screen>
     );
   }
 
-  const { bundle, plan } = state;
+  const { bundle, plan, estimate } = state;
   const nothing = plan.counts.inserted + plan.counts.updated === 0;
   return (
     <Screen
@@ -154,15 +166,44 @@ export default function ImportScreen() {
           <Button label={t('importNow')} loading={busy} onPress={() => void doImport()} full />
         )
       }>
-      <Card gap={space.xs}>
-        <Txt eyebrow>{t('project')}</Txt>
-        <Txt variant="title" weight="semibold">
-          {bundle.project_name ?? '—'}
-        </Txt>
-        <Txt variant="caption" color="textMuted" numeric>
-          {`${t('fromPhone')}: ${formatDay(toDay(new Date(bundle.exported_at)))}`}
-        </Txt>
-      </Card>
+      {estimate ? (
+        <Card gap={space.xs}>
+          <Txt eyebrow>{t('estimate')}</Txt>
+          <Txt variant="title" weight="semibold" numberOfLines={2}>
+            {estimate.client_name}
+          </Txt>
+          <Txt color="textMuted" numberOfLines={2}>
+            {estimate.title}
+          </Txt>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.sm, flexWrap: 'wrap', marginTop: space.xs }}>
+            <EstimateStatusBadge status={estimate.status} />
+            <Txt variant="caption" color="textMuted" numeric>
+              {`${estimate.number} · ${formatDay(estimate.issue_day)}`}
+            </Txt>
+          </View>
+          <Txt variant="title" weight="bold" numeric adjustsFontSizeToFit minimumFontScale={0.7} numberOfLines={1}>
+            {formatLKR(estimate.total_cents)}
+          </Txt>
+          {estimate.on_this_phone && !nothing ? (
+            <Txt variant="caption" color="warning" weight="semibold">
+              {t('estimateOnPhoneUpdate')}
+            </Txt>
+          ) : null}
+          <Txt variant="caption" color="textMuted" numeric>
+            {`${t('fromPhone')}: ${formatDay(toDay(new Date(bundle.exported_at)))}`}
+          </Txt>
+        </Card>
+      ) : (
+        <Card gap={space.xs}>
+          <Txt eyebrow>{t('project')}</Txt>
+          <Txt variant="title" weight="semibold">
+            {bundle.project_name ?? '—'}
+          </Txt>
+          <Txt variant="caption" color="textMuted" numeric>
+            {`${t('fromPhone')}: ${formatDay(toDay(new Date(bundle.exported_at)))}`}
+          </Txt>
+        </Card>
+      )}
 
       <SectionTitle title={t('willChange')} />
       <ListCard>
@@ -199,7 +240,11 @@ async function analyze(uri: string): Promise<State> {
   try {
     const bytes = await new File(uri).bytes();
     const res = await readProjectPdf(bytes);
-    if (res.status === 'ok') return { step: 'preview', bundle: res.bundle, files: res.files, plan: planImport(res.bundle.tables) };
+    if (res.status === 'ok') {
+      // an estimate PDF shows the estimate itself (number, client, total) where a project PDF shows the project name
+      const estimate = isEstimateBundle(res.bundle) ? (previewEstimates(res.bundle.tables).find((e) => e.id === res.bundle.estimate_id) ?? null) : null;
+      return { step: 'preview', bundle: res.bundle, files: res.files, plan: planImport(res.bundle.tables), estimate };
+    }
     if (res.status === 'not-ours') return { step: 'foreign', uri };
     return { step: 'error', key: res.status === 'newer' ? 'pdfNewer' : 'pdfDamaged' };
   } catch (e) {
