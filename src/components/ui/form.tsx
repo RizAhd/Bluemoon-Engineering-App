@@ -4,6 +4,7 @@ import type { LucideIcon } from 'lucide-react-native';
 import { AlertCircle, Calendar, Check, ChevronDown, Search, X } from 'lucide-react-native';
 import { useState, type ReactNode } from 'react';
 import { FlatList, Modal, Pressable, TextInput, View, type StyleProp, type TextInputProps, type ViewStyle } from 'react-native';
+import Animated from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useT } from '@/i18n';
@@ -12,6 +13,7 @@ import { formatAmount, parseCents } from '@/lib/money';
 import { FONT_MAP, hairline, radius, space, touch, touchMin, type, useColors, useFont } from '@/theme';
 
 import { IconButton } from './Button';
+import { usePressScale } from './PressScale';
 import { Txt } from './Txt';
 
 // ---------------------------------------------------------------- shared bits
@@ -226,6 +228,43 @@ export interface ChipOption<T extends string> {
   accessibilityLabel?: string;
 }
 
+/** One option of a Chips group. Its own component so each chip owns its press animation. */
+function Chip<T extends string>({ option: o, on, numeric, onChange }: { option: ChipOption<T>; on: boolean; numeric?: boolean; onChange: (v: T) => void }) {
+  const c = useColors();
+  const press = usePressScale();
+  const off = !!o.disabled;
+  return (
+    <Animated.View style={press.style}>
+      <Pressable
+        accessibilityRole="radio"
+        accessibilityState={{ checked: on, disabled: off }}
+        accessibilityLabel={o.accessibilityLabel ?? (o.count != null ? `${o.label} ${o.count}` : o.label)}
+        disabled={off}
+        {...press.handlers}
+        onPress={() => {
+          Haptics.selectionAsync().catch(() => {});
+          onChange(o.value);
+        }}
+        style={({ pressed }) => ({
+          minHeight: touchMin,
+          paddingHorizontal: space.lg,
+          borderRadius: radius.pill,
+          borderWidth: hairline,
+          borderColor: on ? (pressed ? c.slatePressed : c.slate) : off ? c.border : c.borderStrong,
+          backgroundColor: on ? (pressed ? c.slatePressed : c.slate) : pressed ? c.muted : c.card,
+          flexDirection: 'row',
+          alignItems: 'center',
+          gap: space.sm,
+        })}>
+        {on ? <Check size={18} color={c.onSlate} strokeWidth={2.4} /> : o.icon}
+        <Txt weight={on ? 'semibold' : 'regular'} numeric={numeric} style={{ color: on ? c.onSlate : off ? c.placeholder : c.text, flexShrink: 1 }} numberOfLines={2}>
+          {o.count != null ? `${o.label} ${o.count}` : o.label}
+        </Txt>
+      </Pressable>
+    </Animated.View>
+  );
+}
+
 /** Single-choice chips that wrap onto several lines. Selected = ink (slate) fill with a tick. */
 export function Chips<T extends string>({
   label,
@@ -243,43 +282,13 @@ export function Chips<T extends string>({
   /** Labels are numbers (½ · 1 · 1½): render with Latin tabular digits. */
   numeric?: boolean;
 }) {
-  const c = useColors();
   return (
     <View style={{ gap: space.sm }}>
       {label ? <Label text={label} error={error} /> : null}
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: space.sm }} accessibilityRole="radiogroup">
-        {options.map((o) => {
-          const on = o.value === value;
-          const off = !!o.disabled;
-          return (
-            <Pressable
-              key={o.value}
-              accessibilityRole="radio"
-              accessibilityState={{ checked: on, disabled: off }}
-              accessibilityLabel={o.accessibilityLabel ?? (o.count != null ? `${o.label} ${o.count}` : o.label)}
-              disabled={off}
-              onPress={() => {
-                Haptics.selectionAsync().catch(() => {});
-                onChange(o.value);
-              }}
-              style={({ pressed }) => ({
-                minHeight: touchMin,
-                paddingHorizontal: space.lg,
-                borderRadius: radius.pill,
-                borderWidth: hairline,
-                borderColor: on ? (pressed ? c.slatePressed : c.slate) : off ? c.border : c.borderStrong,
-                backgroundColor: on ? (pressed ? c.slatePressed : c.slate) : pressed ? c.muted : c.card,
-                flexDirection: 'row',
-                alignItems: 'center',
-                gap: space.sm,
-              })}>
-              {on ? <Check size={18} color={c.onSlate} strokeWidth={2.4} /> : o.icon}
-              <Txt weight={on ? 'semibold' : 'regular'} numeric={numeric} style={{ color: on ? c.onSlate : off ? c.placeholder : c.text, flexShrink: 1 }} numberOfLines={2}>
-                {o.count != null ? `${o.label} ${o.count}` : o.label}
-              </Txt>
-            </Pressable>
-          );
-        })}
+        {options.map((o) => (
+          <Chip key={o.value} option={o} on={o.value === value} numeric={numeric} onChange={onChange} />
+        ))}
       </View>
       <HelperText error={error} />
     </View>

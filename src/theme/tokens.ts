@@ -127,10 +127,24 @@ export const lineHeight = {
   body: { latin: 24, complex: 26 },
   bodyLg: { latin: 26, complex: 28 },
   title: { latin: 28, complex: 30 },
-  heading: { latin: 30, complex: 34 },
+  heading: { latin: 32, complex: 34 },
   amount: { latin: 36, complex: 36 },
-  amountXl: { latin: 46, complex: 46 },
+  amountXl: { latin: 48, complex: 48 },
 } as const satisfies Record<keyof typeof type, { latin: number; complex: number }>;
+
+/**
+ * Letter spacing in dp, Latin text only (Sinhala / Tamil must stay at 0 or marks mis-shape).
+ * Small text opens up slightly (+0.5 to 1 %), large text tightens (-1 % at 18-20, -2 % at 24+).
+ */
+export const tracking = {
+  caption: 0.1,
+  body: 0,
+  bodyLg: -0.18,
+  title: -0.2,
+  heading: -0.48,
+  amount: -0.6,
+  amountXl: -0.8,
+} as const satisfies Record<keyof typeof type, number>;
 
 /** How far system font scaling may enlarge each variant. */
 export const fontScaleMax = {

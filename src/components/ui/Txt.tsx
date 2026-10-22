@@ -1,7 +1,7 @@
 import { Platform, Text, type TextProps } from 'react-native';
 
 import { useLang } from '@/i18n';
-import { FONT_MAP, fontScaleMax, lineHeight, type, useColors, useFont, type Palette, type Weight } from '@/theme';
+import { FONT_MAP, fontScaleMax, lineHeight, tracking, type, useColors, useFont, type Palette, type Weight } from '@/theme';
 
 export type TxtVariant = keyof typeof type;
 
@@ -43,7 +43,8 @@ export function Txt({ variant, weight, color, numeric, center, eyebrow, style, m
           fontVariant: numeric ? ['tabular-nums'] : undefined,
           textAlign: center ? 'center' : undefined,
           textTransform: upper ? 'uppercase' : undefined,
-          letterSpacing: upper ? 0.5 : undefined,
+          // Latin only: Sinhala / Tamil must not be tracked or their marks mis-shape.
+          letterSpacing: upper ? 0.5 : latin ? tracking[v] : undefined,
           // Sinhala / Tamil keep Android's font padding so marks never clip; Latin numbers may drop it.
           includeFontPadding: numeric && Platform.OS === 'android' ? false : undefined,
         },

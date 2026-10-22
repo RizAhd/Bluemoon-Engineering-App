@@ -51,11 +51,31 @@ npx tsc --noEmit          # typecheck
 npx eslint src            # lint
 ```
 
-Build an installable APK (no Play Store needed):
+### Getting an installable APK (no Play Store needed)
+
+**On GitHub (no Expo account, nothing to install).** Open the repository's **Actions** tab,
+choose **Android APK**, then **Run workflow**. Pushing a tag named `apk-…` starts it too
+(`git tag apk-2 && git push origin apk-2`). It takes about 15 to 25 minutes. When it turns green, open the run and download **Bluemoon-Site-APK**
+from *Artifacts*, unzip it, and send the `.apk` to the phone. See
+[.github/workflows/android-apk.yml](.github/workflows/android-apk.yml).
+
+**With Expo (EAS), if you prefer:**
 
 ```bash
-npx eas-cli@latest build -p android --profile preview
+npx eas-cli@latest login
+npm run build:apk
 ```
+
+Local Android builds on Windows fail on the 260-character path limit, so use one of the two
+routes above. Both test builds are signed with the standard Android debug key. A later build
+signed with your own release key cannot be installed over them: Android refuses, and the phone
+would have to uninstall first, which deletes its data. Take a full backup (Menu, Backup) before
+switching keys, or sign the first handover build with your own release key from the start.
+
+### UI rules
+
+Screens follow [.claude/skills/bluemoon-mobile-ui](.claude/skills/bluemoon-mobile-ui/SKILL.md):
+type scale, 4 pt grid, touch sizes and motion. Read it before changing any screen.
 
 ## Project layout
 

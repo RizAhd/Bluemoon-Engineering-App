@@ -62,6 +62,7 @@ Keep the file. If a phone is lost, this file brings everything back.
 ## 5. Two phones (for example owner and supervisor)
 
 On the first phone: open the project → **Export PDF** → send it on WhatsApp **as a Document** (not as a photo).
+Under the button there are two tick boxes. **Include photos** puts the bill and site photos inside the PDF, so the other phone gets them too (the file gets bigger). **On company letterhead** prints the report on the Bluemoon letterhead; leave it off for a plain report. Either way the other phone can import the PDF.
 On the second phone: open the PDF in WhatsApp → **Share → Bluemoon Site**, or **Menu → Import PDF**.
 It shows what will be added. Tap **Import now**. Importing the same PDF twice changes nothing.
 A PDF made by another program (a supplier bill, a drawing) can be *attached* to a project, but its numbers are not read automatically.
@@ -81,6 +82,6 @@ The Sinhala and Tamil words are a first version. Ask a Sinhala/Tamil speaker on 
 ## 8. Good habits
 
 - Enter things the same day. A photo of the receipt is the best proof.
-- Never uninstall the app before taking a **full backup** (section 4).
+- Never uninstall the app before taking a **full backup** (section 4). This also applies when a new build is signed with a different key: Android then asks you to uninstall first, and uninstalling deletes the phone's data.
 - Keep about 1 GB of free space on the phone. Photos need room.
 - Do not change the phone's date and time by hand: backups are named by date.

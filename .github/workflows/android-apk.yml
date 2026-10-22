@@ -1,0 +1,81 @@
+name: Android APK
+
+# Builds an installable APK of Bluemoon Site on GitHub's Linux machines, so nothing has to be
+# built on a Windows PC (its 260-character path limit breaks the Android build there).
+# It starts when you press "Run workflow" in the Actions tab, or when a tag named apk-* is pushed.
+# Download the APK from the finished run: Actions > Android APK > the run > Artifacts.
+# The APK is signed with the standard Android debug key. That is fine for testing on your own
+# phones. Sign the final handover build with your own release key (see docs/OWNER-GUIDE.md).
+
+on:
+  workflow_dispatch:
+    inputs:
+      abis:
+        description: 'CPU types to build (arm64-v8a covers almost every phone made since 2017)'
+        default: 'arm64-v8a'
+  push:
+    tags: ['apk-*']
+
+concurrency:
+  group: android-apk
+  cancel-in-progress: false
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      CI: 'true'
+      EXPO_NO_TELEMETRY: '1'
+      ABIS: ${{ github.event.inputs.abis || 'arm64-v8a' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Install packages
+        run: npm ci --no-audit --no-fund
+
+      - name: Prepare the Android SDK
+        run: |
+          SDKM="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          (yes | "$SDKM" --licenses > /dev/null) || true
+          # React Native 0.88 builds against API 37 with NDK 27.1; Gradle fetches them if this fails.
+          ("$SDKM" "platforms;android-37" "ndk;27.1.12297006" > /dev/null) || true
+
+      - name: Generate the Android project
+        run: npx expo prebuild --platform android --no-install
+
+      - name: Tune Gradle for a test build
+        run: |
+          {
+            echo "org.gradle.jvmargs=-Xmx3g -XX:MaxMetaspaceSize=768m -Dfile.encoding=UTF-8"
+            echo "org.gradle.daemon=false"
+            echo "android.enableMinifyInReleaseBuilds=false"
+            echo "android.enableShrinkResourcesInReleaseBuilds=false"
+          } >> android/gradle.properties
+
+      - name: Build the release APK
+        working-directory: android
+        run: ./gradlew assembleRelease -PreactNativeArchitectures="$ABIS" --console=plain --stacktrace
+
+      - name: Name the APK
+        run: |
+          mkdir -p dist
+          cp android/app/build/outputs/apk/release/app-release.apk "dist/Bluemoon-Site-$(date +%Y%m%d)-${GITHUB_SHA::7}.apk"
+          ls -lh dist
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Bluemoon-Site-APK
+          path: dist/*.apk
+          retention-days: 30
+          if-no-files-found: error

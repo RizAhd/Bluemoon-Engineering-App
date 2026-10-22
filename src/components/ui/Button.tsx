@@ -2,9 +2,11 @@ import * as Haptics from 'expo-haptics';
 import type { LucideIcon } from 'lucide-react-native';
 import { useState } from 'react';
 import { ActivityIndicator, Pressable, View, type StyleProp, type ViewStyle } from 'react-native';
+import Animated from 'react-native-reanimated';
 
 import { hairline, radius, space, touch, touchMin, useColors, type Palette } from '@/theme';
 
+import { usePressScale } from './PressScale';
 import { Txt } from './Txt';
 
 export type ButtonKind = 'primary' | 'secondary' | 'ghost' | 'danger';
@@ -33,6 +35,7 @@ export interface ButtonProps {
  */
 export function Button({ label, onPress, kind = 'primary', icon: Icon, loading, disabled, full, compact, style, accessibilityLabel, testID }: ButtonProps) {
   const c = useColors();
+  const press = usePressScale();
   const [focus, setFocus] = useState(false);
   const off = !!disabled || !!loading;
 
@@ -57,42 +60,45 @@ export function Button({ label, onPress, kind = 'primary', icon: Icon, loading, 
         },
         style,
       ]}>
-      <Pressable
-        testID={testID}
-        accessibilityRole="button"
-        accessibilityLabel={accessibilityLabel ?? label}
-        accessibilityState={{ disabled: off, busy: !!loading }}
-        disabled={off}
-        onFocus={() => setFocus(true)}
-        onBlur={() => setFocus(false)}
-        onPress={() => {
-          Haptics.selectionAsync().catch(() => {});
-          onPress();
-        }}
-        style={({ pressed }) => ({
-          minHeight: compact ? touchMin : touch,
-          paddingHorizontal: compact ? space.lg : 20,
-          borderRadius: radius.md,
-          borderWidth: hairline,
-          borderColor: disabled ? spec.offBorder : spec.border,
-          backgroundColor: disabled ? spec.offBg : pressed && !off ? spec.pressed : spec.bg,
-          alignItems: 'center',
-          justifyContent: 'center',
-          flexDirection: 'row',
-          gap: space.sm,
-        })}>
-        {Icon ? <Icon size={compact ? 20 : 22} color={fg} strokeWidth={2} style={{ opacity: loading ? 0 : 1 }} /> : null}
-        <View style={{ flexShrink: 1, opacity: loading ? 0 : 1 }}>
-          <Txt weight="semibold" variant={compact ? 'body' : 'bodyLg'} style={{ color: fg }} numberOfLines={2} center>
-            {label}
-          </Txt>
-        </View>
-        {loading ? (
-          <View pointerEvents="none" style={{ position: 'absolute', inset: 0, alignItems: 'center', justifyContent: 'center' }}>
-            <ActivityIndicator color={spec.fg} />
+      <Animated.View style={press.style}>
+        <Pressable
+          testID={testID}
+          accessibilityRole="button"
+          accessibilityLabel={accessibilityLabel ?? label}
+          accessibilityState={{ disabled: off, busy: !!loading }}
+          disabled={off}
+          {...press.handlers}
+          onFocus={() => setFocus(true)}
+          onBlur={() => setFocus(false)}
+          onPress={() => {
+            Haptics.selectionAsync().catch(() => {});
+            onPress();
+          }}
+          style={({ pressed }) => ({
+            minHeight: compact ? touchMin : touch,
+            paddingHorizontal: compact ? space.lg : 20,
+            borderRadius: radius.md,
+            borderWidth: hairline,
+            borderColor: disabled ? spec.offBorder : spec.border,
+            backgroundColor: disabled ? spec.offBg : pressed && !off ? spec.pressed : spec.bg,
+            alignItems: 'center',
+            justifyContent: 'center',
+            flexDirection: 'row',
+            gap: space.sm,
+          })}>
+          {Icon ? <Icon size={compact ? 20 : 22} color={fg} strokeWidth={2} style={{ opacity: loading ? 0 : 1 }} /> : null}
+          <View style={{ flexShrink: 1, opacity: loading ? 0 : 1 }}>
+            <Txt weight="semibold" variant={compact ? 'body' : 'bodyLg'} style={{ color: fg }} numberOfLines={2} center>
+              {label}
+            </Txt>
           </View>
-        ) : null}
-      </Pressable>
+          {loading ? (
+            <View pointerEvents="none" style={{ position: 'absolute', inset: 0, alignItems: 'center', justifyContent: 'center' }}>
+              <ActivityIndicator color={spec.fg} />
+            </View>
+          ) : null}
+        </Pressable>
+      </Animated.View>
     </View>
   );
 }
@@ -115,35 +121,39 @@ export interface IconButtonProps {
 /** Round icon button with a required label for screen readers. 48 × 48 (44 in headers), icon 24. */
 export function IconButton({ icon: Icon, label, onPress, size = touchMin, tone = 'text', pressedBg = 'muted', disabled, style }: IconButtonProps) {
   const c = useColors();
+  const press = usePressScale();
   const [focus, setFocus] = useState(false);
   return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityLabel={label}
-      accessibilityState={{ disabled: !!disabled }}
-      disabled={disabled}
-      hitSlop={4}
-      onFocus={() => setFocus(true)}
-      onBlur={() => setFocus(false)}
-      onPress={() => {
-        Haptics.selectionAsync().catch(() => {});
-        onPress();
-      }}
-      style={({ pressed }) => [
-        {
-          width: size,
-          height: size,
-          borderRadius: size / 2,
-          alignItems: 'center',
-          justifyContent: 'center',
-          backgroundColor: pressed ? c[pressedBg] : 'transparent',
-          borderWidth: 2,
-          borderColor: focus ? c.focusRing : 'transparent',
-        },
-        style,
-      ]}>
-      <Icon size={24} color={disabled ? c.placeholder : c[tone]} strokeWidth={2} />
-    </Pressable>
+    <Animated.View style={press.style}>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={label}
+        accessibilityState={{ disabled: !!disabled }}
+        disabled={disabled}
+        hitSlop={4}
+        {...press.handlers}
+        onFocus={() => setFocus(true)}
+        onBlur={() => setFocus(false)}
+        onPress={() => {
+          Haptics.selectionAsync().catch(() => {});
+          onPress();
+        }}
+        style={({ pressed }) => [
+          {
+            width: size,
+            height: size,
+            borderRadius: size / 2,
+            alignItems: 'center',
+            justifyContent: 'center',
+            backgroundColor: pressed ? c[pressedBg] : 'transparent',
+            borderWidth: 2,
+            borderColor: focus ? c.focusRing : 'transparent',
+          },
+          style,
+        ]}>
+        <Icon size={24} color={disabled ? c.placeholder : c[tone]} strokeWidth={2} />
+      </Pressable>
+    </Animated.View>
   );
 }
 

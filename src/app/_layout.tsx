@@ -1,10 +1,13 @@
-import { NotoSans_400Regular, NotoSans_600SemiBold, NotoSans_700Bold } from '@expo-google-fonts/noto-sans';
-import {
-  NotoSansSinhala_400Regular,
-  NotoSansSinhala_600SemiBold,
-  NotoSansSinhala_700Bold,
-} from '@expo-google-fonts/noto-sans-sinhala';
-import { NotoSansTamil_400Regular, NotoSansTamil_600SemiBold, NotoSansTamil_700Bold } from '@expo-google-fonts/noto-sans-tamil';
+// Deep imports: the package index pulls in every weight (about 10 MB of fonts the app never uses).
+import { NotoSans_400Regular } from '@expo-google-fonts/noto-sans/400Regular';
+import { NotoSans_600SemiBold } from '@expo-google-fonts/noto-sans/600SemiBold';
+import { NotoSans_700Bold } from '@expo-google-fonts/noto-sans/700Bold';
+import { NotoSansSinhala_400Regular } from '@expo-google-fonts/noto-sans-sinhala/400Regular';
+import { NotoSansSinhala_600SemiBold } from '@expo-google-fonts/noto-sans-sinhala/600SemiBold';
+import { NotoSansSinhala_700Bold } from '@expo-google-fonts/noto-sans-sinhala/700Bold';
+import { NotoSansTamil_400Regular } from '@expo-google-fonts/noto-sans-tamil/400Regular';
+import { NotoSansTamil_600SemiBold } from '@expo-google-fonts/noto-sans-tamil/600SemiBold';
+import { NotoSansTamil_700Bold } from '@expo-google-fonts/noto-sans-tamil/700Bold';
 import { useFonts } from 'expo-font';
 import { DarkTheme, DefaultTheme, router, Stack, ThemeProvider, type ErrorBoundaryProps } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';

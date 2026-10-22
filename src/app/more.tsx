@@ -3,6 +3,7 @@ import { router } from 'expo-router';
 import { Bug, Database, FileDown, NotebookPen, ShieldCheck } from 'lucide-react-native';
 import { Alert, View } from 'react-native';
 
+import { BrandLogo } from '@/components/Brand';
 import { Chips } from '@/components/ui/form';
 import { ListCard, ListRow, Screen, SectionTitle } from '@/components/ui/layout';
 import { Txt } from '@/components/ui/Txt';
@@ -73,15 +74,25 @@ export default function MoreScreen() {
       />
 
       <SectionTitle title={t('about')} />
-      <View style={{ gap: space.xs }}>
-        <Txt variant="caption" color="textMuted">
-          Bluemoon Engineering (Pvt) Ltd
+      <View style={{ gap: space.xs, alignItems: 'center', paddingTop: space.sm }}>
+        <BrandLogo width={160} />
+        <Txt variant="caption" color="textMuted" center>
+          Reg. No. PV 00232701 · Welimada, Badulla
         </Txt>
-        <Txt variant="caption" color="textMuted" numeric>
+        <Txt variant="caption" color="textMuted" numeric center>
           {`${t('version')} ${Application.nativeApplicationVersion ?? '1.0.0'} · ${t('buildNumber')} ${Application.nativeBuildVersion ?? '—'}`}
         </Txt>
-        <Txt variant="caption" color="textMuted" numeric>
+        <Txt variant="caption" color="textMuted" numeric center>
           {`ID ${deviceId().slice(0, 8)}`}
+        </Txt>
+      </View>
+
+      <View style={{ alignItems: 'center', gap: 2, paddingTop: space.lg }} accessible accessibilityLabel={`${t('developedBy')} ZYFLO.TECH`}>
+        <Txt variant="caption" color="textMuted" center>
+          {t('developedBy')}
+        </Txt>
+        <Txt weight="semibold" color="primary" numeric center>
+          ZYFLO.TECH
         </Txt>
       </View>
     </Screen>
