@@ -311,6 +311,12 @@ export const en = {
   recoverDone: 'Records restored from the latest automatic backup',
   noAutoBackup: 'There is no automatic backup on this phone. Use More → Backup → Restore with a backup file from Google Drive.',
 
+  // letterhead export
+  letterheadOption: "On company letterhead",
+  letterheadHint: "Adds the Bluemoon header and footer to every page. Leave off for plain reports.",
+  includePhotosHint: "Bills and site photos are saved inside the PDF so another phone can import them. The file gets bigger.",
+  letterheadUnavailable: "The letterhead could not be loaded, so a plain report was made.",
+
   // validation
   errName: 'Please enter a name',
   errAmount: 'Enter an amount, e.g. 2500',
@@ -331,6 +337,7 @@ export const en = {
   buildNumber: 'Build',
   shareBackup: 'Share backup {day}',
   restoreThisBackup: 'Restore backup {day}',
+  developedBy: 'Developed by',
 } as const;
 
 export type Dict = Record<keyof typeof en, string>;

@@ -302,6 +302,11 @@ export const si: Dict = {
   noAutoBackup: 'මෙම දුරකථනයේ ස්වයංක්‍රීය උපස්ථයක් නැත. තවත් → උපස්ථය → ප්‍රතිසාධනය හරහා Google Drive හි උපස්ථ ගොනුවක් භාවිත කරන්න.',
 
   // validation
+  letterheadOption: "සමාගම් ලිපි ශීර්ෂය සහිතව",
+  letterheadHint: "සෑම පිටුවකටම Bluemoon ශීර්ෂය සහ පාදය එකතු කරයි. සාමාන්‍ය වාර්තා සඳහා අක්‍රිය කරන්න.",
+  includePhotosHint: "බිල්පත් සහ සයිට් ඡායාරූප PDF ඇතුළත සුරැකේ, එබැවින් වෙනත් දුරකථනයකට ආයාත කළ හැක. ගොනුව විශාල වේ.",
+  letterheadUnavailable: "ලිපි ශීර්ෂය පූරණය කළ නොහැකි විය, එබැවින් සාමාන්‍ය වාර්තාවක් සාදන ලදී.",
+
   errName: 'කරුණාකර නමක් ඇතුළත් කරන්න',
   errAmount: 'මුදලක් ඇතුළත් කරන්න, උදා. 2500',
   errProject: 'ව්‍යාපෘතියක් තෝරන්න',
@@ -321,4 +326,5 @@ export const si: Dict = {
   buildNumber: 'බිල්ඩ්',
   shareBackup: '{day} උපස්ථය බෙදාගන්න',
   restoreThisBackup: '{day} උපස්ථයෙන් ප්‍රතිසාධනය කරන්න',
+  developedBy: 'නිර්මාණය කළේ',
 };

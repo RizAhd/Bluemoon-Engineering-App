@@ -2,15 +2,16 @@ import * as Sharing from 'expo-sharing';
 import { router, Stack, useLocalSearchParams } from 'expo-router';
 import { FileOutput, Hammer, HardHat, NotebookPen, Pencil, Star, UserPlus } from 'lucide-react-native';
 import { useState } from 'react';
-import { Switch, View } from 'react-native';
+import { Pressable, View } from 'react-native';
 
 import { PhotoStrip } from '@/components/PhotoStrip';
 import { CategoryBars, ContractBar, Stat, Tiles } from '@/components/Stats';
 import { Button, HeaderButton } from '@/components/ui/Button';
 import { Badge, EmptyState, toast } from '@/components/ui/feedback';
+import { Checkbox } from '@/components/ui/form';
 import { Card, Divider, ListCard, ListRow, Screen, SectionTitle } from '@/components/ui/layout';
 import { Txt } from '@/components/ui/Txt';
-import { useFirst, useQuery } from '@/db';
+import { setSetting, useFirst, useQuery, useSetting } from '@/db';
 import type { ProjectCost, ToolStatus } from '@/db/types';
 import { setCurrentProject, useCurrentProjectId, useProject, useProjectWorkers } from '@/hooks/data';
 import { useT, type TKey } from '@/i18n';
@@ -18,14 +19,36 @@ import { formatDay } from '@/lib/dates';
 import { showError } from '@/lib/errors';
 import { formatLKR } from '@/lib/money';
 import { exportProjectPdf } from '@/lib/pdf';
-import { space, useColors } from '@/theme';
+import { space } from '@/theme';
 
 const MAX_ROWS = 5;
+
+/** One export choice: a checkbox, a label and a one-line hint. The whole row is the tap target (48 dp+). */
+function ExportOption({ label, hint, checked, onChange }: { label: string; hint: string; checked: boolean; onChange: (next: boolean) => void }) {
+  return (
+    <Pressable
+      accessibilityRole="checkbox"
+      accessibilityState={{ checked }}
+      accessibilityLabel={`${label}. ${hint}`}
+      onPress={() => onChange(!checked)}
+      style={{ flexDirection: 'row', alignItems: 'center', gap: space.xs, minHeight: 56 }}>
+      {/* The row carries the role and the tap; the box is only the picture of the state. */}
+      <View pointerEvents="none" accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
+        <Checkbox checked={checked} onChange={onChange} label={label} />
+      </View>
+      <View style={{ flex: 1, paddingVertical: space.xs }}>
+        <Txt weight="semibold">{label}</Txt>
+        <Txt variant="caption" color="textMuted">
+          {hint}
+        </Txt>
+      </View>
+    </Pressable>
+  );
+}
 
 export default function ProjectDetail() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const t = useT();
-  const c = useColors();
   const project = useProject(id);
   const current = useCurrentProjectId();
   const cost = useFirst<ProjectCost>('SELECT * FROM v_project_cost WHERE project_id = ?', [id ?? '']);
@@ -40,7 +63,9 @@ export default function ProjectDetail() {
      WHERE s.is_out = 1 AND s.project_id = ? ORDER BY s.name COLLATE NOCASE`,
     [id ?? ''],
   );
-  const [includePhotos, setIncludePhotos] = useState(true);
+  // The last choices are remembered: photos on by default, letterhead off by default.
+  const includePhotos = useSetting('export_photos') !== '0';
+  const letterhead = useSetting('export_letterhead') === '1';
   const [exporting, setExporting] = useState(false);
 
   if (!project || !cost) {
@@ -65,10 +90,14 @@ export default function ProjectDetail() {
   async function onExport() {
     setExporting(true);
     try {
-      const file = await exportProjectPdf(pr.id, { includePhotos });
+      const file = await exportProjectPdf(pr.id, {
+        includePhotos,
+        letterhead,
+        onNotice: () => toast(t('letterheadUnavailable'), { tone: 'danger' }),
+      });
       await Sharing.shareAsync(file.uri, { mimeType: 'application/pdf', dialogTitle: pr.name, UTI: 'com.adobe.pdf' });
     } catch (e) {
-      showError(e, 'project.exportPdf', t, { id: pr.id, includePhotos });
+      showError(e, 'project.exportPdf', t, { id: pr.id, includePhotos, letterhead });
     } finally {
       setExporting(false);
     }
@@ -217,16 +246,19 @@ export default function ProjectDetail() {
         <SectionTitle title={t('exportPdf')} />
         <Card>
           <Txt color="textMuted">{t('exportPdfHint')}</Txt>
-          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', minHeight: 48, gap: space.md }}>
-            <Txt weight="semibold" style={{ flex: 1 }}>
-              {t('includePhotos')}
-            </Txt>
-            <Switch
-              value={includePhotos}
-              onValueChange={setIncludePhotos}
-              accessibilityLabel={t('includePhotos')}
-              trackColor={{ true: c.primary, false: c.borderStrong }}
-              thumbColor={c.card}
+          <View>
+            <ExportOption
+              label={t('includePhotos')}
+              hint={t('includePhotosHint')}
+              checked={includePhotos}
+              onChange={(v) => setSetting('export_photos', v ? '1' : '0')}
+            />
+            <Divider />
+            <ExportOption
+              label={t('letterheadOption')}
+              hint={t('letterheadHint')}
+              checked={letterhead}
+              onChange={(v) => setSetting('export_letterhead', v ? '1' : '0')}
             />
           </View>
           <Button icon={FileOutput} label={exporting ? t('exporting') : t('exportPdf')} loading={exporting} onPress={() => void onExport()} />

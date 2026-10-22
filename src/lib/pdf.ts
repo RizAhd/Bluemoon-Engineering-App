@@ -2,13 +2,15 @@
  * Project PDF hand-off.
  *
  * Export: expo-print renders a readable report from HTML (the phone's own fonts
- * shape Sinhala and Tamil correctly). pdf-lib then embeds the project data as
+ * shape Sinhala and Tamil correctly). With the letterhead option every page is then
+ * placed on the company letterhead. pdf-lib embeds the project data as
  * `bluemoon-data.json`, its SHA-256, and every photo, as PDF file attachments
  * (the same mechanism e-invoices use). Any PDF viewer shows the report; the
  * Bluemoon app reads the attachments back.
  *
  * Import: no internet, no AI. Read the attachments, check the hash, merge rows.
  */
+import { Asset } from 'expo-asset';
 import { File, Paths } from 'expo-file-system';
 import * as Print from 'expo-print';
 import {
@@ -24,12 +26,14 @@ import {
 } from 'pdf-lib';
 
 import { deviceId, first } from '@/db';
-import type { Attachment, Expense, Project, ProjectCost, SiteNote, ToolMovement, WageEntry } from '@/db/types';
-import { tNow, type TKey } from '@/i18n';
-import { formatDay, nowIso, today } from '@/lib/dates';
-import { formatLKR } from '@/lib/money';
+import type { Attachment, Project, ProjectCost } from '@/db/types';
+import { tNow } from '@/i18n';
+import { nowIso, today } from '@/lib/dates';
+import { reportError } from '@/lib/errors';
 
 import { BUNDLE_FORMAT, BUNDLE_VERSION, collectProject, filesOf, readFileBytes, sha256Hex, type Bundle } from './bundle';
+import { A4_H, A4_W, applyLetterhead } from './letterhead';
+import { buildReportHtml } from './reportHtml';
 import { decodeUtf8, encodeUtf8 } from './utf8';
 
 const DATA_NAME = 'bluemoon-data.json';
@@ -39,7 +43,30 @@ export const MAX_PDF_PHOTOS = 60;
 
 // ---------------------------------------------------------------- export
 
-export async function exportProjectPdf(projectId: string, opts: { includePhotos: boolean }): Promise<File> {
+export interface ExportOptions {
+  includePhotos: boolean;
+  /** Print every page on the company letterhead. */
+  letterhead?: boolean;
+  /** Told when something optional could not be done, so the UI can say so. */
+  onNotice?: (notice: 'letterhead-unavailable') => void;
+}
+
+let letterheadCache: Uint8Array | null = null;
+
+/** The letterhead picture (bundled with the app). Cached after the first load. */
+async function loadLetterhead(): Promise<Uint8Array> {
+  if (letterheadCache) return letterheadCache;
+  const asset = Asset.fromModule(require('../../assets/brand/letterhead.jpeg'));
+  await asset.downloadAsync();
+  const uri = asset.localUri;
+  if (!uri) throw new Error('letterhead asset has no local file');
+  const bytes = await new File(uri).bytes();
+  if (bytes.byteLength < 1000) throw new Error('letterhead asset is empty');
+  letterheadCache = bytes;
+  return bytes;
+}
+
+export async function exportProjectPdf(projectId: string, opts: ExportOptions): Promise<File> {
   const project = first<Project>('SELECT * FROM projects WHERE id = ?', [projectId]);
   if (!project) throw new Error('Project not found');
 
@@ -57,10 +84,32 @@ export async function exportProjectPdf(projectId: string, opts: { includePhotos:
 
   const photos = opts.includePhotos ? filesOf(tables).slice(0, MAX_PDF_PHOTOS) : [];
   const skipped = opts.includePhotos ? Math.max(0, filesOf(tables).length - photos.length) : 0;
-  const html = reportHtml(project, tables, photos.length, skipped);
-  const printed = await Print.printToFileAsync({ html, base64: false });
+
+  // The letterhead is optional: if its picture cannot be read, export the plain report and say so.
+  let letterhead: Uint8Array | null = null;
+  if (opts.letterhead) {
+    try {
+      letterhead = await loadLetterhead();
+    } catch (e) {
+      reportError(e, 'pdf.letterhead.load');
+      opts.onNotice?.('letterhead-unavailable');
+    }
+  }
+
+  const html = buildReportHtml({
+    project,
+    tables,
+    cost: first<ProjectCost>('SELECT * FROM v_project_cost WHERE project_id = ?', [project.id]),
+    photoCount: photos.length,
+    skippedPhotos: skipped,
+    letterhead: letterhead != null,
+    t: tNow,
+    day: today(),
+  });
+  // A4 explicitly: expo-print defaults to US Letter.
+  const printed = await Print.printToFileAsync({ html, base64: false, width: Math.round(A4_W), height: Math.round(A4_H) });
   try {
-    return await buildPdf(printed.uri, project, bundle, photos);
+    return await buildPdf(printed.uri, project, bundle, photos, letterhead, opts.onNotice);
   } finally {
     try {
       const tmp = new File(printed.uri);
@@ -71,8 +120,25 @@ export async function exportProjectPdf(projectId: string, opts: { includePhotos:
   }
 }
 
-async function buildPdf(printedUri: string, project: Project, bundle: Bundle, photos: Attachment[]): Promise<File> {
-  const doc = await PDFDocument.load(new File(printedUri).bytesSync());
+async function buildPdf(
+  printedUri: string,
+  project: Project,
+  bundle: Bundle,
+  photos: Attachment[],
+  letterhead: Uint8Array | null,
+  onNotice?: ExportOptions['onNotice'],
+): Promise<File> {
+  let report = new File(printedUri).bytesSync();
+  if (letterhead) {
+    try {
+      report = await applyLetterhead(report, letterhead);
+    } catch (e) {
+      // keep the plain pages rather than failing the whole export
+      reportError(e, 'pdf.letterhead.apply');
+      onNotice?.('letterhead-unavailable');
+    }
+  }
+  const doc = await PDFDocument.load(report);
 
   const json = encodeUtf8(JSON.stringify(bundle));
   const hash = await sha256Hex(json);
@@ -170,87 +236,4 @@ function walk(node: PDFDict, out: Map<string, Uint8Array>) {
 function decodeName(obj: PDFObject | undefined): string | null {
   if (obj instanceof PDFString || obj instanceof PDFHexString) return obj.decodeText();
   return null;
-}
-
-// ---------------------------------------------------------------- readable report
-
-function esc(s: unknown): string {
-  return String(s ?? '').replace(/[&<>"]/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[ch] as string);
-}
-
-function reportHtml(p: Project, tables: Bundle['tables'], photoCount: number, skippedPhotos: number): string {
-  const t = (k: TKey) => esc(tNow(k));
-  const live = <T extends { deleted_at: string | null }>(rows: unknown[] | undefined) =>
-    ((rows ?? []) as T[]).filter((r) => !r.deleted_at);
-  const expenses = live<Expense>(tables.expenses).sort((a, b) => a.day.localeCompare(b.day));
-  const wages = live<WageEntry>(tables.wage_entries);
-  const moves = live<ToolMovement>(tables.tool_movements).sort((a, b) => a.day.localeCompare(b.day));
-  const notes = live<SiteNote>(tables.site_notes).sort((a, b) => a.day.localeCompare(b.day));
-  const workerName = new Map(((tables.workers ?? []) as { id: string; name: string }[]).map((w) => [w.id, w.name]));
-  const toolName = new Map(((tables.tools ?? []) as { id: string; name: string }[]).map((w) => [w.id, w.name]));
-  const cost = first<ProjectCost>('SELECT * FROM v_project_cost WHERE project_id = ?', [p.id]);
-
-  const byCat = new Map<string, number>();
-  expenses.forEach((e) => byCat.set(e.category, (byCat.get(e.category) ?? 0) + e.amount_cents));
-
-  const byWorker = new Map<string, { work: number; given: number; days: number }>();
-  wages.forEach((w) => {
-    const r = byWorker.get(w.worker_id) ?? { work: 0, given: 0, days: 0 };
-    if (w.kind === 'work') {
-      r.work += w.amount_cents;
-      r.days += w.days ?? 0;
-    } else r.given += w.amount_cents;
-    byWorker.set(w.worker_id, r);
-  });
-
-  const total = (cost?.expense_cents ?? 0) + (cost?.labour_cents ?? 0);
-  const rows = (cells: string[][]) => cells.map((c) => `<tr>${c.map((x) => `<td>${x}</td>`).join('')}</tr>`).join('');
-
-  return `<!doctype html><html><head><meta charset="utf-8"><style>
-  @page { margin: 18mm 14mm; }
-  body { font-family: 'Noto Sans', 'Noto Sans Sinhala', 'Noto Sans Tamil', sans-serif; color: #0F172A; font-size: 11pt; }
-  .brand { display:flex; justify-content:space-between; align-items:flex-end; border-bottom: 3px solid #C2410C; padding-bottom: 8px; }
-  .brand h1 { margin:0; font-size: 20pt; }
-  .brand small { color:#475569; }
-  h2 { font-size: 13pt; margin: 22px 0 8px; color:#334155; }
-  table { width:100%; border-collapse: collapse; }
-  td { padding: 5px 6px; border-bottom: 1px solid #E2E8F0; vertical-align: top; }
-  tr:first-child td { font-weight: 700; background:#F1F5F9; }
-  td.n, .n { text-align:right; font-variant-numeric: tabular-nums; white-space: nowrap; }
-  .grid { display:flex; gap:10px; margin-top: 12px; }
-  .box { flex:1; border:1px solid #E2E8F0; border-radius:8px; padding:8px 10px; }
-  .box b { display:block; font-size: 14pt; }
-  .muted { color:#475569; }
-  table.plain tr:first-child td { font-weight: 400; background: none; }
-  .foot { margin-top: 24px; font-size: 8.5pt; color:#64748B; }
-  </style></head><body>
-  <div class="brand"><div><small>Bluemoon Engineering (Pvt) Ltd</small><h1>${esc(p.name)}</h1>
-  <div class="muted">${[p.client, p.location].filter(Boolean).map(esc).join(' · ')}</div></div>
-  <small>${esc(formatDay(today()))}</small></div>
-
-  <div class="grid">
-    <div class="box">${t('totalCost')}<b class="n">${esc(formatLKR(total))}</b></div>
-    <div class="box">${t('materialsAndOther')}<b class="n">${esc(formatLKR(cost?.expense_cents ?? 0))}</b></div>
-    <div class="box">${t('labour')}<b class="n">${esc(formatLKR(cost?.labour_cents ?? 0))}</b></div>
-    ${p.contract_cents ? `<div class="box">${t('contract')}<b class="n">${esc(formatLKR(p.contract_cents))}</b></div>` : ''}
-  </div>
-
-  <h2>${t('byCategory')}</h2>
-  <table>${rows([[t('category'), `<span class="n">${t('amount')}</span>`]])}
-  ${[...byCat.entries()].sort((a, b) => b[1] - a[1]).map(([c, v]) => `<tr><td>${t(`cat_${c}` as TKey)}</td><td class="n">${esc(formatLKR(v))}</td></tr>`).join('')}</table>
-
-  <h2>${t('expenses')} (${expenses.length})</h2>
-  <table>${rows([[t('date'), t('category'), t('paidTo'), t('method'), `<span class="n">${t('amount')}</span>`]])}
-  ${expenses.map((e) => `<tr><td>${esc(formatDay(e.day))}</td><td>${t(`cat_${e.category}` as TKey)}</td><td>${esc(e.paid_to ?? '')}${e.note ? `<div class="muted">${esc(e.note)}</div>` : ''}</td><td>${t(`method_${e.method}` as TKey)}</td><td class="n">${esc(formatLKR(e.amount_cents))}</td></tr>`).join('')}</table>
-
-  ${byWorker.size ? `<h2>${t('workers')}</h2><table>${rows([[t('name'), `<span class="n">${t('days')}</span>`, `<span class="n">${t('earned')}</span>`, `<span class="n">${t('paid')}</span>`]])}
-  ${[...byWorker.entries()].map(([id, r]) => `<tr><td>${esc(workerName.get(id) ?? '')}</td><td class="n">${r.days}</td><td class="n">${esc(formatLKR(r.work))}</td><td class="n">${esc(formatLKR(r.given))}</td></tr>`).join('')}</table>` : ''}
-
-  ${moves.length ? `<h2>${t('tools')}</h2><table>${rows([[t('date'), t('tool'), '', t('takenBy')]])}
-  ${moves.map((m) => `<tr><td>${esc(formatDay(m.day))}</td><td>${esc(toolName.get(m.tool_id) ?? '')}</td><td>${t(m.kind === 'issue' ? 'issue' : 'return')}</td><td>${esc(m.worker_id ? workerName.get(m.worker_id) ?? '' : m.taken_by ?? '')}</td></tr>`).join('')}</table>` : ''}
-
-  ${notes.length ? `<h2>${t('siteNotes')}</h2><table class="plain">${notes.map((n) => `<tr><td style="width:22%">${esc(formatDay(n.day))}</td><td>${esc(n.body)}</td></tr>`).join('')}</table>` : ''}
-
-  <div class="foot">${photoCount} photos${skippedPhotos ? ` (${skippedPhotos} more not included)` : ''} · Made with the Bluemoon Engineering site app. Open this PDF in the app (Import PDF) to load all records.</div>
-  </body></html>`;
 }
