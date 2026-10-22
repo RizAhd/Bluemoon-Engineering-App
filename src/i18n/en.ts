@@ -231,6 +231,27 @@ export const en = {
   on: 'On',
   off: 'Off',
 
+  // errors
+  errorTitle: 'Something went wrong',
+  storageFull: 'The phone is out of storage space. Free some space and try again — nothing was lost.',
+  permissionDenied: 'The app does not have permission for that. Check Settings → Apps → Bluemoon Site → Permissions.',
+  dbError: 'The record could not be saved to the phone database. Please try again; if it keeps happening, back up and tell the owner.',
+  fileMissing: 'That file could not be found on the phone.',
+  networkError: 'No connection. This app works offline, so your data is safe — try again later.',
+  tryAgain: 'Try again',
+  appCrashed: 'The app hit a problem',
+  appCrashedBody: 'Your records are safe on the phone. Tap Try again. If it happens again, share the error log with the owner.',
+  reportProblem: 'Report a problem',
+  errorLog: 'Error log',
+  shareLog: 'Share error log',
+  clearLog: 'Clear log',
+  noErrors: 'No errors recorded',
+  goHome: 'Go to Today',
+
+  tabProjects: 'Projects',
+  menu: 'Menu',
+  settingsAndMore: 'Settings & more',
+
   // validation
   errName: 'Please enter a name',
   errAmount: 'Enter an amount, e.g. 2500',
