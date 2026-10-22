@@ -4,7 +4,7 @@
  */
 import { isValidDay } from '@/lib/dates';
 
-import { first, getDb, notify, remove, save, tx } from './index';
+import { all, first, getDb, notify, remove, save, tx } from './index';
 import type { ExpenseCategory, PayMethod, ProjectStatus, ProjectWorker, WageKind } from './types';
 
 export class ValidationError extends Error {
@@ -34,6 +34,13 @@ function cents(value: number | null, field = 'amount'): number {
   return value;
 }
 
+/** A contract value is whole, non-negative cents, or nothing. */
+function contract(value: number | null | undefined): number | null {
+  if (value == null) return null;
+  if (!Number.isSafeInteger(value) || value < 0) throw new ValidationError('contract', 'errAmount');
+  return value;
+}
+
 function exists(table: string, id: string | null | undefined): boolean {
   if (!id) return false;
   return !!first(`SELECT 1 AS ok FROM ${table} WHERE id = ? AND deleted_at IS NULL`, [id]);
@@ -57,7 +64,7 @@ export function saveProject(p: {
     name: req(p.name, 'name', 'errName'),
     client: opt(p.client),
     location: opt(p.location),
-    contract_cents: p.contract_cents ?? null,
+    contract_cents: contract(p.contract_cents),
     start_date: p.start_date ? day(p.start_date, 'start_date') : null,
     end_date: p.end_date ? day(p.end_date, 'end_date') : null,
     status: p.status ?? 'active',
@@ -154,7 +161,7 @@ function nonNegCents(value: number | null | undefined, field: string): number {
 /** The assignment row (including a soft-deleted one, so it can be revived). */
 function findAssignment(project_id: string, worker_id: string): ProjectWorker | null {
   return first<ProjectWorker>(
-    'SELECT * FROM project_workers WHERE project_id = ? AND worker_id = ? ORDER BY (deleted_at IS NULL) DESC, updated_at DESC LIMIT 1',
+    'SELECT * FROM project_workers WHERE project_id = ? AND worker_id = ? ORDER BY (deleted_at IS NULL) DESC, updated_at DESC, id DESC LIMIT 1',
     [project_id, worker_id],
   );
 }
@@ -181,11 +188,14 @@ export function assignWorker(p: { project_id: string; worker_id: string; rate_ce
   });
 }
 
-/** Take a worker off a project (soft delete). Their wage history on it stays. */
+/**
+ * Take a worker off a project (soft delete). Their wage history on it stays.
+ * Removes every live row of the pair: after two phones were merged there can be two.
+ */
 export function unassignWorker(project_id: string, worker_id: string): void {
   tx(() => {
-    const existing = findAssignment(project_id, worker_id);
-    if (existing && !existing.deleted_at) remove('project_workers', existing.id);
+    const live = all<{ id: string }>('SELECT id FROM project_workers WHERE project_id = ? AND worker_id = ? AND deleted_at IS NULL', [project_id, worker_id]);
+    live.forEach((r) => remove('project_workers', r.id));
   });
 }
 
@@ -205,11 +215,12 @@ function projectRate(project_id: string, worker_id: string): number {
   return first<{ daily_rate_cents: number }>('SELECT daily_rate_cents FROM workers WHERE id = ?', [worker_id])?.daily_rate_cents ?? 0;
 }
 
-function findWorkEntry(project_id: string, worker_id: string, dayStr: string): { id: string } | null {
-  return first<{ id: string }>(
+/** The live 'work' entries of one day, oldest first. Normally one; more after a merge or a wage-form entry. */
+function findWorkEntries(project_id: string, worker_id: string, dayStr: string): { id: string }[] {
+  return all<{ id: string }>(
     `SELECT id FROM wage_entries
      WHERE worker_id = ? AND project_id = ? AND day = ? AND kind = 'work' AND deleted_at IS NULL
-     ORDER BY created_at LIMIT 1`,
+     ORDER BY created_at, id`,
     [worker_id, project_id, dayStr],
   );
 }
@@ -217,6 +228,8 @@ function findWorkEntry(project_id: string, worker_id: string, dayStr: string): {
 /**
  * Mark a day worked. ONE 'work' entry per worker + project + day: calling it
  * again updates days/amount/note. The amount defaults to days x the project rate.
+ * The daily sheet shows a day's total, so if more than one entry exists for the day
+ * (two phones merged, or the wage form) the rest are removed and the day is exactly what was saved.
  */
 export function recordWorkDay(p: {
   project_id: string;
@@ -239,9 +252,9 @@ export function recordWorkDay(p: {
       if (rate <= 0) throw new ValidationError('rate', 'rateRequired');
       amount = Math.round(days * rate);
     }
-    const existing = findWorkEntry(p.project_id, p.worker_id, d);
-    return save('wage_entries', {
-      id: existing?.id,
+    const [keep, ...extra] = findWorkEntries(p.project_id, p.worker_id, d);
+    const id = save('wage_entries', {
+      id: keep?.id,
       worker_id: p.worker_id,
       project_id: p.project_id,
       day: d,
@@ -250,15 +263,16 @@ export function recordWorkDay(p: {
       amount_cents: amount,
       note: opt(p.note),
     });
+    extra.forEach((e) => remove('wage_entries', e.id));
+    return id;
   });
 }
 
-/** Un-mark a day: soft-deletes that day's work entry. Payments that day stay. */
+/** Un-mark a day: soft-deletes that day's work entries. Payments that day stay. */
 export function removeWorkDay(project_id: string, worker_id: string, dayStr: string): void {
   const d = day(dayStr);
   tx(() => {
-    const existing = findWorkEntry(project_id, worker_id, d);
-    if (existing) remove('wage_entries', existing.id);
+    findWorkEntries(project_id, worker_id, d).forEach((e) => remove('wage_entries', e.id));
   });
 }
 
@@ -326,27 +340,27 @@ export function saveNote(n: { id?: string; project_id: string | null; day: strin
 
 // ---------------------------------------------------------------- delete
 
-/** Soft-deletes a record and its attachments together. */
+/** Soft-deletes a record and its attachments together. Deleting a project also deletes what belongs to it. */
 export function deleteRecord(
   table: 'projects' | 'expenses' | 'workers' | 'project_workers' | 'wage_entries' | 'tools' | 'tool_movements' | 'site_notes',
   id: string,
 ) {
   const d = getDb();
-  tx(() => {
-    const atts = d.getAllSync<{ id: string }>(
-      'SELECT id FROM attachments WHERE owner_table = ? AND owner_id = ? AND deleted_at IS NULL',
-      [table, id],
+  /** A row and the photos / PDFs attached to it. */
+  const removeWithFiles = (t: Parameters<typeof remove>[0], rowId: string) => {
+    d.getAllSync<{ id: string }>('SELECT id FROM attachments WHERE owner_table = ? AND owner_id = ? AND deleted_at IS NULL', [t, rowId]).forEach((a) =>
+      remove('attachments', a.id),
     );
-    atts.forEach((a) => remove('attachments', a.id));
+    remove(t, rowId);
+  };
+  tx(() => {
     if (table === 'projects') {
-      // Cascade so lists/totals that do not join v_project_cost stop counting them.
+      // Cascade so lists/totals that do not join v_project_cost stop counting them; their photos go with them.
       for (const child of ['expenses', 'site_notes', 'wage_entries', 'tool_movements', 'project_workers'] as const) {
-        d.getAllSync<{ id: string }>(`SELECT id FROM ${child} WHERE project_id = ? AND deleted_at IS NULL`, [id]).forEach((r) =>
-          remove(child, r.id),
-        );
+        d.getAllSync<{ id: string }>(`SELECT id FROM ${child} WHERE project_id = ? AND deleted_at IS NULL`, [id]).forEach((r) => removeWithFiles(child, r.id));
       }
     }
-    remove(table, id);
+    removeWithFiles(table, id);
   });
   notify();
 }

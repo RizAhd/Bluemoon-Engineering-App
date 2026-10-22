@@ -226,6 +226,69 @@ export const migrations: string[] = [
   WHERE we.deleted_at IS NULL AND we.project_id IS NOT NULL
   GROUP BY we.project_id, we.worker_id, we.day;
   `,
+
+  // 3 — wages recorded before migration 2 belong to a worker on a project; and one assignment per pair
+  `
+  -- Version 1 let wages be filed under a project without assigning the worker, and the project
+  -- screens list workers from project_workers. Give every (project, worker) that already has wage
+  -- entries an assignment at the worker's own daily rate, so nobody vanishes from the project
+  -- they were paid on. A pair that has ever had an assignment (even a removed one) is left alone.
+  -- The id is derived from the pair: two phones that upgrade the same data create the same row,
+  -- so merging them cannot produce two assignments for one worker.
+  -- (Not written to audit_log: this is the upgrade, not something a person did.)
+  INSERT INTO project_workers (id, created_at, updated_at, deleted_at, version, device_id,
+                               project_id, worker_id, rate_cents, active)
+  SELECT 'pw:' || x.project_id || ':' || x.worker_id,
+         strftime('%Y-%m-%dT%H:%M:%fZ', 'now'),
+         strftime('%Y-%m-%dT%H:%M:%fZ', 'now'),
+         NULL,
+         1,
+         COALESCE((SELECT value FROM settings WHERE key = 'device_id'), 'migration'),
+         x.project_id,
+         x.worker_id,
+         wk.daily_rate_cents,
+         wk.active
+  FROM (SELECT DISTINCT worker_id, project_id
+        FROM wage_entries
+        WHERE project_id IS NOT NULL AND deleted_at IS NULL) x
+  JOIN workers wk ON wk.id = x.worker_id AND wk.deleted_at IS NULL
+  JOIN projects p ON p.id = x.project_id AND p.deleted_at IS NULL
+  WHERE NOT EXISTS (SELECT 1 FROM project_workers pw
+                    WHERE pw.project_id = x.project_id AND pw.worker_id = x.worker_id);
+
+  -- Two phones can each assign the same worker to the same project while offline; after a merge
+  -- both rows are live. Count such a pair once (newest rate), instead of once per row, which
+  -- doubled every amount in the old view.
+  DROP VIEW v_project_worker_balance;
+  CREATE VIEW v_project_worker_balance AS
+  SELECT pw.project_id,
+         pw.worker_id,
+         wk.name,
+         wk.trade,
+         wk.phone,
+         pw.rate_cents,
+         pw.active,
+         COALESCE(SUM(CASE WHEN we.kind = 'work' THEN we.amount_cents END), 0) AS earned_cents,
+         COALESCE(SUM(CASE WHEN we.kind = 'advance' THEN we.amount_cents END), 0) AS advance_cents,
+         COALESCE(SUM(CASE WHEN we.kind = 'payment' THEN we.amount_cents END), 0) AS paid_cents,
+         COALESCE(SUM(CASE WHEN we.kind = 'work' THEN we.amount_cents ELSE -we.amount_cents END), 0) AS balance_cents,
+         COALESCE(SUM(CASE WHEN we.kind = 'work' THEN we.days END), 0) AS days_total
+  FROM (
+    SELECT a.project_id,
+           a.worker_id,
+           (SELECT b.rate_cents FROM project_workers b
+            WHERE b.project_id = a.project_id AND b.worker_id = a.worker_id AND b.deleted_at IS NULL
+            ORDER BY b.updated_at DESC, b.id DESC LIMIT 1) AS rate_cents,
+           MAX(a.active) AS active
+    FROM project_workers a
+    WHERE a.deleted_at IS NULL
+    GROUP BY a.project_id, a.worker_id
+  ) pw
+  JOIN workers wk ON wk.id = pw.worker_id AND wk.deleted_at IS NULL
+  LEFT JOIN wage_entries we
+    ON we.worker_id = pw.worker_id AND we.project_id = pw.project_id AND we.deleted_at IS NULL
+  GROUP BY pw.project_id, pw.worker_id;
+  `,
 ];
 
 /** Tables that hold business data, in an order where parents come before children. */

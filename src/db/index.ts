@@ -12,6 +12,17 @@ export const DB_NAME = 'bluemoon.db';
 
 let db: SQLite.SQLiteDatabase | null = null;
 
+/** A migration step failed on a database that opened fine. Each step is one transaction, so the file is untouched. */
+export class MigrationError extends Error {}
+
+/** Messages SQLite gives for a damaged file (as opposed to a step that simply could not run). */
+const CORRUPTION = /malformed|not a database|corrupt|disk image/i;
+
+function isMigrationFailure(e: unknown): boolean {
+  // the message check keeps this working even where `instanceof` on a subclass of Error does not
+  return e instanceof MigrationError || (e instanceof Error && /^Migration \d+ failed/.test(e.message));
+}
+
 function openAndMigrate(): SQLite.SQLiteDatabase {
   const opened = SQLite.openDatabaseSync(DB_NAME);
   try {
@@ -47,8 +58,10 @@ export function getDb(): SQLite.SQLiteDatabase {
     try {
       db = openAndMigrate();
     } catch (e) {
-      // A failed migration leaves the file untouched (each step is one transaction).
       reportError(e, 'migrate');
+      // A step that failed on a healthy file (a bug, a full disk) leaves every row where it was:
+      // do not move the owner's data aside, report it and let the next start try again.
+      if (isMigrationFailure(e) && !CORRUPTION.test((e as Error).message)) throw e;
       // Unreadable or corrupt file (e.g. a torn restore from Google backup): set it aside
       // and start empty so the app opens and the user can restore the newest automatic backup.
       quarantineDatabase();
@@ -87,7 +100,7 @@ function migrate(d: SQLite.SQLiteDatabase) {
         d.execSync(`PRAGMA user_version = ${v + 1}`);
       });
     } catch (e) {
-      throw new Error(`Migration ${v + 1} failed: ${e instanceof Error ? e.message : String(e)}`);
+      throw new MigrationError(`Migration ${v + 1} failed: ${e instanceof Error ? e.message : String(e)}`);
     }
   }
   COLUMNS_CACHE.clear();
@@ -111,14 +124,20 @@ export function tx<T>(fn: () => T): T {
       txDepth--;
     }
   }
-  txDepth = 1;
+  // Only a transaction that really began counts: if BEGIN fails (database busy), txDepth stays 0,
+  // otherwise every later write would "join" a transaction that does not exist and lose atomicity.
   d.execSync('BEGIN IMMEDIATE');
+  txDepth = 1;
   try {
     const out = fn();
     d.execSync('COMMIT');
     return out;
   } catch (e) {
-    d.execSync('ROLLBACK');
+    try {
+      d.execSync('ROLLBACK');
+    } catch {
+      // SQLite already rolled back (e.g. disk full): keep the original error, not this one
+    }
     throw e;
   } finally {
     txDepth = 0;
@@ -275,18 +294,22 @@ export function save(table: DataTable, values: { [k: string]: SQLite.SQLiteBindV
   return id;
 }
 
-/** Soft delete. The row stays for history and can be restored. */
+/**
+ * Soft delete. The row stays for history and can be restored.
+ * A row that is already deleted, or does not exist, is left exactly as it is (no new
+ * deleted_at, no version bump, no audit entry): a double tap must not rewrite history.
+ */
 export function remove(table: DataTable, id: string) {
   assertTable(table);
   const d = getDb();
   const now = nowIso();
   try {
     tx(() => {
-      d.runSync(
-        `UPDATE ${table} SET deleted_at = ?, updated_at = ?, version = version + 1, device_id = ? WHERE id = ?`,
+      const res = d.runSync(
+        `UPDATE ${table} SET deleted_at = ?, updated_at = ?, version = version + 1, device_id = ? WHERE id = ? AND deleted_at IS NULL`,
         [now, now, deviceId(), id],
       );
-      audit(table, id, 'delete', null);
+      if (res.changes > 0) audit(table, id, 'delete', null);
     });
   } catch (e) {
     reportError(e, 'db.remove', { table, id });

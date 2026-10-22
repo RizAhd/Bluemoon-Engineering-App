@@ -99,7 +99,7 @@ let running: Promise<'done' | 'skipped' | 'failed'> | null = null;
 /** Write today's snapshot unless it already exists. Safe to call often. */
 export function runAutoBackupIfDue(force = false): Promise<'done' | 'skipped' | 'failed'> {
   if (running) return running;
-  running = (async () => {
+  const run: Promise<'done' | 'skipped' | 'failed'> = (async () => {
     try {
       getDb();
       // After a corrupt database was set aside the app starts empty: writing a snapshot now
@@ -137,11 +137,18 @@ export function runAutoBackupIfDue(force = false): Promise<'done' | 'skipped' | 
         // the database itself is unavailable; nothing more we can record
       }
       return 'failed';
-    } finally {
-      running = null;
     }
   })();
-  return running;
+  running = run;
+  // Let go of it once it has finished. This cannot be a `finally` inside the async function: a run that
+  // returns before its first await (already backed up today, switched off, paused) would then clear
+  // `running` before it is assigned, and a finished promise would stay here until the app restarts,
+  // answering "skipped" to every later day.
+  const done = () => {
+    if (running === run) running = null;
+  };
+  run.then(done, done);
+  return run;
 }
 
 // The task must be defined at module top level so Android can start it with the app closed.

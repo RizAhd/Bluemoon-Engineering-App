@@ -7,12 +7,12 @@
 import * as Crypto from 'expo-crypto';
 import { File } from 'expo-file-system';
 
-import { all, classifyRow, mergeRow, notify, tx, type MergeResult } from '@/db';
+import { all, classifyRow, getDb, mergeRow, notify, tx, type MergeResult } from '@/db';
 import { DATA_TABLES, type DataTable } from '@/db/schema';
 import type { Attachment } from '@/db/types';
 
 import { reportError } from './errors';
-import { fileFor, writeAttachmentBytes } from './files';
+import { fileFor, isSafeFileName, writeAttachmentBytes } from './files';
 
 export const BUNDLE_FORMAT = 'bluemoon-bundle';
 export const BUNDLE_VERSION = 1;
@@ -152,6 +152,11 @@ export async function applyBundle(tables: Bundle['tables'], files: Map<string, U
     if (a.deleted_at) continue;
     const bytes = files.get(a.file_name);
     if (!bytes) continue; // already on this phone, or the sender had no copy either; the row still imports
+    if (!isSafeFileName(a.file_name)) {
+      // a name that points outside the attachments folder is never written to
+      plan.badFiles.push(a.file_name);
+      continue;
+    }
     try {
       const have = fileFor(a);
       if ((await sha256Hex(bytes)) !== a.sha256) {
@@ -166,9 +171,31 @@ export async function applyBundle(tables: Bundle['tables'], files: Map<string, U
     }
   }
 
-  tx(() => {
-    for (const t of DATA_TABLES) for (const r of tables[t] ?? []) mergeRow(t, r);
-  });
+  // A tool's history (carried whole, so its status is right) can mention a project this phone does
+  // not have: that one reference is allowed to dangle until the project arrives. Every other
+  // reference is still enforced, but after the merge instead of row by row. PRAGMA foreign_keys
+  // can only change outside a transaction.
+  const d = getDb();
+  d.execSync('PRAGMA foreign_keys = OFF');
+  try {
+    tx(() => {
+      for (const t of DATA_TABLES) for (const r of tables[t] ?? []) mergeRow(t, r);
+      assertReferences(d);
+    });
+  } finally {
+    d.execSync('PRAGMA foreign_keys = ON');
+  }
   notify();
   return plan;
+}
+
+/** Every reference must point at a row, except a tool movement's project. Throws (and so rolls the import back) otherwise. */
+function assertReferences(d: ReturnType<typeof getDb>) {
+  const broken = d
+    .getAllSync<{ table: string; parent: string }>('PRAGMA foreign_key_check')
+    .filter((v) => !(v.table === 'tool_movements' && v.parent === 'projects'));
+  if (broken.length) {
+    const what = [...new Set(broken.map((v) => `${v.table} -> ${v.parent}`))].join(', ');
+    throw new Error(`FOREIGN KEY constraint failed: ${what}`);
+  }
 }

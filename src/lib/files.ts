@@ -21,8 +21,18 @@ export function attachmentsDir(): Directory {
   return dir;
 }
 
+/**
+ * A stored file name is a plain name like "<uuid>.jpg". Anything that could point outside the
+ * attachments folder ("../SQLite/bluemoon.db", "a/b.jpg") is not one: rows come from imported
+ * PDFs and backups, so the name cannot be trusted.
+ */
+export function isSafeFileName(name: unknown): name is string {
+  return typeof name === 'string' && /^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(name);
+}
+
 export function fileFor(att: Pick<Attachment, 'file_name'>): File {
-  return new File(attachmentsDir(), att.file_name);
+  // An unsafe name resolves to a file that does not exist, so it can be neither read nor written.
+  return new File(attachmentsDir(), isSafeFileName(att.file_name) ? att.file_name : '.invalid-attachment-name');
 }
 
 export async function sha256(file: File): Promise<string> {
@@ -132,6 +142,7 @@ export async function addFile(ownerTable: string, ownerId: string, uri: string, 
 
 /** Save raw bytes (from an imported PDF or backup) as an attachment with a known id. */
 export function writeAttachmentBytes(fileName: string, bytes: Uint8Array) {
+  if (!isSafeFileName(fileName)) throw new Error(`Unsafe attachment file name: ${String(fileName)}`);
   // Write under a temp name and rename, so a kill mid-write never leaves a truncated file.
   const tmp = new File(attachmentsDir(), `${fileName}.tmp`);
   if (tmp.exists) tmp.delete();
