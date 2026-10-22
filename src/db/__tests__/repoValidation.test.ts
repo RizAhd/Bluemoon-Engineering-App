@@ -74,6 +74,33 @@ describe('saveProject', () => {
     expect(refused(() => saveProject({ name: 'X', end_date: '2026-02-31' }))).toEqual({ field: 'end_date', key: 'errDate' });
   });
 
+  it('refuses an end date before the start date, on the end date field, and writes nothing', () => {
+    expect(refused(() => saveProject({ name: 'X', start_date: '2026-10-21', end_date: '2026-10-20' }))).toEqual({ field: 'end_date', key: 'errDate' });
+    expect(refused(() => saveProject({ name: 'X', start_date: '2027-01-01', end_date: '2026-12-31' })).field).toBe('end_date');
+    expect(refused(() => saveProject({ name: 'X', start_date: '2026-10-01', end_date: '2026-09-30' })).field).toBe('end_date');
+  });
+
+  it('an edit that makes the end date earlier than the start date leaves the saved project as it was', () => {
+    const id = saveProject({ name: 'Edited', start_date: '2026-10-01', end_date: '2026-12-01' });
+    const before = first('SELECT * FROM projects WHERE id = ?', [id]);
+    expect(refused(() => saveProject({ id, name: 'Edited', start_date: '2026-10-01', end_date: '2026-09-01' })).field).toBe('end_date');
+    expect(refused(() => saveProject({ id, name: 'Edited', start_date: '2027-01-01', end_date: '2026-12-01' })).field).toBe('end_date');
+    expect(first('SELECT * FROM projects WHERE id = ?', [id])).toEqual(before);
+  });
+
+  it('accepts an end date on or after the start date, and either date on its own', () => {
+    expect(() => saveProject({ name: 'Same day', start_date: '2026-10-21', end_date: '2026-10-21' })).not.toThrow();
+    expect(() => saveProject({ name: 'Later', start_date: '2026-10-21', end_date: '2027-01-05' })).not.toThrow();
+    expect(() => saveProject({ name: 'Only start', start_date: '2026-10-21' })).not.toThrow();
+    expect(() => saveProject({ name: 'Only end', end_date: '2020-01-01' })).not.toThrow();
+    expect(() => saveProject({ name: 'Neither' })).not.toThrow();
+  });
+
+  it('a bad date is still reported as that date, before any comparison', () => {
+    expect(refused(() => saveProject({ name: 'X', start_date: '2026-13-01', end_date: '2026-01-01' }))).toEqual({ field: 'start_date', key: 'errDate' });
+    expect(refused(() => saveProject({ name: 'X', start_date: '2026-10-01', end_date: '2026-02-30' }))).toEqual({ field: 'end_date', key: 'errDate' });
+  });
+
   it('accepts a leap day and rejects the same day in a normal year', () => {
     expect(() => saveProject({ name: 'Leap', start_date: '2028-02-29' })).not.toThrow();
     expect(refused(() => saveProject({ name: 'Not leap', start_date: '2026-02-29' })).field).toBe('start_date');
@@ -256,12 +283,19 @@ describe('moveTool', () => {
   it('an issue needs someone to hand the tool to: a worker or a name', () => {
     expect(refused(() => issue({ worker_id: null, taken_by: null }))).toEqual({ field: 'taken_by', key: 'errWorker' });
     expect(refused(() => issue({ worker_id: null, taken_by: '   ' })).field).toBe('taken_by');
-    expect(() => issue({ worker_id: null, taken_by: 'Contractor Silva' })).not.toThrow();
+    // (a tool that is already out cannot be issued again, so each hand-over uses a tool of its own)
+    expect(() => issue({ tool_id: saveTool({ name: 'Ladder' }), worker_id: null, taken_by: 'Contractor Silva' })).not.toThrow();
     expect(() => issue({ worker_id: worker, taken_by: null })).not.toThrow();
   });
 
   it('a return does not need to name anybody', () => {
+    issue({ day: '2026-10-21' }); // it has to be out before it can come back
     expect(() => moveTool({ tool_id: tool, kind: 'return', day: '2026-10-22' })).not.toThrow();
+  });
+
+  it('a tool that is not in the list is "choose a tool", and a return needs the tool to be out', () => {
+    expect(refused(() => issue({ tool_id: 'nope' }))).toEqual({ field: 'tool_id', key: 'errTool' });
+    expect(refused(() => moveTool({ tool_id: tool, kind: 'return', day: '2026-10-22' }))).toEqual({ field: 'tool_id', key: 'errToolState' });
   });
 
   it('refuses a bad day', () => {
@@ -279,7 +313,20 @@ describe('moveTool', () => {
 });
 
 describe('what the person sees', () => {
-  const KEYS = ['errName', 'errProject', 'errAmount', 'errDate', 'errDays', 'errNote', 'errWorker', 'rateRequired'] as const;
+  const KEYS = [
+    'errName',
+    'errProject',
+    'errAmount',
+    'errDate',
+    'errDays',
+    'errNote',
+    'errWorker',
+    'rateRequired',
+    'errWorkDayExists',
+    'errTool',
+    'errToolState',
+    'errDateBeforeLast',
+  ] as const;
 
   it.each(KEYS)('%s has its own words in English, Sinhala and Tamil', (key) => {
     for (const dict of [en, si, ta] as Record<string, string>[]) {

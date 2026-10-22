@@ -9,7 +9,7 @@ import * as SQLite from 'expo-sqlite';
 
 import { all, closeDb, DB_NAME, first, getDb } from '@/db';
 import { assignWorker, payWages, recordWorkDay, saveExpense } from '@/db/repo';
-import { migrations } from '@/db/schema';
+import { DATA_TABLES, migrations } from '@/db/schema';
 import { Directory, File, mainPhone, openSecondPhone, Paths, resetDb, silenceConsoleError, transfer } from '@/test-utils';
 import { openLegacyDb, V1_TABLES } from '@/test-utils/dataKit';
 import { EXPECTED, fillVersion1, insertRow, L, V1_DATA_TABLES } from '@/test-utils/legacyData';
@@ -433,6 +433,133 @@ describe('upgrading a version-2 database (assignments already exist)', () => {
     installVersion2();
     expect(first('SELECT earned_cents FROM v_worker_balance WHERE worker_id = ?', ['GONE'])).toEqual({ earned_cents: 100_000 });
     expect(first("SELECT labour_cents FROM v_project_cost WHERE project_id = 'P'")).toEqual({ labour_cents: 300_000 });
+  });
+});
+
+describe('upgrading a version-3 database (migration 4: a worker who left is inactive on the roster)', () => {
+  const stamp = '2026-10-10T04:00:00.000Z';
+  const base = (id: string) => ({ id, created_at: stamp, updated_at: stamp, version: 1, device_id: 'dev' });
+  const ALL_TABLES = [...DATA_TABLES, 'audit_log', 'settings'] as const;
+  const ROSTER = 'SELECT * FROM v_project_worker_balance ORDER BY project_id, worker_id';
+
+  type Reader = { getAllSync: <T>(sql: string) => T[] };
+  const dumpAll = (db: Reader): Record<string, Rows> =>
+    Object.fromEntries(ALL_TABLES.map((t) => [t, db.getAllSync<Record<string, unknown>>(`SELECT * FROM ${t} ORDER BY ${ORDER[t] ?? 'id'}`)]));
+
+  /** A phone on schema version 3 that holds a worker who has left but is still assigned (the bug this fixes). */
+  function installVersion3() {
+    resetDb();
+    const old = openLegacyDb(3);
+    insertRow(old, 'projects', { ...base('P'), name: 'School', status: 'active' });
+    insertRow(old, 'projects', { ...base('Q'), name: 'Culvert', status: 'active' });
+    insertRow(old, 'workers', { ...base('STAY'), name: 'Stays', daily_rate_cents: 100_000, active: 1 });
+    insertRow(old, 'workers', { ...base('LEFT'), name: 'Left the company', daily_rate_cents: 120_000, active: 0 });
+    insertRow(old, 'workers', { ...base('OFF'), name: 'Off this project', daily_rate_cents: 90_000, active: 1 });
+    // LEFT was marked as left (workers.active = 0) but both of the assignments still say 1
+    insertRow(old, 'project_workers', { ...base('pw-stay-p'), project_id: 'P', worker_id: 'STAY', rate_cents: 110_000, active: 1 });
+    insertRow(old, 'project_workers', { ...base('pw-left-p'), project_id: 'P', worker_id: 'LEFT', rate_cents: 125_000, active: 1 });
+    insertRow(old, 'project_workers', { ...base('pw-left-q'), project_id: 'Q', worker_id: 'LEFT', rate_cents: 130_000, active: 1 });
+    insertRow(old, 'project_workers', { ...base('pw-off-p'), project_id: 'P', worker_id: 'OFF', rate_cents: 95_000, active: 0 });
+    const we = (id: string, worker: string, project: string, kind: string, amount: number, days: number | null) =>
+      insertRow(old, 'wage_entries', { ...base(id), worker_id: worker, project_id: project, day: '2026-10-09', kind, days, amount_cents: amount });
+    we('we-1', 'STAY', 'P', 'work', 110_000, 1);
+    we('we-2', 'LEFT', 'P', 'work', 250_000, 2);
+    we('we-3', 'LEFT', 'P', 'payment', 100_000, null);
+    we('we-4', 'LEFT', 'Q', 'work', 130_000, 1);
+    we('we-5', 'LEFT', 'Q', 'advance', 30_000, null);
+    we('we-6', 'OFF', 'P', 'work', 95_000, 1);
+    insertRow(old, 'expenses', { ...base('ex-1'), project_id: 'P', day: '2026-10-09', category: 'food', amount_cents: 4_200, method: 'cash' });
+    insertRow(old, 'tools', { ...base('drill'), name: 'Drill' });
+    insertRow(old, 'tool_movements', { ...base('mv-1'), tool_id: 'drill', kind: 'issue', project_id: 'P', worker_id: 'LEFT', day: '2026-10-09' });
+    insertRow(old, 'site_notes', { ...base('sn-1'), project_id: 'P', day: '2026-10-09', body: 'Slab poured' });
+    old.runSync("INSERT INTO settings(key, value) VALUES ('language', 'si')");
+    old.runSync("INSERT INTO audit_log(at, device_id, table_name, row_id, action, data) VALUES (?, 'dev', 'workers', 'LEFT', 'update', NULL)", [stamp]);
+    expect(old.getFirstSync<{ user_version: number }>('PRAGMA user_version')?.user_version).toBe(3);
+    const rows = dumpAll(old);
+    const roster = old.getAllSync<Record<string, unknown>>(ROSTER);
+    old.closeSync();
+    return { rows, roster };
+  }
+
+  it('has a newer schema than the data it is tested with (the test is not vacuous)', () => {
+    expect(LATEST()).toBeGreaterThan(3);
+  });
+
+  it('runs migration 4 and ends at the latest user_version', () => {
+    installVersion3();
+    expect(userVersion()).toBe(LATEST());
+  });
+
+  it('loses no row and changes no value in any table, the audit log and the settings included', () => {
+    const before = installVersion3();
+    getDb();
+    const after = dumpAll(getDb());
+    for (const t of ALL_TABLES) expect({ table: t, rows: after[t] }).toEqual({ table: t, rows: before.rows[t] });
+    expect(after.wage_entries).toHaveLength(6);
+    expect(after.project_workers).toHaveLength(4);
+    expect(after.workers).toHaveLength(3);
+    expect(after.audit_log).toHaveLength(1);
+    expect(all('PRAGMA foreign_key_check')).toEqual([]);
+  });
+
+  it('the roster before the upgrade shows the worker who left as active (what the bug looked like)', () => {
+    const { roster } = installVersion3();
+    expect(roster.filter((r) => r.worker_id === 'LEFT').map((r) => r.active)).toEqual([1, 1]);
+  });
+
+  it('afterwards the worker who left is inactive on every project, still listed, every other column unchanged', () => {
+    const { roster } = installVersion3();
+    const after = all<Record<string, unknown>>(ROSTER);
+    expect(after).toHaveLength(roster.length);
+    expect(after.filter((r) => r.worker_id === 'LEFT').map((r) => [r.project_id, r.active])).toEqual([['P', 0], ['Q', 0]]);
+    // a roster row, apart from `active`, is exactly what it was: balances, days, rate, name
+    const without = (r: Record<string, unknown>) => ({ ...r, active: undefined });
+    expect(after.map(without)).toEqual(roster.map(without));
+    expect(after.find((r) => r.worker_id === 'LEFT' && r.project_id === 'P')).toMatchObject({ earned_cents: 250_000, paid_cents: 100_000, balance_cents: 150_000, days_total: 2 });
+    expect(after.find((r) => r.worker_id === 'LEFT' && r.project_id === 'Q')).toMatchObject({ earned_cents: 130_000, advance_cents: 30_000, balance_cents: 100_000 });
+  });
+
+  it('a worker who is still working keeps the assignment flag they had (on stays on, off stays off)', () => {
+    installVersion3();
+    const active = (project: string, worker: string) => first<{ active: number }>('SELECT active FROM v_project_worker_balance WHERE project_id = ? AND worker_id = ?', [project, worker])?.active;
+    expect(active('P', 'STAY')).toBe(1);
+    expect(active('P', 'OFF')).toBe(0);
+  });
+
+  it('the view keeps the same columns in the same order', () => {
+    resetDb();
+    const old = openLegacyDb(3);
+    const columns = old.getAllSync<{ name: string }>('PRAGMA table_info(v_project_worker_balance)').map((c) => c.name);
+    old.closeSync();
+    getDb();
+    expect(all<{ name: string }>('PRAGMA table_info(v_project_worker_balance)').map((c) => c.name)).toEqual(columns);
+    expect(columns).toEqual(['project_id', 'worker_id', 'name', 'trade', 'phone', 'rate_cents', 'active', 'earned_cents', 'advance_cents', 'paid_cents', 'balance_cents', 'days_total']);
+  });
+
+  it('the upgraded view is the same view a fresh install gets, and a restart changes nothing', () => {
+    installVersion3();
+    getDb();
+    const viewSql = () => first<{ sql: string }>("SELECT sql FROM sqlite_master WHERE name = 'v_project_worker_balance'")?.sql;
+    const upgraded = viewSql();
+    const snapshot = () => ({ schema: schemaObjects(), version: userVersion(), data: dumpAll(getDb()) });
+    const first1 = snapshot();
+    for (let i = 0; i < 2; i++) {
+      closeDb();
+      getDb();
+    }
+    expect(snapshot()).toEqual(first1);
+    resetDb();
+    getDb();
+    expect(viewSql()).toBe(upgraded);
+  });
+
+  it('marking the worker as working again brings the roster entries back to active', () => {
+    installVersion3();
+    getDb().runSync("UPDATE workers SET active = 1 WHERE id = 'LEFT'");
+    expect(all('SELECT project_id, active FROM v_project_worker_balance WHERE worker_id = ? ORDER BY project_id', ['LEFT'])).toEqual([
+      { project_id: 'P', active: 1 },
+      { project_id: 'Q', active: 1 },
+    ]);
   });
 });
 

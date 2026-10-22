@@ -142,6 +142,8 @@ export const en = {
   noTools: 'No tools yet',
   noToolsHint: 'Add tools to keep track of who has them and where.',
   toolsOut: 'Tools out',
+  allToolsOut: 'All tools are already out',
+  noToolsOut: 'No tools are out right now',
   photoProof: 'Photo proof',
 
   // site notes
@@ -325,6 +327,10 @@ export const en = {
   errDays: 'Enter days, e.g. 1 or 0.5',
   errNote: 'Write a note',
   errWorker: 'Choose a worker',
+  errWorkDayExists: 'This worker already has a work entry for that day. Open it from the daily sheet to change it.',
+  errTool: 'Choose a tool',
+  errToolState: 'This tool is already out, or was already returned.',
+  errDateBeforeLast: 'Pick a day on or after the last record for this tool',
 
   // added by integration pass
   toolNotFound: 'This tool is no longer in the list.',

@@ -218,11 +218,100 @@ describe('v_project_worker_balance, small scenarios', () => {
     expect(lines[0].rate_cents).toBe(130_000); // the most recently agreed rate
   });
 
-  it('active comes from the assignment, not the worker', () => {
+  it('active is off when the assignment is off, even though the worker is still active', () => {
     assignWorker({ project_id: a, worker_id: w, rate_cents: 1 });
     expect(pwb(a, w)?.active).toBe(1);
     getDb().runSync('UPDATE project_workers SET active = 0 WHERE project_id = ?', [a]);
+    expect(first('SELECT active FROM workers WHERE id = ?', [w])).toEqual({ active: 1 });
     expect(pwb(a, w)?.active).toBe(0);
+  });
+});
+
+describe('v_project_worker_balance: a worker who has left', () => {
+  let a: string;
+  let b: string;
+  let w: string;
+  let other: string;
+
+  /** What the worker screen does for "mark as left" / "mark as working". */
+  const setWorkerActive = (id: string, active: boolean) => saveWorker({ id, name: 'Nimal', daily_rate_cents: 350_000, active });
+
+  beforeEach(() => {
+    a = saveProject({ name: 'A' });
+    b = saveProject({ name: 'B' });
+    w = saveWorker({ name: 'Nimal', daily_rate_cents: 350_000 });
+    other = saveWorker({ name: 'Sunil', daily_rate_cents: 380_000 });
+    for (const p of [a, b]) {
+      assignWorker({ project_id: p, worker_id: w, rate_cents: 350_000 });
+      assignWorker({ project_id: p, worker_id: other, rate_cents: 380_000 });
+      recordWorkDay({ project_id: p, worker_id: w, day: '2026-10-20', days: 2 });
+      payWages({ project_id: p, worker_id: w, day: '2026-10-21', amount_cents: 100_000 });
+      saveWageEntry({ worker_id: w, project_id: p, day: '2026-10-21', kind: 'advance', amount_cents: 50_000 });
+    }
+  });
+
+  it('is inactive on every project roster, and still listed with the same balances', () => {
+    const before = [a, b].map((p) => pwb(p, w));
+    expect(before.map((r) => r?.active)).toEqual([1, 1]);
+
+    setWorkerActive(w, false);
+
+    const after = [a, b].map((p) => pwb(p, w));
+    expect(after.map((r) => r?.active)).toEqual([0, 0]);
+    // listed, not filtered out, and not one cent different
+    expect(after).toEqual(before.map((r) => ({ ...r, active: 0 })));
+    expect(after[0]).toMatchObject({ earned_cents: 700_000, paid_cents: 100_000, advance_cents: 50_000, balance_cents: 550_000, days_total: 2 });
+    // the assignment itself is untouched: only the view answers differently
+    expect(all('SELECT active FROM project_workers WHERE worker_id = ?', [w])).toEqual([{ active: 1 }, { active: 1 }]);
+    // the others on the roster stay active
+    expect(pwb(a, other)?.active).toBe(1);
+    expect(all<{ worker_id: string }>('SELECT worker_id FROM v_project_worker_balance WHERE project_id = ? AND active = 1', [a]).map((r) => r.worker_id)).toEqual([other]);
+  });
+
+  it('is active again once the worker is marked as working', () => {
+    setWorkerActive(w, false);
+    expect(pwb(a, w)?.active).toBe(0);
+    setWorkerActive(w, true);
+    expect([a, b].map((p) => pwb(p, w)?.active)).toEqual([1, 1]);
+  });
+
+  it('a worker who is active with an inactive assignment stays inactive; both must be on', () => {
+    getDb().runSync('UPDATE project_workers SET active = 0 WHERE project_id = ? AND worker_id = ?', [a, w]);
+    expect(pwb(a, w)?.active).toBe(0);
+    expect(pwb(b, w)?.active).toBe(1);
+    setWorkerActive(w, false);
+    expect(pwb(a, w)?.active).toBe(0);
+    setWorkerActive(w, true);
+    expect(pwb(a, w)?.active).toBe(0); // the project's own flag is still off
+    expect(pwb(b, w)?.active).toBe(1);
+  });
+
+  it('the left worker still counts in the project cost, the worker total and the day line', () => {
+    const cost = first('SELECT labour_cents, labour_paid_cents FROM v_project_cost WHERE project_id = ?', [a]);
+    const total = first('SELECT earned_cents, balance_cents FROM v_worker_balance WHERE worker_id = ?', [w]);
+    setWorkerActive(w, false);
+    expect(first('SELECT labour_cents, labour_paid_cents FROM v_project_cost WHERE project_id = ?', [a])).toEqual(cost);
+    expect(first('SELECT earned_cents, balance_cents FROM v_worker_balance WHERE worker_id = ?', [w])).toEqual(total);
+    expect(day(a, w, '2026-10-20')).toMatchObject({ days: 2, work_cents: 700_000 });
+  });
+
+  it('a worker assigned twice (merged phones) is inactive when the worker has left, with one line only', () => {
+    mergeRow('project_workers', {
+      id: newId(),
+      created_at: '2099-01-01T00:00:00.000Z',
+      updated_at: '2099-01-01T00:00:00.000Z',
+      deleted_at: null,
+      version: 1,
+      device_id: 'phone-b',
+      project_id: a,
+      worker_id: w,
+      rate_cents: 360_000,
+      active: 1,
+    });
+    setWorkerActive(w, false);
+    const lines = all<ProjectWorkerBalance>('SELECT * FROM v_project_worker_balance WHERE project_id = ? AND worker_id = ?', [a, w]);
+    expect(lines).toHaveLength(1);
+    expect(lines[0]).toMatchObject({ active: 0, earned_cents: 700_000, balance_cents: 550_000 });
   });
 });
 
@@ -250,9 +339,23 @@ describe('v_wage_day, small scenarios', () => {
     expect(all('SELECT * FROM v_wage_day')).toEqual([{ project_id: a, worker_id: w, day: '2026-10-20', days: 1.5, work_cents: 150_000, paid_cents: 75_000, advance_cents: 0 }]);
   });
 
-  it('two entries on one day are added up on one line', () => {
+  it('two entries on one day (what merging two phones can leave; saveWageEntry no longer makes them) are added up on one line', () => {
     saveWageEntry({ worker_id: w, project_id: a, day: '2026-10-20', kind: 'work', days: 1, amount_cents: 100_000 });
-    saveWageEntry({ worker_id: w, project_id: a, day: '2026-10-20', kind: 'work', days: 0.5, amount_cents: 50_000 });
+    mergeRow('wage_entries', {
+      id: newId(),
+      created_at: '2026-10-22T04:00:00.000Z',
+      updated_at: '2026-10-22T04:00:00.000Z',
+      deleted_at: null,
+      version: 1,
+      device_id: 'phone-b',
+      worker_id: w,
+      project_id: a,
+      day: '2026-10-20',
+      kind: 'work',
+      days: 0.5,
+      amount_cents: 50_000,
+      note: null,
+    });
     expect(day(a, w, '2026-10-20')).toMatchObject({ days: 1.5, work_cents: 150_000 });
   });
 

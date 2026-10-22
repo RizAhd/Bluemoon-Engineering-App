@@ -84,10 +84,11 @@ describe('moveTool', () => {
 
   describe('the id passed in by the form', () => {
     it('is the id of the saved row, so photos taken before the first save stay linked', async () => {
+      moveTool({ tool_id: drill, kind: 'issue', worker_id: nimal, day: '2026-10-18' }); // a tool can only come back once it is out
       const formId = newId();
       queuePhotos(2);
       expect(await addPhotos('tool_movements', formId, 'gallery')).toBe(2);
-      expect(first('SELECT COUNT(*) AS n FROM tool_movements')).toEqual({ n: 0 }); // not saved yet
+      expect(first('SELECT COUNT(*) AS n FROM tool_movements')).toEqual({ n: 1 }); // the return is not saved yet
 
       const saved = moveTool({ id: formId, tool_id: drill, kind: 'return', day: '2026-10-19', condition: 'Cracked housing' });
 
@@ -137,14 +138,88 @@ describe('moveTool', () => {
     expect(first('SELECT COUNT(*) AS n FROM tool_movements')).toEqual({ n: 2 });
   });
 
-  it('deleting a tool hides it and its photos but keeps its movement history', async () => {
-    moveTool({ tool_id: drill, kind: 'issue', worker_id: nimal, day: '2026-10-19' });
+  it('deleting a tool hides it, its movements and all their photos, but keeps every row as history', async () => {
+    const out = moveTool({ tool_id: drill, kind: 'issue', worker_id: nimal, day: '2026-10-19' });
+    clock.tick(1_000);
+    const back = moveTool({ tool_id: drill, kind: 'return', worker_id: nimal, day: '2026-10-20' });
+    clock.tick(1_000);
+    const again = moveTool({ tool_id: drill, kind: 'issue', project_id: project, worker_id: nimal, day: '2026-10-21' });
     queuePhotos(1);
     await addPhotos('tools', drill, 'gallery');
+    queuePhotos(2);
+    await addPhotos('tool_movements', out, 'gallery');
+    queuePhotos(1);
+    await addPhotos('tool_movements', again, 'gallery');
+
     deleteRecord('tools', drill);
+
     expect(all('SELECT * FROM v_tool_status')).toEqual([]);
     expect(photosOf('tools', drill)).toEqual([]);
-    expect(first('SELECT COUNT(*) AS n FROM tool_movements WHERE deleted_at IS NULL')).toEqual({ n: 1 });
+    for (const m of [out, back, again]) expect(photosOf('tool_movements', m)).toEqual([]);
+    expect(first('SELECT COUNT(*) AS n FROM tool_movements WHERE tool_id = ? AND deleted_at IS NULL', [drill])).toEqual({ n: 0 });
+    // nothing is removed: the movements and the photos are still rows, marked deleted
+    expect(first('SELECT COUNT(*) AS n FROM tool_movements WHERE tool_id = ?', [drill])).toEqual({ n: 3 });
+    expect(first('SELECT COUNT(*) AS n FROM attachments WHERE deleted_at IS NOT NULL')).toEqual({ n: 4 });
     expect(first('SELECT COUNT(*) AS n FROM tools')).toEqual({ n: 1 });
+  });
+
+  it('deleting a tool writes one audit entry for each movement and photo it deleted, and no more', async () => {
+    const out = moveTool({ tool_id: drill, kind: 'issue', worker_id: nimal, day: '2026-10-19' });
+    clock.tick(1_000);
+    const back = moveTool({ tool_id: drill, kind: 'return', worker_id: nimal, day: '2026-10-20' });
+    queuePhotos(2);
+    await addPhotos('tool_movements', out, 'gallery');
+    queuePhotos(1);
+    await addPhotos('tools', drill, 'gallery');
+    const photos = all<{ id: string }>('SELECT id FROM attachments').map((a) => a.id);
+    const seq = first<{ s: number }>('SELECT MAX(seq) AS s FROM audit_log')?.s ?? 0;
+    clock.tick(1_000);
+
+    deleteRecord('tools', drill);
+
+    const entries = all<{ table_name: string; row_id: string; action: string }>('SELECT table_name, row_id, action FROM audit_log WHERE seq > ? ORDER BY seq', [seq]);
+    expect(entries.every((e) => e.action === 'delete')).toBe(true);
+    expect(entries.map((e) => `${e.table_name}:${e.row_id}`).sort()).toEqual(
+      [`tools:${drill}`, `tool_movements:${out}`, `tool_movements:${back}`, ...photos.map((p) => `attachments:${p}`)].sort(),
+    );
+    // each deleted row gets the version bump of a delete, once
+    expect(first('SELECT version FROM tool_movements WHERE id = ?', [out])).toEqual({ version: 2 });
+    expect(first('SELECT version FROM tools WHERE id = ?', [drill])).toEqual({ version: 2 });
+  });
+
+  it('a movement that was already deleted keeps its own deleted_at and version when its tool is deleted', () => {
+    const out = moveTool({ tool_id: drill, kind: 'issue', worker_id: nimal, day: '2026-10-19' });
+    clock.tick(1_000);
+    const back = moveTool({ tool_id: drill, kind: 'return', worker_id: nimal, day: '2026-10-20' });
+    deleteRecord('tool_movements', back);
+    const earlier = first('SELECT deleted_at, version FROM tool_movements WHERE id = ?', [back]);
+    clock.tick(60_000);
+
+    deleteRecord('tools', drill);
+
+    expect(first('SELECT deleted_at, version FROM tool_movements WHERE id = ?', [back])).toEqual(earlier);
+    expect(first('SELECT deleted_at FROM tool_movements WHERE id = ?', [out])).not.toEqual({ deleted_at: null });
+  });
+
+  it("deleting a tool leaves another tool's movements and status alone", () => {
+    const mixer = saveTool({ name: 'Mixer' });
+    moveTool({ tool_id: drill, kind: 'issue', worker_id: nimal, day: '2026-10-19' });
+    clock.tick(1_000);
+    const other = moveTool({ tool_id: mixer, kind: 'issue', worker_id: nimal, day: '2026-10-19' });
+
+    deleteRecord('tools', drill);
+
+    expect(all<{ tool_id: string; is_out: number }>('SELECT tool_id, is_out FROM v_tool_status')).toEqual([{ tool_id: mixer, is_out: 1 }]);
+    expect(first('SELECT deleted_at, version FROM tool_movements WHERE id = ?', [other])).toEqual({ deleted_at: null, version: 1 });
+  });
+
+  it('deleting a tool with no movements still works, and deleting it twice changes nothing', () => {
+    deleteRecord('tools', drill);
+    const row = first('SELECT * FROM tools WHERE id = ?', [drill]);
+    const audit = first<{ n: number }>('SELECT COUNT(*) AS n FROM audit_log')?.n;
+    clock.tick(60_000);
+    deleteRecord('tools', drill);
+    expect(first('SELECT * FROM tools WHERE id = ?', [drill])).toEqual(row);
+    expect(first<{ n: number }>('SELECT COUNT(*) AS n FROM audit_log')?.n).toBe(audit);
   });
 });

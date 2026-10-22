@@ -135,11 +135,11 @@ function Inner({ params }: { params: Params }) {
   }, [tools, toolId, status]);
 
   // Why the tool list is empty: no tools at all, every tool is already out (issue), or none are out (return).
-  const emptyToolsText = t(toolCount === 0 ? 'noTools' : kind === 'issue' ? 'toolsOut' : 'inStore');
+  const emptyToolsText = t(toolCount === 0 ? 'noTools' : kind === 'issue' ? 'allToolsOut' : 'noToolsOut');
 
   const save = () =>
     form.submit(() => {
-      if (!toolId) throw new ValidationError('tool_id', 'errName');
+      if (!toolId) throw new ValidationError('tool_id', 'errTool');
       if (kind === 'issue' && !projectId) throw new ValidationError('project_id', 'errProject');
       moveTool({ id: form.id, tool_id: toolId, kind, worker_id: workerId, taken_by: workerId ? null : takenBy, project_id: projectId, day, condition, note });
     });

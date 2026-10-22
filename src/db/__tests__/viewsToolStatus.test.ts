@@ -2,7 +2,7 @@
  * v_tool_status: a tool is "out" when its latest movement is an issue.
  * "Latest" = the newest day, and within one day the one entered last.
  */
-import { all, first } from '@/db';
+import { all, first, save } from '@/db';
 import { deleteRecord, moveTool, saveProject, saveTool, saveWorker } from '@/db/repo';
 import type { ToolStatus } from '@/db/types';
 import { addDays } from '@/lib/dates';
@@ -63,6 +63,12 @@ describe('one tool', () => {
     clock.tick(1); // entered one after the other
     return moveTool({ tool_id: tool, kind, day: dayStr, worker_id: nimal, project_id: school, ...over });
   };
+  // moveTool refuses a movement that does not follow from the last one (see repoToolMoves.test.ts). Data merged
+  // from another phone can still hold one, and the view must order it by day, so these tests write it directly.
+  const raw = (kind: 'issue' | 'return', dayStr: string, over: Record<string, string | number | null> = {}) => {
+    clock.tick(1);
+    return save('tool_movements', { tool_id: tool, kind, day: dayStr, worker_id: nimal, project_id: school, ...over });
+  };
 
   it('never moved: in, with nothing known', () => {
     expect(status(tool)).toMatchObject({ is_out: 0, last_kind: null, last_day: null, project_id: null, worker_id: null, taken_by: null });
@@ -94,22 +100,22 @@ describe('one tool', () => {
   describe('latest means the newest day, not the newest entry', () => {
     it('a return written up late for an earlier day does not bring back a tool that was issued since', () => {
       move('issue', '2026-10-05');
-      move('return', '2026-10-03'); // entered afterwards, but it happened before
+      raw('return', '2026-10-03'); // entered afterwards, but it happened before
       expect(isOut(tool)).toBe(1);
       expect(status(tool)?.last_day).toBe('2026-10-05');
     });
 
     it('an issue written up late for an earlier day does not take a returned tool out again', () => {
-      move('return', '2026-10-05');
-      move('issue', '2026-10-03');
+      raw('return', '2026-10-05');
+      raw('issue', '2026-10-03');
       expect(isOut(tool)).toBe(0);
     });
 
     it('correcting the day of the issue to before the return puts the tool back in', () => {
       const issue = move('issue', '2026-10-05');
-      move('return', '2026-10-03');
+      raw('return', '2026-10-03');
       expect(isOut(tool)).toBe(1);
-      move('issue', '2026-10-01', { id: issue }); // the issue really happened on the 1st
+      raw('issue', '2026-10-01', { id: issue }); // the issue really happened on the 1st
       expect(isOut(tool)).toBe(0);
     });
   });
@@ -122,7 +128,7 @@ describe('one tool', () => {
     });
 
     it('return, then issue: out', () => {
-      move('return', '2026-10-20');
+      raw('return', '2026-10-20');
       move('issue', '2026-10-20');
       expect(isOut(tool)).toBe(1);
     });
@@ -135,8 +141,8 @@ describe('one tool', () => {
     });
 
     it('a later day beats an earlier day even when entered first', () => {
-      move('return', '2026-10-21');
-      move('issue', '2026-10-20');
+      raw('return', '2026-10-21');
+      raw('issue', '2026-10-20');
       expect(isOut(tool)).toBe(0);
     });
   });

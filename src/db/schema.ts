@@ -289,6 +289,44 @@ export const migrations: string[] = [
     ON we.worker_id = pw.worker_id AND we.project_id = pw.project_id AND we.deleted_at IS NULL
   GROUP BY pw.project_id, pw.worker_id;
   `,
+
+  // 4 — a worker who has left is inactive on every project roster
+  `
+  -- Marking a worker as left sets workers.active = 0, but the roster view only looked at the
+  -- assignment's own flag, so the worker stayed "active" on every project and the Today screen's
+  -- "All worked today" booked wages for them. A roster entry is active only while both the
+  -- assignment and the worker are. The row stays (history and balance must remain visible).
+  -- Same body as migration 3 apart from the active column.
+  DROP VIEW v_project_worker_balance;
+  CREATE VIEW v_project_worker_balance AS
+  SELECT pw.project_id,
+         pw.worker_id,
+         wk.name,
+         wk.trade,
+         wk.phone,
+         pw.rate_cents,
+         MIN(pw.active, wk.active) AS active,
+         COALESCE(SUM(CASE WHEN we.kind = 'work' THEN we.amount_cents END), 0) AS earned_cents,
+         COALESCE(SUM(CASE WHEN we.kind = 'advance' THEN we.amount_cents END), 0) AS advance_cents,
+         COALESCE(SUM(CASE WHEN we.kind = 'payment' THEN we.amount_cents END), 0) AS paid_cents,
+         COALESCE(SUM(CASE WHEN we.kind = 'work' THEN we.amount_cents ELSE -we.amount_cents END), 0) AS balance_cents,
+         COALESCE(SUM(CASE WHEN we.kind = 'work' THEN we.days END), 0) AS days_total
+  FROM (
+    SELECT a.project_id,
+           a.worker_id,
+           (SELECT b.rate_cents FROM project_workers b
+            WHERE b.project_id = a.project_id AND b.worker_id = a.worker_id AND b.deleted_at IS NULL
+            ORDER BY b.updated_at DESC, b.id DESC LIMIT 1) AS rate_cents,
+           MAX(a.active) AS active
+    FROM project_workers a
+    WHERE a.deleted_at IS NULL
+    GROUP BY a.project_id, a.worker_id
+  ) pw
+  JOIN workers wk ON wk.id = pw.worker_id AND wk.deleted_at IS NULL
+  LEFT JOIN wage_entries we
+    ON we.worker_id = pw.worker_id AND we.project_id = pw.project_id AND we.deleted_at IS NULL
+  GROUP BY pw.project_id, pw.worker_id;
+  `,
 ];
 
 /** Tables that hold business data, in an order where parents come before children. */

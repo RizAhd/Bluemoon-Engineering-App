@@ -2,7 +2,7 @@
  * The daily sheet: recordWorkDay / removeWorkDay / payWages, and the wage ledger
  * (saveWageEntry) underneath. One 'work' entry per worker + project + day.
  */
-import { all, first } from '@/db';
+import { all, first, mergeRow, newId } from '@/db';
 import {
   assignWorker,
   payWages,
@@ -15,6 +15,7 @@ import {
   ValidationError,
 } from '@/db/repo';
 import type { WageEntry } from '@/db/types';
+import { nowIso } from '@/lib/dates';
 import { resetDb } from '@/test-utils';
 import { useClock } from '@/test-utils/dataKit';
 
@@ -45,6 +46,31 @@ const entries = (where = '1=1', params: (string | number)[] = []) =>
   all<WageEntry>(`SELECT * FROM wage_entries WHERE ${where} ORDER BY created_at, id`, params);
 const work = (project = school, worker = nimal, day?: string) =>
   entries(`kind = 'work' AND project_id = ? AND worker_id = ? ${day ? 'AND day = ?' : ''} AND deleted_at IS NULL`, day ? [project, worker, day] : [project, worker]);
+
+/**
+ * A second live 'work' entry for a day, the way merging another phone's data leaves one.
+ * saveWageEntry refuses to make it, so it comes in through the merge path.
+ */
+function mergedWork(day: string, days: number, amount: number, project = school, worker = nimal): string {
+  const id = newId();
+  const at = nowIso();
+  mergeRow('wage_entries', {
+    id,
+    created_at: at,
+    updated_at: at,
+    deleted_at: null,
+    version: 1,
+    device_id: 'phone-b',
+    worker_id: worker,
+    project_id: project,
+    day,
+    kind: 'work',
+    days,
+    amount_cents: amount,
+    note: null,
+  });
+  return id;
+}
 
 function refused(fn: () => unknown): { field: string; key: string } {
   try {
@@ -201,10 +227,10 @@ describe('recordWorkDay: one entry per worker + project + day', () => {
     expect(first('SELECT days, work_cents FROM v_wage_day WHERE project_id = ? AND worker_id = ? AND day = ?', [school, nimal, D1])).toEqual({ days: 1.5, work_cents: 525_000 });
   });
 
-  it('two entries for one day (the wage form, or two phones merged) are brought back to one by recording the day again', () => {
+  it('two entries for one day (two phones merged) are brought back to one by recording the day again', () => {
     saveWageEntry({ worker_id: nimal, project_id: school, day: D1, kind: 'work', days: 1, amount_cents: 350_000 });
     clock.tick(1_000);
-    saveWageEntry({ worker_id: nimal, project_id: school, day: D1, kind: 'work', days: 0.5, amount_cents: 175_000 });
+    mergedWork(D1, 0.5, 175_000);
     expect(first('SELECT days, work_cents FROM v_wage_day WHERE project_id = ? AND worker_id = ? AND day = ?', [school, nimal, D1])).toEqual({ days: 1.5, work_cents: 525_000 });
 
     clock.tick(1_000);
@@ -271,7 +297,7 @@ describe('removeWorkDay', () => {
   it('removes every live entry of that day when there are several, so the day is really un-marked', () => {
     saveWageEntry({ worker_id: nimal, project_id: school, day: D1, kind: 'work', days: 1, amount_cents: 350_000 });
     clock.tick(1_000);
-    saveWageEntry({ worker_id: nimal, project_id: school, day: D1, kind: 'work', days: 1, amount_cents: 350_000 });
+    mergedWork(D1, 1, 350_000);
     removeWorkDay(school, nimal, D1);
     expect(work(school, nimal, D1)).toEqual([]);
     expect(first('SELECT labour_cents FROM v_project_cost WHERE project_id = ?', [school])).toEqual({ labour_cents: 0 });
@@ -352,5 +378,96 @@ describe('saveWageEntry edits', () => {
       balance_cents: 250_000,
     });
     expect(first('SELECT labour_cents, labour_paid_cents FROM v_project_cost WHERE project_id = ?', [school])).toEqual({ labour_cents: 350_000, labour_paid_cents: 100_000 });
+  });
+});
+
+describe('saveWageEntry: one work entry per worker + project + day', () => {
+  const work1 = (over: Partial<Parameters<typeof saveWageEntry>[0]> = {}) =>
+    saveWageEntry({ worker_id: nimal, project_id: school, day: D1, kind: 'work', days: 1, amount_cents: 350_000, ...over });
+  const auditCount = () => first<{ n: number }>('SELECT COUNT(*) AS n FROM audit_log')?.n;
+
+  it('refuses a second work entry for the same day and says so on the day field', () => {
+    const id = work1();
+    clock.tick(1_000);
+    const audit = auditCount();
+    expect(refused(() => work1({ days: 0.5, amount_cents: 175_000 }))).toEqual({ field: 'day', key: 'errWorkDayExists' });
+    expect(work(school, nimal, D1).map((e) => e.id)).toEqual([id]);
+    expect(first('SELECT days, amount_cents, version FROM wage_entries WHERE id = ?', [id])).toEqual({ days: 1, amount_cents: 350_000, version: 1 });
+    expect(auditCount()).toBe(audit); // nothing written, not even a failed attempt
+    expect(first('SELECT labour_cents FROM v_project_cost WHERE project_id = ?', [school])).toEqual({ labour_cents: 350_000 });
+  });
+
+  it('refuses it when the form brings a fresh id of its own (a new entry has no row yet)', () => {
+    work1();
+    expect(refused(() => work1({ id: newId() })).key).toBe('errWorkDayExists');
+  });
+
+  it('refuses a work entry for a day the sheet has already marked', () => {
+    recordWorkDay({ project_id: school, worker_id: nimal, day: D1, days: 1 });
+    expect(refused(() => work1()).key).toBe('errWorkDayExists');
+    expect(work(school, nimal, D1)).toHaveLength(1);
+  });
+
+  it('editing the entry itself is fine (its own id is not "another" entry)', () => {
+    const id = work1();
+    clock.tick(1_000);
+    expect(work1({ id, days: 1.5, amount_cents: 525_000, note: 'overtime' })).toBe(id);
+    expect(first('SELECT days, amount_cents, note, version FROM wage_entries WHERE id = ?', [id])).toEqual({ days: 1.5, amount_cents: 525_000, note: 'overtime', version: 2 });
+    expect(work(school, nimal, D1)).toHaveLength(1);
+  });
+
+  it('moving an entry onto a day that already has one is refused and leaves it where it was', () => {
+    work1();
+    const later = work1({ day: D2 });
+    expect(refused(() => work1({ id: later, day: D1 })).key).toBe('errWorkDayExists');
+    expect(first('SELECT day, version FROM wage_entries WHERE id = ?', [later])).toEqual({ day: D2, version: 1 });
+  });
+
+  it('another day, another worker and another project are all separate days', () => {
+    assignWorker({ project_id: culvert, worker_id: nimal, rate_cents: 360_000 });
+    work1();
+    expect(() => work1({ day: D2 })).not.toThrow();
+    expect(() => work1({ worker_id: sunil })).not.toThrow();
+    expect(() => work1({ project_id: culvert })).not.toThrow();
+    expect(entries("kind = 'work'")).toHaveLength(4);
+  });
+
+  it('payments and advances on that day are not work entries and never collide with it', () => {
+    work1();
+    expect(() => saveWageEntry({ worker_id: nimal, project_id: school, day: D1, kind: 'advance', amount_cents: 10_000 })).not.toThrow();
+    expect(() => saveWageEntry({ worker_id: nimal, project_id: school, day: D1, kind: 'payment', amount_cents: 20_000 })).not.toThrow();
+    expect(() => saveWageEntry({ worker_id: nimal, project_id: school, day: D1, kind: 'payment', amount_cents: 20_000 })).not.toThrow();
+  });
+
+  it('a deleted work entry no longer blocks the day', () => {
+    work1();
+    removeWorkDay(school, nimal, D1);
+    expect(() => work1({ days: 2, amount_cents: 700_000 })).not.toThrow();
+    expect(work(school, nimal, D1)).toHaveLength(1);
+  });
+
+  it('with two entries already there (merged phones) the wage form cannot edit either; the sheet repairs the day', () => {
+    const a = work1();
+    clock.tick(1_000);
+    const b = mergedWork(D1, 0.5, 175_000);
+    expect(refused(() => work1({ id: a, days: 2, amount_cents: 700_000 })).key).toBe('errWorkDayExists');
+    expect(refused(() => work1({ id: b, days: 2, amount_cents: 700_000 })).key).toBe('errWorkDayExists');
+
+    clock.tick(1_000);
+    expect(recordWorkDay({ project_id: school, worker_id: nimal, day: D1, days: 2 })).toBe(a);
+    expect(work(school, nimal, D1).map((e) => [e.id, e.days])).toEqual([[a, 2]]);
+  });
+
+  it('recordWorkDay keeps working on a day the wage form created (it updates that entry)', () => {
+    const id = work1();
+    clock.tick(1_000);
+    expect(recordWorkDay({ project_id: school, worker_id: nimal, day: D1, days: 0.5 })).toBe(id);
+    expect(first('SELECT days, amount_cents FROM wage_entries WHERE id = ?', [id])).toEqual({ days: 0.5, amount_cents: 175_000 });
+  });
+
+  it('keeps refusing on every attempt and never leaves a row behind', () => {
+    work1();
+    for (let i = 0; i < 3; i++) expect(refused(() => work1()).key).toBe('errWorkDayExists');
+    expect(entries()).toHaveLength(1);
   });
 });

@@ -59,14 +59,20 @@ export function saveProject(p: {
   status?: ProjectStatus;
   notes?: string | null;
 }): string {
+  const name = req(p.name, 'name', 'errName');
+  const contract_cents = contract(p.contract_cents);
+  const start_date = p.start_date ? day(p.start_date, 'start_date') : null;
+  const end_date = p.end_date ? day(p.end_date, 'end_date') : null;
+  // Days are zero-padded YYYY-MM-DD, so comparing the strings compares the dates.
+  if (start_date && end_date && end_date < start_date) throw new ValidationError('end_date', 'errDate');
   return save('projects', {
     id: p.id,
-    name: req(p.name, 'name', 'errName'),
+    name,
     client: opt(p.client),
     location: opt(p.location),
-    contract_cents: contract(p.contract_cents),
-    start_date: p.start_date ? day(p.start_date, 'start_date') : null,
-    end_date: p.end_date ? day(p.end_date, 'end_date') : null,
+    contract_cents,
+    start_date,
+    end_date,
     status: p.status ?? 'active',
     notes: opt(p.notes),
   });
@@ -138,15 +144,31 @@ export function saveWageEntry(e: {
   if (!exists('workers', e.worker_id)) throw new ValidationError('worker_id', 'errWorker');
   if (!exists('projects', e.project_id)) throw new ValidationError('project_id', 'errProject');
   if (e.kind === 'work') workDays(e.days);
-  return save('wage_entries', {
-    id: e.id,
-    worker_id: e.worker_id,
-    project_id: e.project_id,
-    day: day(e.day),
-    kind: e.kind,
-    days: e.kind === 'work' ? e.days ?? null : null,
-    amount_cents: cents(e.amount_cents),
-    note: opt(e.note),
+  const d = day(e.day);
+  const amount = cents(e.amount_cents);
+  return tx(() => {
+    // The daily sheet shows one line per worker and day, so a second 'work' entry for the same day
+    // would double the wages unseen. Refuse it, the person can open the existing one (recordWorkDay
+    // updates it in place and so never comes through here).
+    if (e.kind === 'work') {
+      const other = first<{ id: string }>(
+        `SELECT id FROM wage_entries
+         WHERE worker_id = ? AND project_id = ? AND day = ? AND kind = 'work' AND deleted_at IS NULL AND id IS NOT ?
+         LIMIT 1`,
+        [e.worker_id, e.project_id, d, e.id ?? null],
+      );
+      if (other) throw new ValidationError('day', 'errWorkDayExists');
+    }
+    return save('wage_entries', {
+      id: e.id,
+      worker_id: e.worker_id,
+      project_id: e.project_id,
+      day: d,
+      kind: e.kind,
+      days: e.kind === 'work' ? e.days ?? null : null,
+      amount_cents: amount,
+      note: opt(e.note),
+    });
   });
 }
 
@@ -310,18 +332,35 @@ export function moveTool(m: {
   condition?: string | null;
   note?: string | null;
 }): string {
-  if (!exists('tools', m.tool_id)) throw new ValidationError('tool_id', 'errName');
+  if (!exists('tools', m.tool_id)) throw new ValidationError('tool_id', 'errTool');
   if (m.kind === 'issue' && !m.worker_id && !opt(m.taken_by)) throw new ValidationError('taken_by', 'errWorker');
-  return save('tool_movements', {
-    id: m.id, // the form's id, so photos attached before saving belong to this row
-    tool_id: m.tool_id,
-    kind: m.kind,
-    project_id: m.project_id ?? null,
-    worker_id: m.worker_id ?? null,
-    taken_by: opt(m.taken_by),
-    day: day(m.day),
-    condition: opt(m.condition),
-    note: opt(m.note),
+  const d = day(m.day);
+  return tx(() => {
+    // Judge the movement against the tool's latest one, ordered exactly as v_tool_status orders them
+    // (newest day, then the one entered last). The row being edited is not its own predecessor.
+    const last = first<{ id: string; kind: 'issue' | 'return'; day: string }>(
+      `SELECT id, kind, day FROM tool_movements
+       WHERE tool_id = ? AND deleted_at IS NULL AND id IS NOT ?
+       ORDER BY day DESC, created_at DESC LIMIT 1`,
+      [m.tool_id, m.id ?? null],
+    );
+    // A tool can only go out when it is in, and only come back when it is out (never moved = in).
+    const isOut = last?.kind === 'issue';
+    if (m.kind === 'issue' ? isOut : !isOut) throw new ValidationError('tool_id', 'errToolState');
+    // A record dated before the last one would not change where the tool is (the view goes by day),
+    // so the history would say one thing and the tool status another.
+    if (last && d < last.day) throw new ValidationError('day', 'errDateBeforeLast');
+    return save('tool_movements', {
+      id: m.id, // the form's id, so photos attached before saving belong to this row
+      tool_id: m.tool_id,
+      kind: m.kind,
+      project_id: m.project_id ?? null,
+      worker_id: m.worker_id ?? null,
+      taken_by: opt(m.taken_by),
+      day: d,
+      condition: opt(m.condition),
+      note: opt(m.note),
+    });
   });
 }
 
@@ -340,7 +379,7 @@ export function saveNote(n: { id?: string; project_id: string | null; day: strin
 
 // ---------------------------------------------------------------- delete
 
-/** Soft-deletes a record and its attachments together. Deleting a project also deletes what belongs to it. */
+/** Soft-deletes a record and its attachments together. Deleting a project or a tool also deletes what belongs to it. */
 export function deleteRecord(
   table: 'projects' | 'expenses' | 'workers' | 'project_workers' | 'wage_entries' | 'tools' | 'tool_movements' | 'site_notes',
   id: string,
@@ -359,6 +398,11 @@ export function deleteRecord(
       for (const child of ['expenses', 'site_notes', 'wage_entries', 'tool_movements', 'project_workers'] as const) {
         d.getAllSync<{ id: string }>(`SELECT id FROM ${child} WHERE project_id = ? AND deleted_at IS NULL`, [id]).forEach((r) => removeWithFiles(child, r.id));
       }
+    }
+    if (table === 'tools') {
+      // A deleted tool takes its issue/return history (and the photos on it) with it, so no live
+      // movement is left pointing at a tool that no longer exists.
+      d.getAllSync<{ id: string }>('SELECT id FROM tool_movements WHERE tool_id = ? AND deleted_at IS NULL', [id]).forEach((r) => removeWithFiles('tool_movements', r.id));
     }
     removeWithFiles(table, id);
   });

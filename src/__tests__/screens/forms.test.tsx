@@ -351,7 +351,7 @@ smokeScreen('tool/move (nothing to return)', () => <ToolMove />, {
     {
       name: 'return when every tool is in the store',
       prepare: () => setRouteParams({ kind: 'return' }),
-      expect: (tr) => [tr('returnTool'), tr('inStore')],
+      expect: (tr) => [tr('returnTool'), tr('noToolsOut')],
     },
   ],
 });
