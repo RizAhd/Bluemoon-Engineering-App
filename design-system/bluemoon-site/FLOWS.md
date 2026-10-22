@@ -110,6 +110,9 @@ Layout:
 5. Sticky footer (`Screen footer`): caption line `${n} ${t('worked')} · ${t('wagesPaidToday')} ${formatLKR(Σ paid)}`; when Σ draft > 0: primary `${t('payAll')} · ${formatLKR(Σ draft)}` → `Alert(payAll, "Kamal — Rs 7,000\nNimal — Rs 4,500…")` with `cancel` / `payAll` → `payWages` per row in order (a failure stops the loop; already-written payments show as paid when the screen re-reads, so Retry only pays the rest) → toast `sheetSaved` → `router.back()`; plus a ghost compact `saveSheet` ("Save today" = done without paying; work stays recorded; toast `sheetSaved`, back). When Σ draft = 0: caption `nothingToPay` and a single primary `saveSheet`.
 6. Empty roster: `EmptyState icon={HardHat} noWorkersOnProject / noWorkersOnProjectHint` + primary `addWorkerToProject`. Back gesture never asks to confirm — everything shown is already saved except untouched pay drafts.
 
+**As shipped (supersedes the pre-filled wording above).** The *Pay now* box starts empty and shows the amount owed only as a hint (`toPayToday Rs X`); ticking a worker or *All worked today* never records money. Typing an amount and tapping the row's *Pay now* asks first (`Alert` with `Name — Rs X` lines). The footer's primary button is `Pay all · Rs Σ` (every worker's remaining wage) and also asks first; each payment is written once and its draft cleared, so a retry cannot pay twice. *Save today* saves work only and, if Pay now amounts were typed, asks to confirm them. Workers marked as left are not ticked by *All worked today* unless they already have an entry that day. Unticking keeps any payment already made that day, and the screen shows it under *Wages paid today*.
+
+
 ## 8. Expenses — `(tabs)/expenses.tsx` and `expense/form.tsx`
 
 **Tab.** Hooks as now (scoped by `pid`), `useAttachmentCounts('expenses')`.

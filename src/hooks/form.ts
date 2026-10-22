@@ -20,6 +20,8 @@ export function useRecordForm(table: string, existingId?: string) {
   const [id] = useState(() => existingId ?? newId());
   const [errors, setErrors] = useState<Record<string, TKey>>({});
   const saved = useRef(!!existingId);
+  // True from the moment Save starts until it fails: a second tap while saving (or after saving, while the screen closes) does nothing.
+  const busy = useRef(false);
 
   // Leaving a new form without saving hides any photos already taken for it.
   useEffect(() => {
@@ -48,16 +50,21 @@ export function useRecordForm(table: string, existingId?: string) {
   }
 
   function onFailed(e: unknown) {
+    busy.current = false;
     if (e instanceof ValidationError) {
       setErrors({ [e.field]: e.key as TKey });
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error).catch(() => {});
+      // The message under the field can be scrolled out of sight, so say it where it cannot be missed too.
+      toast(t(e.key as TKey), { tone: 'danger' });
     } else {
       showError(e, 'save', t, { table, id });
     }
   }
 
-  /** Runs the save; on success shows "Saved on phone" and goes back. */
+  /** Runs the save; on success shows "Saved on phone" and goes back. A second call while it runs, or after it worked, is ignored. */
   function submit(fn: () => void) {
+    if (busy.current) return;
+    busy.current = true;
     try {
       fn();
       onSaved();
@@ -68,6 +75,8 @@ export function useRecordForm(table: string, existingId?: string) {
 
   /** Same flow for multi-step saves (e.g. copy a photo, then write the row). Never rejects. */
   async function submitAsync(fn: () => Promise<void>): Promise<void> {
+    if (busy.current) return;
+    busy.current = true;
     try {
       await fn();
       onSaved();
@@ -76,7 +85,8 @@ export function useRecordForm(table: string, existingId?: string) {
     }
   }
 
-  function confirmDelete(fn: () => void) {
+  /** Asks first, then runs `fn` and leaves the screen: `pop` is how many screens to close (a form opened from a detail screen that is gone too needs 2). */
+  function confirmDelete(fn: () => void, pop = 1) {
     Alert.alert(t('confirmDelete'), t('confirmDeleteBody'), [
       { text: t('cancel'), style: 'cancel' },
       {
@@ -90,7 +100,8 @@ export function useRecordForm(table: string, existingId?: string) {
             return;
           }
           toast(t('deleted'));
-          router.back();
+          if (pop > 1) router.dismiss(pop);
+          else router.back();
         },
       },
     ]);

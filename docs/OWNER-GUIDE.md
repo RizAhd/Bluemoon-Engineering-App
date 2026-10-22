@@ -30,10 +30,10 @@ Tap it to change site. "All projects" shows everything together.
 ## 3. Every day (about 2 minutes)
 
 **Today's work & pay** (Workers tab):
-1. Tap each worker who worked today. Choose ½, 1, 1½ or 2 days.
+1. Tap each worker who worked today. Choose ½, 1, 1½ or 2 days. It is saved the moment you tap, so going back or changing the date never loses it.
 2. The wage is filled in from the daily rate. Change it if needed.
-3. If you pay today, check the *Pay now* amount, then tap **Pay all** or **Pay now** next to one worker.
-4. Tap **Save today**. You can open the sheet again later today, or pick yesterday, and fix a mistake. Nothing is entered twice.
+3. To pay: type the amount in *Pay now* (the amount owed is shown under the box) and tap **Pay now** beside the name, or tap **Pay all · Rs …** to pay everyone what they are owed today. The app lists each name and amount and asks you to confirm before it records any money.
+4. Tap **Save today** when you are done. You can open the sheet again later today, or pick yesterday, and fix a mistake. Nothing is entered twice. A worker you have marked as *left* is not ticked automatically.
 
 Receipts: **+ Add → New expense** → take the photo → type the amount → pick the category → Save.
 

@@ -9,7 +9,7 @@ import { ListCard, ListRow, Screen, SectionTitle } from '@/components/ui/layout'
 import { Txt } from '@/components/ui/Txt';
 import { deviceId, setSetting, useSetting } from '@/db';
 import { LANG_NAMES, useLang, useT, type Lang } from '@/i18n';
-import { daysSince, formatDay, today } from '@/lib/dates';
+import { daysSince, formatDay, toDay, today } from '@/lib/dates';
 import { seedDemoData } from '@/lib/demoData';
 import { guard } from '@/lib/errors';
 import { space, useThemePref, type ThemePref } from '@/theme';
@@ -25,7 +25,9 @@ export default function MoreScreen() {
   const theme = useThemePref();
   const autoAt = useSetting('auto_backup_at');
   const autoError = useSetting('auto_backup_error');
-  const autoToday = autoAt?.slice(0, 10) === today();
+  // auto_backup_at is a UTC timestamp, today() a local day: compare local days, or a backup made before 05:30 in Sri Lanka is "yesterday".
+  const autoDay = autoAt && !Number.isNaN(Date.parse(autoAt)) ? toDay(new Date(autoAt)) : null;
+  const autoToday = autoDay === today();
   const autoStale = (daysSince(autoAt) ?? 99) >= 2;
 
   // Backup row: green when today's snapshot exists, amber when late, red when the last run failed.
@@ -35,7 +37,7 @@ export default function MoreScreen() {
       ? t('autoBackupFailed')
       : autoToday
         ? `${t('dataSafe')} · ${timeOf(autoAt ?? '')}`
-        : `${t('autoBackupLast')}: ${autoAt ? formatDay(autoAt.slice(0, 10)) : t('never')}`;
+        : `${t('autoBackupLast')}: ${autoDay ? formatDay(autoDay) : t('never')}`;
 
   return (
     <Screen paddingBottom={space.xxl}>

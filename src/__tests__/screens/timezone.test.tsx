@@ -72,13 +72,36 @@ describe('import screen near local midnight', () => {
 });
 
 describe('settings screen near local midnight', () => {
-  // KNOWN BUG (src/app/more.tsx): `autoAt.slice(0, 10) === today()` compares the UTC day of the timestamp with
-  // the local day, so for the first hours of every local day the backup row says "late" although it just ran.
-  // The Today screen does it right (toDay(new Date(autoAt))). When more.tsx is fixed this test starts failing:
-  // change `it.failing` to `it`.
-  (justAfterMidnightToday ? it.failing : it.skip)('a backup made after local midnight shows as done today', async () => {
+  // more.tsx used to compare `autoAt.slice(0, 10)` (the UTC day) with today() (the local day), so for the first hours of
+  // every local day the backup row said "late" although it just ran. It now compares local days, as the Today screen does.
+  zoneTest('a backup made after local midnight shows as done today, at its local time', async () => {
     setSetting('auto_backup_at', justAfterMidnightToday);
     await renderScreen(<MoreScreen />);
+    expectClean('more tz');
+    const localTime = new Date(justAfterMidnightToday as string).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    expect(visibleText()).toContain(`${E('dataSafe')} · ${localTime}`);
+    expect(visibleText()).not.toContain(E('autoBackupLast'));
+  });
+
+  zoneTest("yesterday's backup shows the local date, not the UTC date", async () => {
+    setSetting('auto_backup_at', justAfterMidnightYesterday);
+    await renderScreen(<MoreScreen />);
+    expect(visibleText()).toContain(`${E('autoBackupLast')}: ${formatDay(addDays(today(), -1))}`);
+    expect(visibleText()).not.toContain(E('dataSafe'));
+  });
+
+  zoneTest('a failed run is still shown as failed when only yesterday\'s backup is on record', async () => {
+    setSetting('auto_backup_at', justAfterMidnightYesterday);
+    setSetting('auto_backup_error', '2026-01-01T00:00:00.000Z database is locked');
+    await renderScreen(<MoreScreen />);
+    expect(visibleText()).toContain(E('autoBackupFailed'));
+  });
+
+  zoneTest('a failed run does not show once today\'s backup has been made', async () => {
+    setSetting('auto_backup_at', justAfterMidnightToday);
+    setSetting('auto_backup_error', '2026-01-01T00:00:00.000Z database is locked');
+    await renderScreen(<MoreScreen />);
+    expect(visibleText()).not.toContain(E('autoBackupFailed'));
     expect(visibleText()).toContain(`${E('dataSafe')} · `);
   });
 });

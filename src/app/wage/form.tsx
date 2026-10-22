@@ -65,9 +65,16 @@ function Inner({ existing, params }: { existing: WageEntry | null; params: { wor
   const listed = useRoster
     ? rosterRows.map((r) => ({ id: r.worker_id, title: r.name, subtitle: r.trade ?? undefined }))
     : fallback.map((w) => ({ id: w.id, title: w.name, subtitle: w.trade ?? undefined }));
-  // An entry's own worker stays in the list after being taken off the project, so editing it never has to reassign the wages.
-  const owner = existing ? everyone.find((w) => w.id === existing.worker_id) : undefined;
-  const items = owner && !listed.some((i) => i.id === owner.id) ? [{ id: owner.id, title: owner.name, subtitle: owner.trade ?? undefined }, ...listed] : listed;
+  // The worker this form is for always stays selectable, even when the project's roster does not list them:
+  // an entry's own worker (so editing it never has to reassign the wages), and the one the form was opened for or has picked
+  // (a worker on no project, one taken off it or one who left would otherwise be dropped and Save would say "Choose a worker").
+  const pinned = [existing?.worker_id, params.workerId, workerId]
+    .filter((id, i, ids): id is string => !!id && ids.indexOf(id) === i && !listed.some((l) => l.id === id))
+    .flatMap((id) => {
+      const w = everyone.find((x) => x.id === id);
+      return w ? [{ id: w.id, title: w.name, subtitle: w.trade ?? undefined }] : [];
+    });
+  const items = [...pinned, ...listed];
   const workerValue = items.some((i) => i.id === workerId) ? workerId : null;
 
   const rosterRow = rosterRows.find((r) => r.worker_id === workerValue);

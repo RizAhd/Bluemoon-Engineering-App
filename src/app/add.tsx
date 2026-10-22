@@ -11,13 +11,15 @@ import { useCurrentProjectId, useProjects } from '@/hooks/data';
 import { useT, type TKey } from '@/i18n';
 import { hairline, radius, space, useColors, useLayout, useMotion } from '@/theme';
 
-const ITEMS: { icon: LucideIcon; label: TKey; href: Href; primary?: boolean }[] = [
+/** `pid` is the project being worked on, or null for "All projects". */
+const items = (pid: string | null): { icon: LucideIcon; label: TKey; href: Href; primary?: boolean }[] => [
   { icon: Receipt, label: 'newExpense', href: '/expense/form', primary: true },
   { icon: ClipboardCheck, label: 'todaysWork', href: '/wage/today' },
   { icon: HandCoins, label: 'giveAdvance', href: '/wage/form?kind=advance' },
   { icon: ArrowUpFromLine, label: 'issueTool', href: '/tool/move?kind=issue' },
   { icon: NotebookPen, label: 'newNote', href: '/note/form' },
-  { icon: UserPlus, label: 'newWorker', href: '/worker/form' },
+  // With a project chosen a new worker goes onto it with a rate (as on the Workers tab); a bare worker would be hidden from its roster.
+  { icon: UserPlus, label: 'newWorker', href: pid ? `/worker/assign?projectId=${pid}` : '/worker/form' },
 ];
 
 /** Quick-add sheet: a list of the things a supervisor records most, opened by the FAB. */
@@ -50,7 +52,7 @@ export default function AddSheet() {
           <SheetHeader title={t('whatToAdd')} onClose={() => router.back()} caption={`${t('project')}: ${projectName}`} />
           <View style={{ paddingHorizontal: gutter, paddingTop: space.sm }}>
             <ListCard inset>
-              {ITEMS.map((it) => (
+              {items(pid).map((it) => (
                 <ListRow key={it.label} icon={it.icon} iconTone={it.primary ? 'primary' : undefined} title={t(it.label)} onPress={() => router.replace(it.href)} />
               ))}
             </ListCard>

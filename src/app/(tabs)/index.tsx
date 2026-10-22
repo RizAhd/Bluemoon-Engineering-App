@@ -133,8 +133,11 @@ export default function TodayScreen() {
     (a, p) => ({ spent: a.spent + p.expense_cents + p.labour_cents, contract: a.contract + (p.contract_cents ?? 0) }),
     { spent: 0, contract: 0 },
   );
-  const worked = dayRows.filter((r) => r.days != null).length;
-  const toPay = dayRows.reduce((a, r) => a + Math.max(0, r.work_cents - r.paid_cents), 0);
+  // Same population as the wage sheet and the Workers tab: only workers on the roster (a removed worker's day rows stay in v_wage_day).
+  const onRoster = new Set(roster.map((r) => r.worker_id));
+  const dayOnRoster = pid ? dayRows.filter((r) => onRoster.has(r.worker_id)) : dayRows;
+  const worked = dayOnRoster.filter((r) => r.days != null).length;
+  const toPay = dayOnRoster.reduce((a, r) => a + Math.max(0, r.work_cents - r.paid_cents), 0);
   const noRoster = !!pid && roster.length === 0;
 
   const workSubtitle = !pid
