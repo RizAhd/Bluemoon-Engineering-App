@@ -17,6 +17,7 @@ import {
   useToday,
 } from '@/components/ListControls';
 import { TabHeader } from '@/components/ProjectSwitcher';
+import { ShareHeaderButton, useShareSheet } from '@/components/ShareSheet';
 import { Stat, Tiles } from '@/components/Stats';
 import { Button } from '@/components/ui/Button';
 import { Badge, EmptyState } from '@/components/ui/feedback';
@@ -83,6 +84,8 @@ export default function ExpensesScreen() {
   const td = useToday();
   const month = td.slice(0, 7);
   const [limit, setLimit] = useState(PAGE); // -1 = no cap
+  // The newest expenses and the total cost of the current project (or of all projects), as a message.
+  const share = useShareSheet({ kind: 'expenses', id: pid });
 
   const { prefs, set, reset } = useListPrefs('expenses', DEFAULTS);
   const period = toPeriod(prefs.period);
@@ -160,7 +163,7 @@ export default function ExpensesScreen() {
 
   return (
     <View style={{ flex: 1, backgroundColor: c.bg }}>
-      <TabHeader title={t('expenses')} />
+      <TabHeader title={t('expenses')} right={<ShareHeaderButton onPress={share.open} />} />
       <Screen hairlineTop={false} gap={space.md}>
         {unfiltered.n === 0 ? (
           <EmptyState icon={Receipt} title={t('noExpenses')} hint={t('noExpensesHint')} action={<Button icon={Plus} label={t('newExpense')} onPress={goNew} full />} />
@@ -213,6 +216,7 @@ export default function ExpensesScreen() {
           </>
         )}
       </Screen>
+      {share.sheet}
     </View>
   );
 }

@@ -5,6 +5,7 @@ import { useState } from 'react';
 import { Pressable, View } from 'react-native';
 
 import { PhotoStrip } from '@/components/PhotoStrip';
+import { ShareHeaderButton, useShareSheet } from '@/components/ShareSheet';
 import { CategoryBars, ContractBar, Stat, Tiles } from '@/components/Stats';
 import { Button, HeaderButton } from '@/components/ui/Button';
 import { Badge, EmptyState, toast } from '@/components/ui/feedback';
@@ -85,6 +86,38 @@ export default function ProjectDetail() {
   const letterhead = useSetting('export_letterhead') === '1';
   const [exporting, setExporting] = useState(false);
 
+  /** Make the report and hand it to the phone. `handOff` runs once the file is made (the Share sheet closes there). */
+  async function onExport(handOff?: () => void) {
+    if (!project) return;
+    const pr = project;
+    setExporting(true);
+    try {
+      let noLetterhead = false;
+      const file = await exportProjectPdf(pr.id, {
+        includePhotos,
+        letterhead,
+        onNotice: () => (noLetterhead = true),
+      });
+      handOff?.();
+      if (noLetterhead) toast(t('letterheadUnavailable'), { tone: 'danger' });
+      await Sharing.shareAsync(file.uri, { mimeType: 'application/pdf', dialogTitle: pr.name, UTI: 'com.adobe.pdf' });
+    } catch (e) {
+      showError(e, 'project.exportPdf', t, { id: pr.id, includePhotos, letterhead });
+    } finally {
+      setExporting(false);
+    }
+  }
+
+  const share = useShareSheet({
+    kind: 'project',
+    id: id ?? null,
+    // the PDF row makes the same report as "Export PDF" below, with its remembered choices
+    pdf: {
+      hint: `${t(includePhotos ? 'pdfWithPhotos' : 'pdfNoPhotos')} · ${t(letterhead ? 'letterheadOption' : 'pdfPlainPaper')}`,
+      run: (handOff) => onExport(handOff),
+    },
+  });
+
   if (!project || !cost) {
     return (
       <>
@@ -105,28 +138,17 @@ export default function ProjectDetail() {
     router.push(path);
   }
 
-  async function onExport() {
-    setExporting(true);
-    try {
-      const file = await exportProjectPdf(pr.id, {
-        includePhotos,
-        letterhead,
-        onNotice: () => toast(t('letterheadUnavailable'), { tone: 'danger' }),
-      });
-      await Sharing.shareAsync(file.uri, { mimeType: 'application/pdf', dialogTitle: pr.name, UTI: 'com.adobe.pdf' });
-    } catch (e) {
-      showError(e, 'project.exportPdf', t, { id: pr.id, includePhotos, letterhead });
-    } finally {
-      setExporting(false);
-    }
-  }
-
   return (
     <>
       <Stack.Screen
         options={{
           title: pr.name,
-          headerRight: () => <HeaderButton icon={Pencil} label={t('editProject')} onPress={() => router.push(`/project/form?id=${pr.id}`)} />,
+          headerRight: () => (
+            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+              <ShareHeaderButton onPress={share.open} />
+              <HeaderButton icon={Pencil} label={t('editProject')} onPress={() => router.push(`/project/form?id=${pr.id}`)} />
+            </View>
+          ),
         }}
       />
       <Screen>
@@ -293,6 +315,7 @@ export default function ProjectDetail() {
         <SectionTitle title={t('documents')} />
         <PhotoStrip ownerTable="projects" ownerId={pr.id} label={t('projectDocs')} />
       </Screen>
+      {share.sheet}
     </>
   );
 }

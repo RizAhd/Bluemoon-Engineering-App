@@ -1,8 +1,10 @@
 import { Stack, useLocalSearchParams } from 'expo-router';
 import { Building2, Cloud, CloudRain, Sun, Trash2 } from 'lucide-react-native';
 import { useMemo, useState } from 'react';
+import { View } from 'react-native';
 
 import { PhotoStrip } from '@/components/PhotoStrip';
+import { ShareHeaderButton, useShareSheet } from '@/components/ShareSheet';
 import { Button, IconButton } from '@/components/ui/Button';
 import { Chips, DateField, Field, SelectField } from '@/components/ui/form';
 import { Screen } from '@/components/ui/layout';
@@ -46,6 +48,9 @@ function Inner({ existing, projectParam }: { existing: SiteNote | null; projectP
   const [body, setBody] = useState(existing?.body ?? '');
   const [weather, setWeather] = useState<Weather | null>((existing?.weather as Weather) ?? null);
 
+  // A saved note is shared as it is saved (its own message: project, day, weather, the whole text).
+  const share = useShareSheet({ kind: 'note', id: existing?.id ?? null });
+
   const chipIcon = (Icon: typeof Sun) => <Icon size={18} color={c.textMuted} strokeWidth={2} />;
 
   return (
@@ -56,14 +61,17 @@ function Inner({ existing, projectParam }: { existing: SiteNote | null; projectP
           headerRight: form.isNew
             ? undefined
             : () => (
-                <IconButton
-                  icon={Trash2}
-                  label={t('delete')}
-                  tone="danger"
-                  size={44}
-                  pressedBg="headerDeep"
-                  onPress={() => form.confirmDelete(() => deleteRecord('site_notes', form.id))}
-                />
+                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                  <ShareHeaderButton onPress={share.open} />
+                  <IconButton
+                    icon={Trash2}
+                    label={t('delete')}
+                    tone="danger"
+                    size={44}
+                    pressedBg="headerDeep"
+                    onPress={() => form.confirmDelete(() => deleteRecord('site_notes', form.id))}
+                  />
+                </View>
               ),
         }}
       />
@@ -103,6 +111,7 @@ function Inner({ existing, projectParam }: { existing: SiteNote | null; projectP
         />
         <PhotoStrip ownerTable="site_notes" ownerId={form.id} label={t('photoProof')} />
       </Screen>
+      {form.isNew ? null : share.sheet}
     </>
   );
 }

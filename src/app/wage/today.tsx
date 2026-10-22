@@ -4,6 +4,7 @@ import { Building2, CheckCircle2, Info, UserPlus } from 'lucide-react-native';
 import { memo, useCallback, useEffect, useMemo, useState } from 'react';
 import { Alert, FlatList, Keyboard, Pressable, View } from 'react-native';
 
+import { ShareHeaderButton, useShareSheet } from '@/components/ShareSheet';
 import { Button } from '@/components/ui/Button';
 import { Badge, EmptyState, toast } from '@/components/ui/feedback';
 import { AmountField, Checkbox, DateField, Segmented, SelectField } from '@/components/ui/form';
@@ -96,6 +97,8 @@ export default function TodaysWorkScreen() {
   const payErrors = fresh ? store.payErrors : EMPTY_ERRORS;
   const [busy, setBusy] = useState(false);
   const [kbOpen, setKbOpen] = useState(false);
+  // The day's work and pay of this project, as saved: amounts still being typed are saved first (openShare).
+  const share = useShareSheet({ kind: 'daySheet', id: pid, options: { day } });
 
   // "Already recorded" is about the day as it was when the sheet opened: ticking a worker here must not make it appear.
   const hasRecorded = dayRows.some((r) => r.days != null || r.paid_cents > 0);
@@ -399,9 +402,15 @@ export default function TodaysWorkScreen() {
 
   const addWorker = () => router.push(`/worker/assign?projectId=${pid}`);
 
+  function openShare() {
+    Keyboard.dismiss();
+    flushAmounts();
+    share.open();
+  }
+
   return (
     <>
-      <Stack.Screen options={{ title: t('todaysWork') }} />
+      <Stack.Screen options={{ title: t('todaysWork'), headerRight: () => <ShareHeaderButton onPress={openShare} /> }} />
       <Screen
         scroll={false}
         footer={
@@ -457,6 +466,7 @@ export default function TodaysWorkScreen() {
           renderItem={({ item }) => <WorkerRow vm={item} onToggle={toggle} onDays={setDays} onPatch={patch} onCommitAmount={commitAmount} />}
         />
       </Screen>
+      {share.sheet}
     </>
   );
 }

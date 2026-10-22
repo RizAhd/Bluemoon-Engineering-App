@@ -26,6 +26,7 @@ import { Alert, Modal, Pressable, ScrollView, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { EstimateStatusBadge } from '@/components/EstimateBits';
+import { ShareHeaderButton, useShareSheet } from '@/components/ShareSheet';
 import { Button, HeaderButton } from '@/components/ui/Button';
 import { EmptyState, toast } from '@/components/ui/feedback';
 import { Checkbox, Chips, SheetHeader } from '@/components/ui/form';
@@ -121,7 +122,7 @@ function ShareOption({ label, hint, checked, onChange }: { label: string; hint: 
 }
 
 /** The bottom sheet behind "Share estimate PDF": letterhead, language of the labels, and the Share button. */
-function ShareSheet({
+function PdfShareSheet({
   visible,
   busy,
   letterhead,
@@ -203,6 +204,59 @@ export default function EstimateHub() {
     }, []),
   );
 
+  function setStatus(status: EstimateStatus) {
+    if (!estimate) return;
+    try {
+      setEstimateStatus(estimate.id, status);
+      toast(t('statusSetTo', { status: t(`estStatus_${status}`) }));
+    } catch (e) {
+      showError(e, 'estimate.status', t, { id: estimate.id, status });
+    }
+  }
+
+  /**
+   * Make the PDF with the remembered letterhead and language and hand it to the phone. `handOff` runs once the
+   * file is made (the Share sheet closes there, as the PDF sheet does).
+   */
+  async function share(handOff?: () => void) {
+    if (!estimate || shareLock.current) return;
+    const est = estimate;
+    shareLock.current = true;
+    setSharing(true);
+    try {
+      let noLetterhead = false;
+      const file = await exportEstimatePdf(est.id, { letterhead, lang: pdfLang, onNotice: () => (noLetterhead = true) });
+      // the sheet goes first: a message shown while it is open would sit behind it
+      setSheetOpen(false);
+      handOff?.();
+      if (noLetterhead) toast(t('letterheadUnavailable'), { tone: 'danger' });
+      await Sharing.shareAsync(file.uri, { mimeType: 'application/pdf', dialogTitle: `${t('estimate')} ${est.number}`, UTI: 'com.adobe.pdf' });
+      // one tap to record that it went out
+      if (est.status === 'draft') {
+        Alert.alert(t('markSentTitle'), t('markSentBody'), [
+          { text: t('notNow'), style: 'cancel' },
+          { text: t('markAsSent'), onPress: () => setStatus('sent') },
+        ]);
+      }
+    } catch (e) {
+      showError(e, 'estimate.share', t, { id: est.id, letterhead, lang: pdfLang });
+    } finally {
+      shareLock.current = false;
+      setSharing(false);
+    }
+  }
+
+  // The header's Share: the estimate as a message in the client's language (the PDF's), or the PDF itself.
+  const shareSheet = useShareSheet({
+    kind: 'estimate',
+    id: id ?? null,
+    lang: pdfLang,
+    pdf: {
+      hint: `${LANG_NAMES[pdfLang]} · ${t(letterhead ? 'letterheadOption' : 'pdfPlainPaper')}`,
+      run: (handOff) => share(handOff),
+    },
+  });
+
   if (!estimate || !total) {
     return (
       <>
@@ -235,15 +289,6 @@ export default function EstimateHub() {
   const bankIncomplete = !company.bank_name.trim() || !company.account_no.trim();
 
   // ------------------------------------------------ actions
-
-  function setStatus(status: EstimateStatus) {
-    try {
-      setEstimateStatus(est.id, status);
-      toast(t('statusSetTo', { status: t(`estStatus_${status}`) }));
-    } catch (e) {
-      showError(e, 'estimate.status', t, { id: est.id, status });
-    }
-  }
 
   function standardSchedule() {
     // look at the stages now, not at what the screen showed a moment ago
@@ -324,32 +369,6 @@ export default function EstimateHub() {
     ]);
   }
 
-  async function share() {
-    if (shareLock.current) return;
-    shareLock.current = true;
-    setSharing(true);
-    try {
-      let noLetterhead = false;
-      const file = await exportEstimatePdf(est.id, { letterhead, lang: pdfLang, onNotice: () => (noLetterhead = true) });
-      // the sheet goes first: a message shown while it is open would sit behind it
-      setSheetOpen(false);
-      if (noLetterhead) toast(t('letterheadUnavailable'), { tone: 'danger' });
-      await Sharing.shareAsync(file.uri, { mimeType: 'application/pdf', dialogTitle: `${t('estimate')} ${est.number}`, UTI: 'com.adobe.pdf' });
-      // one tap to record that it went out
-      if (est.status === 'draft') {
-        Alert.alert(t('markSentTitle'), t('markSentBody'), [
-          { text: t('notNow'), style: 'cancel' },
-          { text: t('markAsSent'), onPress: () => setStatus('sent') },
-        ]);
-      }
-    } catch (e) {
-      showError(e, 'estimate.share', t, { id: est.id, letterhead, lang: pdfLang });
-    } finally {
-      shareLock.current = false;
-      setSharing(false);
-    }
-  }
-
   const openItem = (itemId?: string) => router.push(itemId ? `/estimate/item?estimateId=${est.id}&id=${itemId}` : `/estimate/item?estimateId=${est.id}`);
   const openStage = (stageId?: string) => router.push(stageId ? `/estimate/payment?estimateId=${est.id}&id=${stageId}` : `/estimate/payment?estimateId=${est.id}`);
 
@@ -377,7 +396,7 @@ export default function EstimateHub() {
           title: est.number,
           headerRight: () => (
             <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-              <HeaderButton icon={Share2} label={t('shareEstimatePdf')} onPress={() => setSheetOpen(true)} />
+              <ShareHeaderButton onPress={shareSheet.open} />
               <HeaderButton icon={Pencil} label={t('editDetails')} onPress={() => router.push(`/estimate/form?id=${est.id}`)} />
             </View>
           ),
@@ -570,7 +589,7 @@ export default function EstimateHub() {
         </View>
       </Screen>
 
-      <ShareSheet
+      <PdfShareSheet
         visible={sheetOpen}
         busy={sharing}
         letterhead={letterhead}
@@ -580,6 +599,7 @@ export default function EstimateHub() {
         onShare={() => void share()}
         onClose={() => setSheetOpen(false)}
       />
+      {shareSheet.sheet}
     </>
   );
 }

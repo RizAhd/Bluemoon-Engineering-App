@@ -516,6 +516,22 @@ export const en = {
   month_10: 'October',
   month_11: 'November',
   month_12: 'December',
+  // share buttons (WhatsApp and other apps)
+  share: 'Share…',
+  shareTitle: 'Share',
+  sharePreview: 'Message in {lang}',
+  viaWhatsApp: 'WhatsApp',
+  viaWhatsAppHint: 'Opens WhatsApp; you pick the chat',
+  otherApps: 'Other apps',
+  otherAppsHint: 'SMS, e-mail, Viber and more',
+  sharePdf: 'PDF',
+  sharePdfHint: 'The full report as a file',
+  shareWorking: 'Working…',
+  whatsappMissing: 'WhatsApp is not installed — choose an app',
+  nothingToShare: 'Nothing to share: this was deleted.',
+  pdfWithPhotos: 'With photos',
+  pdfNoPhotos: 'Without photos',
+  pdfPlainPaper: 'Plain paper',
 } as const;
 
 export type Dict = Record<keyof typeof en, string>;

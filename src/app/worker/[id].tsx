@@ -3,6 +3,7 @@ import { Banknote, Building2, CalendarCheck, HandCoins, Pencil, Phone, Trash2, U
 import { useCallback, useMemo, useState } from 'react';
 import { Alert, Linking, View } from 'react-native';
 
+import { ShareHeaderButton, useShareSheet } from '@/components/ShareSheet';
 import { Stat, Tiles } from '@/components/Stats';
 import { Button, HeaderButton } from '@/components/ui/Button';
 import { Badge, EmptyState, toast } from '@/components/ui/feedback';
@@ -55,6 +56,12 @@ export default function WorkerDetail() {
     return [...seen.entries()].map(([pId, name]) => ({ id: pId, name }));
   }, [entries]);
 
+  // The chosen filter only counts while that project is still in the history; otherwise fall back to the default.
+  const filterValid = filter === ALL || (filter != null && historyProjects.some((p) => p.id === filter));
+  const activeFilter = filterValid && filter ? filter : pid && historyProjects.some((p) => p.id === pid) ? pid : ALL;
+  // The statement follows that filter: one project when one is chosen (the current project by default), else all.
+  const share = useShareSheet({ kind: 'workerStatement', id: id ?? null, options: { projectId: activeFilter === ALL ? null : activeFilter } });
+
   // The worker was deleted (from the edit form on top of this screen): leave instead of showing an empty shell.
   const gone = !!id && (!worker || !bal);
   useFocusEffect(
@@ -77,9 +84,6 @@ export default function WorkerDetail() {
   const b = bal.balance_cents;
   const tone = b > 0 ? 'dangerSoft' : b < 0 ? 'warningSoft' : 'successSoft';
   const toneText = b > 0 ? 'danger' : b < 0 ? 'warning' : 'success';
-  // The chosen filter only counts while that project is still in the history; otherwise fall back to the default.
-  const filterValid = filter === ALL || (filter != null && historyProjects.some((p) => p.id === filter));
-  const activeFilter = filterValid && filter ? filter : pid && historyProjects.some((p) => p.id === pid) ? pid : ALL;
   const hasUnassigned = entries.some((e) => !e.project_id || !e.project_name);
   const showChips = historyProjects.length > 1 || (historyProjects.length >= 1 && hasUnassigned);
   const shown = activeFilter === ALL ? entries : entries.filter((e) => e.project_id === activeFilter);
@@ -180,7 +184,12 @@ export default function WorkerDetail() {
       <Stack.Screen
         options={{
           title: worker.name,
-          headerRight: () => <HeaderButton icon={Pencil} label={t('editWorker')} onPress={() => router.push(`/worker/form?id=${worker.id}`)} />,
+          headerRight: () => (
+            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+              <ShareHeaderButton onPress={share.open} />
+              <HeaderButton icon={Pencil} label={t('editWorker')} onPress={() => router.push(`/worker/form?id=${worker.id}`)} />
+            </View>
+          ),
         }}
       />
       <Screen>
@@ -282,6 +291,7 @@ export default function WorkerDetail() {
           if (kind && projectId) go(kind, projectId);
         }}
       />
+      {share.sheet}
     </>
   );
 }

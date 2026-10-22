@@ -4,6 +4,7 @@ import { useMemo, useState } from 'react';
 import { View } from 'react-native';
 
 import { HeaderAction, TabHeader } from '@/components/ProjectSwitcher';
+import { ShareHeaderButton, useShareSheet } from '@/components/ShareSheet';
 import { Button } from '@/components/ui/Button';
 import { Badge, EmptyState } from '@/components/ui/feedback';
 import { Chips } from '@/components/ui/form';
@@ -28,6 +29,8 @@ export default function ToolsScreen() {
   const pid = useCurrentProjectId();
   const [filter, setFilter] = useState<Filter>('all');
   const [showElsewhere, setShowElsewhere] = useState(false);
+  // The tools that are out now, on the current project (or on all projects), as a message.
+  const share = useShareSheet({ kind: 'toolsOut', id: pid });
   const rows = useQuery<Row>(
     `SELECT s.*, w.name AS worker_name, p.name AS project_name FROM v_tool_status s
      LEFT JOIN workers w ON w.id = s.worker_id LEFT JOIN projects p ON p.id = s.project_id
@@ -75,7 +78,16 @@ export default function ToolsScreen() {
 
   return (
     <View style={{ flex: 1, backgroundColor: c.bg }}>
-      <TabHeader title={t('tools')} allowAll right={<HeaderAction icon={Plus} label={t('newTool')} onPress={goNew} />} />
+      <TabHeader
+        title={t('tools')}
+        allowAll
+        right={
+          <>
+            <ShareHeaderButton onPress={share.open} />
+            <HeaderAction icon={Plus} label={t('newTool')} onPress={goNew} />
+          </>
+        }
+      />
       <Screen hairlineTop={false} gap={space.md}>
         {rows.length === 0 ? (
           <EmptyState icon={Hammer} title={t('noTools')} hint={t('noToolsHint')} action={<Button icon={Plus} label={t('newTool')} onPress={goNew} full />} />
@@ -125,6 +137,7 @@ export default function ToolsScreen() {
           </>
         )}
       </Screen>
+      {share.sheet}
     </View>
   );
 }

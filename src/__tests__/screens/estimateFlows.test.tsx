@@ -179,7 +179,7 @@ describe('from a new estimate to a project and back to a draft', () => {
 
     // 4. share: letterhead and Sinhala, remembered; the PDF is made with those choices and handed to the share sheet
     expect(hasLabel(E('estimateLetterheadHint'))).toBe(false);
-    await pressLabel(E('shareEstimatePdf'), 1);
+    await pressLabel(E('shareEstimatePdf'));
     expect(visibleText()).toContain(E('shareEstimate'));
     expect(visibleText()).toContain(E('pdfLanguage'));
     await pressLabel(`${E('letterheadOption')}. ${E('estimateLetterheadHint')}`);
@@ -241,7 +241,7 @@ describe('from a new estimate to a project and back to a draft', () => {
     const { id } = draftWithDiscount();
     setRouteParams({ id });
     await renderScreen(<EstimateHub />);
-    await pressLabel(E('shareEstimatePdf'), 0); // the header button opens the same sheet
+    await pressLabel(E('shareEstimatePdf')); // the header's Share opens the message sheet now; this button opens the PDF sheet
     const letterhead = () => screen.getByLabelText(`${E('letterheadOption')}. ${E('estimateLetterheadHint')}`).props.accessibilityState.checked;
     const chosen = (name: string) => screen.getByLabelText(name).props.accessibilityState.checked;
     expect(letterhead()).toBe(false);
@@ -251,7 +251,7 @@ describe('from a new estimate to a project and back to a draft', () => {
     await screen.unmount();
 
     await renderScreen(<EstimateHub />); // the next time the sheet opens on the same choices
-    await pressLabel(E('shareEstimatePdf'), 1);
+    await pressLabel(E('shareEstimatePdf'));
     expect(letterhead()).toBe(true);
     expect(chosen('தமிழ்')).toBe(true);
     expect(chosen('English')).toBe(false);
@@ -266,7 +266,7 @@ describe('from a new estimate to a project and back to a draft', () => {
     await renderScreen(shown(<EstimateHub />));
 
     jest.mocked(exportEstimatePdf).mockRejectedValueOnce(new Error('disk full'));
-    await pressLabel(E('shareEstimatePdf'), 1);
+    await pressLabel(E('shareEstimatePdf'));
     await pressLabel(E('shareNow'));
     await waitFor(() => expect(alert).toHaveBeenCalledWith(E('errorTitle'), expect.stringContaining(E('somethingWrong'))));
     takeConsole(); // the failure is logged in development
@@ -295,7 +295,7 @@ describe('from a new estimate to a project and back to a draft', () => {
     );
     setRouteParams({ id });
     await renderScreen(<EstimateHub />);
-    await pressLabel(E('shareEstimatePdf'), 1);
+    await pressLabel(E('shareEstimatePdf'));
     const share = screen.getAllByLabelText(E('shareNow'), { exact: true })[0];
     await fireEvent.press(share);
     await fireEvent.press(share); // the PDF is still being made
@@ -313,7 +313,7 @@ describe('from a new estimate to a project and back to a draft', () => {
     setEstimateStatus(id, 'sent');
     setRouteParams({ id });
     await renderScreen(<EstimateHub />);
-    await pressLabel(E('shareEstimatePdf'), 1);
+    await pressLabel(E('shareEstimatePdf'));
     await pressLabel(E('shareNow'));
     await waitFor(() => expect(Sharing.shareAsync).toHaveBeenCalledTimes(1));
     await settle();
