@@ -7,6 +7,7 @@ import { toast } from '@/components/ui/feedback';
 import { newId } from '@/db';
 import { ValidationError } from '@/db/repo';
 import { useT, type TKey } from '@/i18n';
+import { reportError, showError } from '@/lib/errors';
 import { discardOrphans } from '@/lib/files';
 
 /**
@@ -24,7 +25,13 @@ export function useRecordForm(table: string, existingId?: string) {
   useEffect(() => {
     if (existingId) return;
     return () => {
-      if (!saved.current) discardOrphans(table, id);
+      if (!saved.current) {
+        try {
+          discardOrphans(table, id);
+        } catch (e) {
+          reportError(e, 'discardOrphans', { table, id });
+        }
+      }
     };
   }, [existingId, table, id]);
 
@@ -32,22 +39,40 @@ export function useRecordForm(table: string, existingId?: string) {
     return errors[field] ? t(errors[field]) : null;
   }
 
+  function onSaved() {
+    saved.current = true;
+    setErrors({});
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+    toast(t('savedOnPhone'));
+    router.back();
+  }
+
+  function onFailed(e: unknown) {
+    if (e instanceof ValidationError) {
+      setErrors({ [e.field]: e.key as TKey });
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error).catch(() => {});
+    } else {
+      showError(e, 'save', t, { table, id });
+    }
+  }
+
   /** Runs the save; on success shows "Saved on phone" and goes back. */
   function submit(fn: () => void) {
     try {
       fn();
-      saved.current = true;
-      setErrors({});
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
-      toast(t('savedOnPhone'));
-      router.back();
+      onSaved();
     } catch (e) {
-      if (e instanceof ValidationError) {
-        setErrors({ [e.field]: e.key as TKey });
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error).catch(() => {});
-      } else {
-        Alert.alert(t('somethingWrong'), e instanceof Error ? e.message : String(e));
-      }
+      onFailed(e);
+    }
+  }
+
+  /** Same flow for multi-step saves (e.g. copy a photo, then write the row). Never rejects. */
+  async function submitAsync(fn: () => Promise<void>): Promise<void> {
+    try {
+      await fn();
+      onSaved();
+    } catch (e) {
+      onFailed(e);
     }
   }
 
@@ -58,7 +83,12 @@ export function useRecordForm(table: string, existingId?: string) {
         text: t('delete'),
         style: 'destructive',
         onPress: () => {
-          fn();
+          try {
+            fn();
+          } catch (e) {
+            showError(e, 'delete', t, { table, id });
+            return;
+          }
           toast(t('deleted'));
           router.back();
         },
@@ -66,5 +96,5 @@ export function useRecordForm(table: string, existingId?: string) {
     ]);
   }
 
-  return { id, isNew: !existingId, err, submit, confirmDelete, clearError: (f: string) => setErrors((e) => ({ ...e, [f]: undefined as never })) };
+  return { id, isNew: !existingId, err, submit, submitAsync, confirmDelete, clearError: (f: string) => setErrors((e) => ({ ...e, [f]: undefined as never })) };
 }

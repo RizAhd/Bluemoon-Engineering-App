@@ -1,8 +1,10 @@
 import * as Crypto from 'expo-crypto';
+import { Directory, File, Paths } from 'expo-file-system';
 import * as SQLite from 'expo-sqlite';
 import { useMemo, useSyncExternalStore } from 'react';
 
 import { nowIso } from '@/lib/dates';
+import { reportError } from '@/lib/errors';
 
 import { DATA_TABLES, DataTable, migrations } from './schema';
 
@@ -10,11 +12,58 @@ export const DB_NAME = 'bluemoon.db';
 
 let db: SQLite.SQLiteDatabase | null = null;
 
+function openAndMigrate(): SQLite.SQLiteDatabase {
+  const opened = SQLite.openDatabaseSync(DB_NAME);
+  try {
+    opened.execSync('PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON;');
+    migrate(opened);
+    return opened;
+  } catch (e) {
+    try {
+      opened.closeSync();
+    } catch {
+      // already closed
+    }
+    throw e;
+  }
+}
+
+/** Move a database that cannot be opened aside (kept for manual rescue) so a fresh one can start. */
+function quarantineDatabase() {
+  const dir = new Directory(Paths.document, 'SQLite');
+  const stamp = Date.now();
+  for (const suffix of ['', '-wal', '-shm']) {
+    try {
+      const f = new File(dir, DB_NAME + suffix);
+      if (f.exists) f.move(new File(dir, `${DB_NAME}.corrupt-${stamp}${suffix}`));
+    } catch (e) {
+      reportError(e, 'db.quarantine');
+    }
+  }
+}
+
 export function getDb(): SQLite.SQLiteDatabase {
   if (!db) {
-    db = SQLite.openDatabaseSync(DB_NAME);
-    db.execSync('PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON;');
-    migrate(db);
+    try {
+      db = openAndMigrate();
+    } catch (e) {
+      // A failed migration leaves the file untouched (each step is one transaction).
+      reportError(e, 'migrate');
+      // Unreadable or corrupt file (e.g. a torn restore from Google backup): set it aside
+      // and start empty so the app opens and the user can restore the newest automatic backup.
+      quarantineDatabase();
+      try {
+        db = openAndMigrate();
+        db.runSync(
+          "INSERT INTO settings(key, value) VALUES ('recovered_from_corruption', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+          [new Date().toISOString()],
+        );
+      } catch (e2) {
+        db = null;
+        reportError(e2, 'migrate');
+        throw e2;
+      }
+    }
   }
   return db;
 }
@@ -32,11 +81,16 @@ function migrate(d: SQLite.SQLiteDatabase) {
   const row = d.getFirstSync<{ user_version: number }>('PRAGMA user_version');
   const current = row?.user_version ?? 0;
   for (let v = current; v < migrations.length; v++) {
-    d.withTransactionSync(() => {
-      d.execSync(migrations[v]);
-      d.execSync(`PRAGMA user_version = ${v + 1}`);
-    });
+    try {
+      d.withTransactionSync(() => {
+        d.execSync(migrations[v]);
+        d.execSync(`PRAGMA user_version = ${v + 1}`);
+      });
+    } catch (e) {
+      throw new Error(`Migration ${v + 1} failed: ${e instanceof Error ? e.message : String(e)}`);
+    }
   }
+  COLUMNS_CACHE.clear();
 }
 
 // ---------------------------------------------------------------- transactions
@@ -183,34 +237,39 @@ export function save(table: DataTable, values: { [k: string]: SQLite.SQLiteBindV
   const dev = deviceId();
   let id = typeof values.id === 'string' ? values.id : '';
 
-  tx(() => {
-    const existing = id
-      ? d.getFirstSync<Row>(`SELECT * FROM ${table} WHERE id = ?`, [id])
-      : null;
+  try {
+    tx(() => {
+      const existing = id
+        ? d.getFirstSync<Row>(`SELECT * FROM ${table} WHERE id = ?`, [id])
+        : null;
 
-    if (existing) {
-      const fields = Object.keys(values).filter(
-        (k) => cols.includes(k) && !['id', 'created_at', 'version', 'device_id'].includes(k),
-      );
-      const sets = [...fields.map((f) => `${f} = ?`), 'updated_at = ?', 'version = version + 1', 'device_id = ?'];
-      d.runSync(`UPDATE ${table} SET ${sets.join(', ')} WHERE id = ?`, [
-        ...fields.map((f) => values[f] ?? null),
-        now,
-        dev,
-        id,
-      ]);
-      audit(table, id, 'update', values);
-    } else {
-      id = id || newId();
-      const row: Row = { ...(values as Row), id, created_at: now, updated_at: now, version: 1, device_id: dev };
-      const fields = Object.keys(row).filter((k) => cols.includes(k));
-      d.runSync(
-        `INSERT INTO ${table} (${fields.join(', ')}) VALUES (${fields.map(() => '?').join(', ')})`,
-        fields.map((f) => row[f] ?? null),
-      );
-      audit(table, id, 'insert', row);
-    }
-  });
+      if (existing) {
+        const fields = Object.keys(values).filter(
+          (k) => cols.includes(k) && !['id', 'created_at', 'version', 'device_id'].includes(k),
+        );
+        const sets = [...fields.map((f) => `${f} = ?`), 'updated_at = ?', 'version = version + 1', 'device_id = ?'];
+        d.runSync(`UPDATE ${table} SET ${sets.join(', ')} WHERE id = ?`, [
+          ...fields.map((f) => values[f] ?? null),
+          now,
+          dev,
+          id,
+        ]);
+        audit(table, id, 'update', values);
+      } else {
+        id = id || newId();
+        const row: Row = { ...(values as Row), id, created_at: now, updated_at: now, version: 1, device_id: dev };
+        const fields = Object.keys(row).filter((k) => cols.includes(k));
+        d.runSync(
+          `INSERT INTO ${table} (${fields.join(', ')}) VALUES (${fields.map(() => '?').join(', ')})`,
+          fields.map((f) => row[f] ?? null),
+        );
+        audit(table, id, 'insert', row);
+      }
+    });
+  } catch (e) {
+    reportError(e, 'db.save', { table, id });
+    throw e;
+  }
 
   notify();
   return id;
@@ -221,13 +280,18 @@ export function remove(table: DataTable, id: string) {
   assertTable(table);
   const d = getDb();
   const now = nowIso();
-  tx(() => {
-    d.runSync(
-      `UPDATE ${table} SET deleted_at = ?, updated_at = ?, version = version + 1, device_id = ? WHERE id = ?`,
-      [now, now, deviceId(), id],
-    );
-    audit(table, id, 'delete', null);
-  });
+  try {
+    tx(() => {
+      d.runSync(
+        `UPDATE ${table} SET deleted_at = ?, updated_at = ?, version = version + 1, device_id = ? WHERE id = ?`,
+        [now, now, deviceId(), id],
+      );
+      audit(table, id, 'delete', null);
+    });
+  } catch (e) {
+    reportError(e, 'db.remove', { table, id });
+    throw e;
+  }
   notify();
 }
 
@@ -254,6 +318,11 @@ export function classifyRow(table: DataTable, incoming: Row): MergeResult {
   return newer ? 'updated' : 'skipped';
 }
 
+/** Import audit entries keep only the row's identity, not a full copy (keeps the DB small). */
+function slim(r: Row) {
+  return { id: r.id, version: r.version ?? null };
+}
+
 export function mergeRow(table: DataTable, incoming: Row): MergeResult {
   const what = classifyRow(table, incoming);
   if (what === 'skipped') return what;
@@ -262,20 +331,25 @@ export function mergeRow(table: DataTable, incoming: Row): MergeResult {
   const id = String(incoming.id);
   const fields = Object.keys(incoming).filter((k) => cols.includes(k));
 
-  if (what === 'inserted') {
-    d.runSync(
-      `INSERT INTO ${table} (${fields.join(', ')}) VALUES (${fields.map(() => '?').join(', ')})`,
-      fields.map((f) => incoming[f] ?? null),
-    );
-    audit(table, id, 'import-insert', incoming);
-    return 'inserted';
-  }
+  try {
+    if (what === 'inserted') {
+      d.runSync(
+        `INSERT INTO ${table} (${fields.join(', ')}) VALUES (${fields.map(() => '?').join(', ')})`,
+        fields.map((f) => incoming[f] ?? null),
+      );
+      audit(table, id, 'import-insert', slim(incoming));
+      return 'inserted';
+    }
 
-  const sets = fields.filter((f) => f !== 'id');
-  d.runSync(`UPDATE ${table} SET ${sets.map((f) => `${f} = ?`).join(', ')} WHERE id = ?`, [
-    ...sets.map((f) => incoming[f] ?? null),
-    id,
-  ]);
-  audit(table, id, 'import-update', incoming);
-  return 'updated';
+    const sets = fields.filter((f) => f !== 'id');
+    d.runSync(`UPDATE ${table} SET ${sets.map((f) => `${f} = ?`).join(', ')} WHERE id = ?`, [
+      ...sets.map((f) => incoming[f] ?? null),
+      id,
+    ]);
+    audit(table, id, 'import-update', slim(incoming));
+    return 'updated';
+  } catch (e) {
+    reportError(e, 'db.mergeRow', { table, id });
+    throw e;
+  }
 }

@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { AppState } from 'react-native';
 
+import { recoverPendingPhoto } from '@/lib/files';
 import { registerDailyBackupTask, runAutoBackupIfDue } from '@/lib/autoBackup';
 
 /**
@@ -11,6 +12,7 @@ import { registerDailyBackupTask, runAutoBackupIfDue } from '@/lib/autoBackup';
 export function AutoBackupRunner() {
   useEffect(() => {
     registerDailyBackupTask();
+    recoverPendingPhoto(); // a photo taken just before Android restarted the app
     // Let the first screen draw before doing any work.
     const first = setTimeout(() => runAutoBackupIfDue(), 2500);
     const sub = AppState.addEventListener('change', (s) => {

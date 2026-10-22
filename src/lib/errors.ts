@@ -7,6 +7,7 @@
  *  friendlyMessage  translate any error into words a site supervisor understands
  *  showError     report + Alert
  *  guard         run an action, show a friendly message if it fails, never throw
+ *  onErrorLogChanged  subscribe to log appends / clears (the problem screen refreshes live)
  *  installGlobalErrorHandlers  catch uncaught JS errors and promise rejections
  */
 import { File, Paths } from 'expo-file-system';
@@ -21,6 +22,27 @@ type T = (key: TKey, vars?: Record<string, string | number>) => string;
 
 export function errorLogFile(): File {
   return new File(Paths.document, LOG_NAME);
+}
+
+type LogListener = () => void;
+const logListeners = new Set<LogListener>();
+
+/** Called after the error log is appended to or cleared. Returns an unsubscribe function. Never throws. */
+export function onErrorLogChanged(fn: LogListener): () => void {
+  logListeners.add(fn);
+  return () => {
+    logListeners.delete(fn);
+  };
+}
+
+function notifyLogChanged(): void {
+  logListeners.forEach((fn) => {
+    try {
+      fn();
+    } catch {
+      // a listener must never break error reporting
+    }
+  });
 }
 
 export function errorMessage(err: unknown): string {
@@ -56,6 +78,7 @@ export function reportError(err: unknown, context: string, extra?: Record<string
   } catch {
     // the log itself failed; nothing else to do
   }
+  notifyLogChanged();
 }
 
 export function readErrorLog(): string {
@@ -74,6 +97,7 @@ export function clearErrorLog(): void {
   } catch {
     // ignore
   }
+  notifyLogChanged();
 }
 
 /** Errors that carry their own translation key (e.g. ValidationError). */
@@ -156,16 +180,27 @@ export function installGlobalErrorHandlers(): void {
     prev?.(err, fatal);
   });
 
+  const onUnhandled = (_id: unknown, err: unknown) => reportError(err, 'unhandled-rejection');
+  const hermes = (globalThis as unknown as {
+    HermesInternal?: { enablePromiseRejectionTracker?: (opts: { allRejections: boolean; onUnhandled: typeof onUnhandled }) => void };
+  }).HermesInternal;
+  if (hermes?.enablePromiseRejectionTracker) {
+    // Hermes uses its own native Promise, so the JS polyfill below never sees its rejections.
+    try {
+      hermes.enablePromiseRejectionTracker({ allRejections: true, onUnhandled });
+      return;
+    } catch {
+      // fall through to the polyfill
+    }
+  }
+
   try {
-    // React Native's promise polyfill exposes rejection tracking; it is off in production builds.
+    // Fallback for engines without Hermes: React Native's promise polyfill.
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     const tracking = require('promise/setimmediate/rejection-tracking') as {
       enable: (opts: { allRejections: boolean; onUnhandled: (id: number, err: unknown) => void }) => void;
     };
-    tracking.enable({
-      allRejections: true,
-      onUnhandled: (_id, err) => reportError(err, 'unhandled-rejection'),
-    });
+    tracking.enable({ allRejections: true, onUnhandled });
   } catch {
     // not available on this engine; uncaught handler above still covers errors
   }

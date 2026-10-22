@@ -5,7 +5,7 @@
 import { isValidDay } from '@/lib/dates';
 
 import { first, getDb, notify, remove, save, tx } from './index';
-import type { ExpenseCategory, PayMethod, ProjectStatus, WageKind } from './types';
+import type { ExpenseCategory, PayMethod, ProjectStatus, ProjectWorker, WageKind } from './types';
 
 export class ValidationError extends Error {
   constructor(public field: string, public key: string) {
@@ -113,6 +113,11 @@ export function saveWorker(w: {
   });
 }
 
+function workDays(value: number | null | undefined): number {
+  if (value == null || !Number.isFinite(value) || !(value > 0) || value > 31) throw new ValidationError('days', 'errDays');
+  return value;
+}
+
 export function saveWageEntry(e: {
   id?: string;
   worker_id: string | null;
@@ -124,8 +129,8 @@ export function saveWageEntry(e: {
   note?: string | null;
 }): string {
   if (!exists('workers', e.worker_id)) throw new ValidationError('worker_id', 'errWorker');
-  if (e.project_id && !exists('projects', e.project_id)) throw new ValidationError('project_id', 'errProject');
-  if (e.kind === 'work' && (e.days == null || !(e.days > 0) || e.days > 31)) throw new ValidationError('days', 'errDays');
+  if (!exists('projects', e.project_id)) throw new ValidationError('project_id', 'errProject');
+  if (e.kind === 'work') workDays(e.days);
   return save('wage_entries', {
     id: e.id,
     worker_id: e.worker_id,
@@ -135,6 +140,137 @@ export function saveWageEntry(e: {
     days: e.kind === 'work' ? e.days ?? null : null,
     amount_cents: cents(e.amount_cents),
     note: opt(e.note),
+  });
+}
+
+// ---------------------------------------------------------------- workers on a project
+
+function nonNegCents(value: number | null | undefined, field: string): number {
+  const v = value ?? 0;
+  if (!Number.isSafeInteger(v) || v < 0) throw new ValidationError(field, 'errAmount');
+  return v;
+}
+
+/** The assignment row (including a soft-deleted one, so it can be revived). */
+function findAssignment(project_id: string, worker_id: string): ProjectWorker | null {
+  return first<ProjectWorker>(
+    'SELECT * FROM project_workers WHERE project_id = ? AND worker_id = ? ORDER BY (deleted_at IS NULL) DESC, updated_at DESC LIMIT 1',
+    [project_id, worker_id],
+  );
+}
+
+/**
+ * Put a worker on a project with the rate agreed for that project. One logical
+ * row per (project, worker): assigning again updates the rate and re-activates
+ * the row (also when it was removed earlier), never inserting a duplicate.
+ */
+export function assignWorker(p: { project_id: string; worker_id: string; rate_cents: number }): string {
+  if (!exists('projects', p.project_id)) throw new ValidationError('project_id', 'errProject');
+  if (!exists('workers', p.worker_id)) throw new ValidationError('worker_id', 'errWorker');
+  const rate = nonNegCents(p.rate_cents, 'rate');
+  return tx(() => {
+    const existing = findAssignment(p.project_id, p.worker_id);
+    return save('project_workers', {
+      id: existing?.id,
+      project_id: p.project_id,
+      worker_id: p.worker_id,
+      rate_cents: rate,
+      active: 1,
+      deleted_at: null,
+    });
+  });
+}
+
+/** Take a worker off a project (soft delete). Their wage history on it stays. */
+export function unassignWorker(project_id: string, worker_id: string): void {
+  tx(() => {
+    const existing = findAssignment(project_id, worker_id);
+    if (existing && !existing.deleted_at) remove('project_workers', existing.id);
+  });
+}
+
+export function setProjectWorkerRate(project_id: string, worker_id: string, rate_cents: number): void {
+  const rate = nonNegCents(rate_cents, 'rate');
+  tx(() => {
+    const existing = findAssignment(project_id, worker_id);
+    if (!existing || existing.deleted_at) throw new ValidationError('worker_id', 'errWorker');
+    save('project_workers', { id: existing.id, rate_cents: rate });
+  });
+}
+
+/** The rate for a worker on a project; falls back to the worker's default daily rate. */
+function projectRate(project_id: string, worker_id: string): number {
+  const pw = findAssignment(project_id, worker_id);
+  if (pw && !pw.deleted_at) return pw.rate_cents;
+  return first<{ daily_rate_cents: number }>('SELECT daily_rate_cents FROM workers WHERE id = ?', [worker_id])?.daily_rate_cents ?? 0;
+}
+
+function findWorkEntry(project_id: string, worker_id: string, dayStr: string): { id: string } | null {
+  return first<{ id: string }>(
+    `SELECT id FROM wage_entries
+     WHERE worker_id = ? AND project_id = ? AND day = ? AND kind = 'work' AND deleted_at IS NULL
+     ORDER BY created_at LIMIT 1`,
+    [worker_id, project_id, dayStr],
+  );
+}
+
+/**
+ * Mark a day worked. ONE 'work' entry per worker + project + day: calling it
+ * again updates days/amount/note. The amount defaults to days x the project rate.
+ */
+export function recordWorkDay(p: {
+  project_id: string;
+  worker_id: string;
+  day: string;
+  days: number;
+  amount_cents?: number | null;
+  note?: string | null;
+}): string {
+  if (!exists('projects', p.project_id)) throw new ValidationError('project_id', 'errProject');
+  if (!exists('workers', p.worker_id)) throw new ValidationError('worker_id', 'errWorker');
+  const d = day(p.day);
+  const days = workDays(p.days);
+  return tx(() => {
+    let amount: number;
+    if (p.amount_cents != null) {
+      amount = cents(p.amount_cents);
+    } else {
+      const rate = projectRate(p.project_id, p.worker_id);
+      if (rate <= 0) throw new ValidationError('rate', 'rateRequired');
+      amount = Math.round(days * rate);
+    }
+    const existing = findWorkEntry(p.project_id, p.worker_id, d);
+    return save('wage_entries', {
+      id: existing?.id,
+      worker_id: p.worker_id,
+      project_id: p.project_id,
+      day: d,
+      kind: 'work',
+      days,
+      amount_cents: amount,
+      note: opt(p.note),
+    });
+  });
+}
+
+/** Un-mark a day: soft-deletes that day's work entry. Payments that day stay. */
+export function removeWorkDay(project_id: string, worker_id: string, dayStr: string): void {
+  const d = day(dayStr);
+  tx(() => {
+    const existing = findWorkEntry(project_id, worker_id, d);
+    if (existing) remove('wage_entries', existing.id);
+  });
+}
+
+/** Money handed to a worker for this project (a 'payment' entry). */
+export function payWages(p: { project_id: string; worker_id: string; day: string; amount_cents: number; note?: string | null }): string {
+  return saveWageEntry({
+    worker_id: p.worker_id,
+    project_id: p.project_id,
+    day: p.day,
+    kind: 'payment',
+    amount_cents: p.amount_cents,
+    note: p.note,
   });
 }
 
@@ -150,6 +286,7 @@ export function saveTool(t: { id?: string; name: string; code?: string | null; n
 }
 
 export function moveTool(m: {
+  id?: string;
   tool_id: string;
   kind: 'issue' | 'return';
   project_id?: string | null;
@@ -162,6 +299,7 @@ export function moveTool(m: {
   if (!exists('tools', m.tool_id)) throw new ValidationError('tool_id', 'errName');
   if (m.kind === 'issue' && !m.worker_id && !opt(m.taken_by)) throw new ValidationError('taken_by', 'errWorker');
   return save('tool_movements', {
+    id: m.id, // the form's id, so photos attached before saving belong to this row
     tool_id: m.tool_id,
     kind: m.kind,
     project_id: m.project_id ?? null,
@@ -190,7 +328,7 @@ export function saveNote(n: { id?: string; project_id: string | null; day: strin
 
 /** Soft-deletes a record and its attachments together. */
 export function deleteRecord(
-  table: 'projects' | 'expenses' | 'workers' | 'wage_entries' | 'tools' | 'tool_movements' | 'site_notes',
+  table: 'projects' | 'expenses' | 'workers' | 'project_workers' | 'wage_entries' | 'tools' | 'tool_movements' | 'site_notes',
   id: string,
 ) {
   const d = getDb();
@@ -200,6 +338,14 @@ export function deleteRecord(
       [table, id],
     );
     atts.forEach((a) => remove('attachments', a.id));
+    if (table === 'projects') {
+      // Cascade so lists/totals that do not join v_project_cost stop counting them.
+      for (const child of ['expenses', 'site_notes', 'wage_entries', 'tool_movements', 'project_workers'] as const) {
+        d.getAllSync<{ id: string }>(`SELECT id FROM ${child} WHERE project_id = ? AND deleted_at IS NULL`, [id]).forEach((r) =>
+          remove(child, r.id),
+        );
+      }
+    }
     remove(table, id);
   });
   notify();

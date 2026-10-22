@@ -19,6 +19,10 @@ const FULL_BACKUP = `<?xml version="1.0" encoding="utf-8"?>
 <full-backup-content>
   <include domain="file" path="SQLite/" />
   <include domain="file" path="backups/" />
+  <!-- -wal/-shm change while the app writes; a torn copy would not open. The database file
+       is checkpointed regularly and the daily snapshots are self-verifying. -->
+  <exclude domain="file" path="SQLite/bluemoon.db-wal" />
+  <exclude domain="file" path="SQLite/bluemoon.db-shm" />
 </full-backup-content>
 `;
 
@@ -28,6 +32,8 @@ const EXTRACTION = `<?xml version="1.0" encoding="utf-8"?>
   <cloud-backup>
     <include domain="file" path="SQLite/" />
     <include domain="file" path="backups/" />
+    <exclude domain="file" path="SQLite/bluemoon.db-wal" />
+    <exclude domain="file" path="SQLite/bluemoon.db-shm" />
   </cloud-backup>
   <device-transfer>
     <include domain="file" path="SQLite/" />

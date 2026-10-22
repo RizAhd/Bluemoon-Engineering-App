@@ -24,9 +24,9 @@ import {
 } from 'pdf-lib';
 
 import { deviceId, first } from '@/db';
-import type { Expense, Project, ProjectCost, SiteNote, ToolMovement, WageEntry } from '@/db/types';
+import type { Attachment, Expense, Project, ProjectCost, SiteNote, ToolMovement, WageEntry } from '@/db/types';
 import { tNow, type TKey } from '@/i18n';
-import { formatDay, nowIso } from '@/lib/dates';
+import { formatDay, nowIso, today } from '@/lib/dates';
 import { formatLKR } from '@/lib/money';
 
 import { BUNDLE_FORMAT, BUNDLE_VERSION, collectProject, filesOf, readFileBytes, sha256Hex, type Bundle } from './bundle';
@@ -34,6 +34,8 @@ import { decodeUtf8, encodeUtf8 } from './utf8';
 
 const DATA_NAME = 'bluemoon-data.json';
 const HASH_NAME = 'bluemoon-data.sha256';
+/** Every photo is held in memory while the PDF is built; more than this risks an out-of-memory kill. */
+export const MAX_PDF_PHOTOS = 60;
 
 // ---------------------------------------------------------------- export
 
@@ -53,9 +55,24 @@ export async function exportProjectPdf(projectId: string, opts: { includePhotos:
     tables,
   };
 
-  const html = reportHtml(project, tables);
+  const photos = opts.includePhotos ? filesOf(tables).slice(0, MAX_PDF_PHOTOS) : [];
+  const skipped = opts.includePhotos ? Math.max(0, filesOf(tables).length - photos.length) : 0;
+  const html = reportHtml(project, tables, photos.length, skipped);
   const printed = await Print.printToFileAsync({ html, base64: false });
-  const doc = await PDFDocument.load(new File(printed.uri).bytesSync());
+  try {
+    return await buildPdf(printed.uri, project, bundle, photos);
+  } finally {
+    try {
+      const tmp = new File(printed.uri);
+      if (tmp.exists) tmp.delete();
+    } catch {
+      // temp file already gone
+    }
+  }
+}
+
+async function buildPdf(printedUri: string, project: Project, bundle: Bundle, photos: Attachment[]): Promise<File> {
+  const doc = await PDFDocument.load(new File(printedUri).bytesSync());
 
   const json = encodeUtf8(JSON.stringify(bundle));
   const hash = await sha256Hex(json);
@@ -66,17 +83,14 @@ export async function exportProjectPdf(projectId: string, opts: { includePhotos:
   await doc.attach(json, DATA_NAME, { mimeType: 'application/json', description: 'Bluemoon project data', creationDate: now, modificationDate: now });
   await doc.attach(encodeUtf8(hash), HASH_NAME, { mimeType: 'text/plain', creationDate: now, modificationDate: now });
 
-  if (opts.includePhotos) {
-    for (const att of filesOf(tables)) {
-      await doc.attach(readFileBytes(att), att.file_name, { mimeType: att.mime, creationDate: now, modificationDate: now });
-    }
+  for (const att of photos) {
+    await doc.attach(readFileBytes(att), att.file_name, { mimeType: att.mime, creationDate: now, modificationDate: now });
   }
 
   const bytes = await doc.save({ useObjectStreams: true });
-  new File(printed.uri).delete();
 
-  const safe = project.name.replace(/[^\p{L}\p{N}]+/gu, '-').replace(/^-|-$/g, '').slice(0, 40) || 'project';
-  const out = new File(Paths.cache, `Bluemoon-${safe}-${now.toISOString().slice(0, 10)}.pdf`);
+  const safe = project.name.replace(/[^\p{L}\p{M}\p{N}]+/gu, '-').replace(/^-|-$/g, '').slice(0, 40) || 'project';
+  const out = new File(Paths.cache, `Bluemoon-${safe}-${today()}.pdf`);
   if (out.exists) out.delete();
   out.create();
   out.writeSync(bytes);
@@ -92,32 +106,32 @@ export type PdfReadResult =
   | { status: 'newer' };
 
 export async function readProjectPdf(bytes: Uint8Array): Promise<PdfReadResult> {
-  let doc: PDFDocument;
   try {
-    doc = await PDFDocument.load(bytes, { updateMetadata: false, ignoreEncryption: true });
+    const doc = await PDFDocument.load(bytes, { updateMetadata: false, ignoreEncryption: true });
+    const files = embeddedFiles(doc);
+    const data = files.get(DATA_NAME);
+    if (!data) return { status: 'not-ours' };
+
+    const expected = files.get(HASH_NAME);
+    const actual = await sha256Hex(data);
+    if (!expected || decodeUtf8(expected).trim() !== actual) return { status: 'damaged' };
+
+    let bundle: Bundle;
+    try {
+      bundle = JSON.parse(decodeUtf8(data));
+    } catch {
+      return { status: 'damaged' };
+    }
+    if (bundle.format !== BUNDLE_FORMAT) return { status: 'not-ours' };
+    if (bundle.version > BUNDLE_VERSION) return { status: 'newer' };
+
+    files.delete(DATA_NAME);
+    files.delete(HASH_NAME);
+    return { status: 'ok', bundle, files };
   } catch {
+    // a foreign or encrypted PDF is simply not ours
     return { status: 'not-ours' };
   }
-  const files = embeddedFiles(doc);
-  const data = files.get(DATA_NAME);
-  if (!data) return { status: 'not-ours' };
-
-  const expected = files.get(HASH_NAME);
-  const actual = await sha256Hex(data);
-  if (!expected || decodeUtf8(expected).trim() !== actual) return { status: 'damaged' };
-
-  let bundle: Bundle;
-  try {
-    bundle = JSON.parse(decodeUtf8(data));
-  } catch {
-    return { status: 'damaged' };
-  }
-  if (bundle.format !== BUNDLE_FORMAT) return { status: 'not-ours' };
-  if (bundle.version > BUNDLE_VERSION) return { status: 'newer' };
-
-  files.delete(DATA_NAME);
-  files.delete(HASH_NAME);
-  return { status: 'ok', bundle, files };
 }
 
 /** Walk the PDF's EmbeddedFiles name tree and return name → bytes. */
@@ -131,16 +145,25 @@ function embeddedFiles(doc: PDFDocument): Map<string, Uint8Array> {
 
 function walk(node: PDFDict, out: Map<string, Uint8Array>) {
   const kids = node.lookupMaybe(PDFName.of('Kids'), PDFArray);
-  if (kids) for (let i = 0; i < kids.size(); i++) walk(kids.lookup(i, PDFDict), out);
+  if (kids) {
+    for (let i = 0; i < kids.size(); i++) {
+      const kid = kids.lookupMaybe(i, PDFDict);
+      if (kid) walk(kid, out);
+    }
+  }
 
   const arr = node.lookupMaybe(PDFName.of('Names'), PDFArray);
   if (!arr) return;
   for (let i = 0; i + 1 < arr.size(); i += 2) {
-    const name = decodeName(arr.lookup(i));
-    const spec = arr.lookup(i + 1, PDFDict);
-    const ef = spec.lookupMaybe(PDFName.of('EF'), PDFDict);
-    const stream = ef?.lookup(PDFName.of('F'));
-    if (name && stream instanceof PDFRawStream) out.set(name, decodePDFRawStream(stream).decode());
+    try {
+      const name = decodeName(arr.lookup(i));
+      const spec = arr.lookupMaybe(i + 1, PDFDict);
+      const ef = spec?.lookupMaybe(PDFName.of('EF'), PDFDict);
+      const stream = ef?.lookup(PDFName.of('F'));
+      if (name && stream instanceof PDFRawStream) out.set(name, decodePDFRawStream(stream).decode());
+    } catch {
+      // skip an entry we cannot read
+    }
   }
 }
 
@@ -155,7 +178,7 @@ function esc(s: unknown): string {
   return String(s ?? '').replace(/[&<>"]/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[ch] as string);
 }
 
-function reportHtml(p: Project, tables: Bundle['tables']): string {
+function reportHtml(p: Project, tables: Bundle['tables'], photoCount: number, skippedPhotos: number): string {
   const t = (k: TKey) => esc(tNow(k));
   const live = <T extends { deleted_at: string | null }>(rows: unknown[] | undefined) =>
     ((rows ?? []) as T[]).filter((r) => !r.deleted_at);
@@ -166,7 +189,6 @@ function reportHtml(p: Project, tables: Bundle['tables']): string {
   const workerName = new Map(((tables.workers ?? []) as { id: string; name: string }[]).map((w) => [w.id, w.name]));
   const toolName = new Map(((tables.tools ?? []) as { id: string; name: string }[]).map((w) => [w.id, w.name]));
   const cost = first<ProjectCost>('SELECT * FROM v_project_cost WHERE project_id = ?', [p.id]);
-  const photoCount = filesOf(tables).length;
 
   const byCat = new Map<string, number>();
   expenses.forEach((e) => byCat.set(e.category, (byCat.get(e.category) ?? 0) + e.amount_cents));
@@ -204,7 +226,7 @@ function reportHtml(p: Project, tables: Bundle['tables']): string {
   </style></head><body>
   <div class="brand"><div><small>Bluemoon Engineering (Pvt) Ltd</small><h1>${esc(p.name)}</h1>
   <div class="muted">${[p.client, p.location].filter(Boolean).map(esc).join(' · ')}</div></div>
-  <small>${esc(formatDay(new Date().toISOString().slice(0, 10)))}</small></div>
+  <small>${esc(formatDay(today()))}</small></div>
 
   <div class="grid">
     <div class="box">${t('totalCost')}<b class="n">${esc(formatLKR(total))}</b></div>
@@ -229,6 +251,6 @@ function reportHtml(p: Project, tables: Bundle['tables']): string {
 
   ${notes.length ? `<h2>${t('siteNotes')}</h2><table class="plain">${notes.map((n) => `<tr><td style="width:22%">${esc(formatDay(n.day))}</td><td>${esc(n.body)}</td></tr>`).join('')}</table>` : ''}
 
-  <div class="foot">${photoCount} photos · Made with the Bluemoon Engineering site app. Open this PDF in the app (Import PDF) to load all records.</div>
+  <div class="foot">${photoCount} photos${skippedPhotos ? ` (${skippedPhotos} more not included)` : ''} · Made with the Bluemoon Engineering site app. Open this PDF in the app (Import PDF) to load all records.</div>
   </body></html>`;
 }

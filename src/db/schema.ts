@@ -174,6 +174,58 @@ export const migrations: string[] = [
     ORDER BY mm.day DESC, mm.created_at DESC LIMIT 1)
   WHERE t.deleted_at IS NULL;
   `,
+
+  // 2 — workers are assigned per project with their own rate
+  `
+  -- One logical row per (project, worker). assignWorker re-activates a
+  -- soft-deleted row instead of inserting a second one.
+  CREATE TABLE project_workers (
+    ${common},
+    project_id TEXT NOT NULL REFERENCES projects(id),
+    worker_id TEXT NOT NULL REFERENCES workers(id),
+    rate_cents INTEGER NOT NULL DEFAULT 0 CHECK (rate_cents >= 0),
+    active INTEGER NOT NULL DEFAULT 1
+  );
+  CREATE INDEX ix_pw_project ON project_workers(project_id);
+  CREATE INDEX ix_pw_worker ON project_workers(worker_id);
+
+  -- Work entries are looked up per worker, project and day (one 'work' row each).
+  CREATE INDEX ix_wage_worker_project_day ON wage_entries(worker_id, project_id, day);
+
+  -- Balance of each worker on each project: earned here minus money given here.
+  CREATE VIEW v_project_worker_balance AS
+  SELECT pw.project_id,
+         pw.worker_id,
+         wk.name,
+         wk.trade,
+         wk.phone,
+         pw.rate_cents,
+         pw.active,
+         COALESCE(SUM(CASE WHEN we.kind = 'work' THEN we.amount_cents END), 0) AS earned_cents,
+         COALESCE(SUM(CASE WHEN we.kind = 'advance' THEN we.amount_cents END), 0) AS advance_cents,
+         COALESCE(SUM(CASE WHEN we.kind = 'payment' THEN we.amount_cents END), 0) AS paid_cents,
+         COALESCE(SUM(CASE WHEN we.kind = 'work' THEN we.amount_cents ELSE -we.amount_cents END), 0) AS balance_cents,
+         COALESCE(SUM(CASE WHEN we.kind = 'work' THEN we.days END), 0) AS days_total
+  FROM project_workers pw
+  JOIN workers wk ON wk.id = pw.worker_id AND wk.deleted_at IS NULL
+  LEFT JOIN wage_entries we
+    ON we.worker_id = pw.worker_id AND we.project_id = pw.project_id AND we.deleted_at IS NULL
+  WHERE pw.deleted_at IS NULL
+  GROUP BY pw.project_id, pw.worker_id;
+
+  -- One line per worker per project per day: what was worked and what was paid that day.
+  CREATE VIEW v_wage_day AS
+  SELECT we.project_id,
+         we.worker_id,
+         we.day,
+         SUM(CASE WHEN we.kind = 'work' THEN we.days END) AS days,
+         COALESCE(SUM(CASE WHEN we.kind = 'work' THEN we.amount_cents END), 0) AS work_cents,
+         COALESCE(SUM(CASE WHEN we.kind = 'payment' THEN we.amount_cents END), 0) AS paid_cents,
+         COALESCE(SUM(CASE WHEN we.kind = 'advance' THEN we.amount_cents END), 0) AS advance_cents
+  FROM wage_entries we
+  WHERE we.deleted_at IS NULL AND we.project_id IS NOT NULL
+  GROUP BY we.project_id, we.worker_id, we.day;
+  `,
 ];
 
 /** Tables that hold business data, in an order where parents come before children. */
@@ -181,6 +233,7 @@ export const DATA_TABLES = [
   'projects',
   'workers',
   'tools',
+  'project_workers',
   'expenses',
   'wage_entries',
   'tool_movements',

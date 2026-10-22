@@ -3,7 +3,7 @@
  *
  * Once a day a compressed snapshot of every record is written to the app's
  * own `backups/` folder and checked by re-reading it. Snapshots older than
- * KEEP_DAYS are deleted. It runs:
+ * KEEP_DAYS (or beyond a size cap) are deleted. It runs:
  *   - when the app opens or comes back to the front (reliable), and
  *   - from an Android WorkManager background task (best effort; Android picks
  *     the time, usually when the phone is idle).
@@ -17,11 +17,13 @@ import { Directory, File, Paths } from 'expo-file-system';
 import * as TaskManager from 'expo-task-manager';
 
 import { getDb, getSetting, setSetting } from '@/db';
-import { addDays, nowIso, today } from '@/lib/dates';
+import { nowIso, today } from '@/lib/dates';
 
-import { dataSnapshot, verifyBackup } from './backup';
+import { dataSnapshot, restorePart, verifyBackup } from './backup';
 
 export const KEEP_DAYS = 25;
+const MAX_BYTES = 8 * 1024 * 1024;
+const MIN_KEEP = 3;
 const TASK = 'bluemoon-daily-backup';
 const PREFIX = 'Bluemoon-auto-';
 const NAME = /^Bluemoon-auto-(\d{4}-\d{2}-\d{2})\.zip$/;
@@ -48,18 +50,48 @@ export function listAutoBackups(): AutoBackupFile[] {
   return out.sort((a, b) => b.day.localeCompare(a.day));
 }
 
-/** Delete snapshots older than KEEP_DAYS. Always keeps the newest one. */
+/** Keep the newest KEEP_DAYS snapshots (by name, not by clock) within MAX_BYTES; always keep the newest 3. */
 export function pruneAutoBackups(): number {
-  const cutoff = addDays(today(), -KEEP_DAYS);
-  const all = listAutoBackups();
   let removed = 0;
-  all.slice(1).forEach((b) => {
-    if (b.day < cutoff) {
-      b.file.delete();
+  const kill = (f: File) => {
+    try {
+      f.delete();
       removed++;
+    } catch {
+      // a failed delete must not fail the backup
     }
-  });
+  };
+  try {
+    // Stray temp files from an interrupted run.
+    for (const entry of backupsDir().list()) if (entry instanceof File && entry.name.endsWith('.tmp')) kill(entry);
+
+    const all = listAutoBackups(); // newest first
+    all.slice(KEEP_DAYS).forEach((b) => kill(b.file));
+    let total = 0;
+    all.slice(0, KEEP_DAYS).forEach((b, i) => {
+      total += b.size;
+      if (i >= MIN_KEEP && total > MAX_BYTES) kill(b.file);
+    });
+  } catch {
+    // ignore
+  }
   return removed;
+}
+
+/** Total size of the snapshots folder (Android's cloud backup quota is 25 MB). */
+export function backupsSizeBytes(): number {
+  return listAutoBackups().reduce((n, b) => n + b.size, 0);
+}
+
+/**
+ * Restore the newest automatic snapshot (after a database was lost or reset).
+ * Snapshots contain records only, not photos. Returns false when there is none.
+ */
+export async function restoreNewestAutoBackup(): Promise<boolean> {
+  const newest = listAutoBackups()[0];
+  if (!newest) return false;
+  await restorePart(newest.file.uri);
+  return true;
 }
 
 let running: Promise<'done' | 'skipped' | 'failed'> | null = null;
@@ -70,6 +102,9 @@ export function runAutoBackupIfDue(force = false): Promise<'done' | 'skipped' | 
   running = (async () => {
     try {
       getDb();
+      // After a corrupt database was set aside the app starts empty: writing a snapshot now
+      // would overwrite today's good one with an empty one. Wait until the owner has chosen.
+      if (getSetting('recovered_from_corruption')) return 'skipped';
       if (getSetting('auto_backup') === 'off' && !force) return 'skipped';
       const day = today();
       const target = new File(backupsDir(), `${PREFIX}${day}.zip`);
@@ -88,7 +123,7 @@ export function runAutoBackupIfDue(force = false): Promise<'done' | 'skipped' | 
       tmp.writeSync(bytes);
       if (!(await verifyBackup(tmp.bytesSync()))) throw new Error('written file failed verification');
       if (target.exists) target.delete();
-      tmp.move(target);
+      tmp.moveSync(target);
 
       setSetting('auto_backup_day', day);
       setSetting('auto_backup_at', nowIso());

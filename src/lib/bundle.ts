@@ -11,6 +11,7 @@ import { all, classifyRow, mergeRow, notify, tx, type MergeResult } from '@/db';
 import { DATA_TABLES, type DataTable } from '@/db/schema';
 import type { Attachment } from '@/db/types';
 
+import { reportError } from './errors';
 import { fileFor, writeAttachmentBytes } from './files';
 
 export const BUNDLE_FORMAT = 'bluemoon-bundle';
@@ -39,11 +40,15 @@ export function collectProject(projectId: string): Bundle['tables'] {
   const projects = all<Row>('SELECT * FROM projects WHERE id = ?', [projectId]);
   const expenses = all<Row>('SELECT * FROM expenses WHERE project_id = ?', [projectId]);
   const wages = all<Row>('SELECT * FROM wage_entries WHERE project_id = ?', [projectId]);
-  const moves = all<Row>('SELECT * FROM tool_movements WHERE project_id = ?', [projectId]);
+  const assignments = all<Row>('SELECT * FROM project_workers WHERE project_id = ?', [projectId]);
+  const projectMoves = all<Row>('SELECT * FROM tool_movements WHERE project_id = ?', [projectId]);
+  // v_tool_status uses each tool's latest movement, so carry the tool's whole history.
+  const moves = allMovesOfTools(new Set(projectMoves.map((m) => String(m.tool_id))));
   const notes = all<Row>('SELECT * FROM site_notes WHERE project_id = ?', [projectId]);
 
   const workerIds = new Set<string>();
   wages.forEach((w) => workerIds.add(String(w.worker_id)));
+  assignments.forEach((a) => workerIds.add(String(a.worker_id)));
   moves.forEach((m) => m.worker_id && workerIds.add(String(m.worker_id)));
   const toolIds = new Set(moves.map((m) => String(m.tool_id)));
   const workers = byIds('workers', workerIds);
@@ -52,7 +57,7 @@ export function collectProject(projectId: string): Bundle['tables'] {
   const owners: [string, Row[]][] = [
     ['projects', projects],
     ['expenses', expenses],
-    ['tool_movements', moves],
+    ['tool_movements', projectMoves],
     ['site_notes', notes],
     ['tools', tools],
   ];
@@ -67,12 +72,19 @@ export function collectProject(projectId: string): Bundle['tables'] {
     projects,
     workers,
     tools,
+    project_workers: assignments,
     expenses,
     wage_entries: wages,
     tool_movements: moves,
     site_notes: notes,
     attachments,
   };
+}
+
+function allMovesOfTools(ids: Set<string>): Row[] {
+  if (!ids.size) return [];
+  const list = [...ids];
+  return all<Row>(`SELECT * FROM tool_movements WHERE tool_id IN (${list.map(() => '?').join(',')})`, list);
 }
 
 function byIds(table: 'workers' | 'tools', ids: Set<string>): Row[] {
@@ -90,7 +102,12 @@ export function collectAll(): Bundle['tables'] {
 
 /** Live (not deleted) attachment files a bundle needs to carry. */
 export function filesOf(tables: Bundle['tables']): Attachment[] {
-  return ((tables.attachments ?? []) as unknown as Attachment[]).filter((a) => !a.deleted_at && fileFor(a).exists);
+  return ((tables.attachments ?? []) as unknown as Attachment[]).filter((a) => {
+    if (a.deleted_at) return false;
+    const f = fileFor(a);
+    // A file whose size differs from its row is truncated; never pack it into a bundle.
+    return f.exists && (!a.size || f.size === a.size);
+  });
 }
 
 export function readFileBytes(att: Attachment): Uint8Array {
@@ -100,6 +117,8 @@ export function readFileBytes(att: Attachment): Uint8Array {
 // ---------------------------------------------------------------- import
 
 export interface ImportPlan {
+  /** Files whose bytes did not match their recorded SHA-256; their rows were still imported. */
+  badFiles: string[];
   counts: Record<MergeResult, number>;
   perTable: Partial<Record<DataTable, Record<MergeResult, number>>>;
 }
@@ -116,15 +135,15 @@ export function planImport(tables: Bundle['tables']): ImportPlan {
     counts.updated += c.updated;
     counts.skipped += c.skipped;
   }
-  return { counts, perTable };
+  return { counts, perTable, badFiles: [] };
 }
 
 export class BundleFileError extends Error {}
 
 /**
  * Write files first (each checked against its SHA-256), then merge all rows in
- * one transaction, parents before children. A bad file stops the import
- * before any row changes.
+ * one transaction, parents before children. A file that fails its check is
+ * skipped and listed in `badFiles`; the rows are still imported.
  */
 export async function applyBundle(tables: Bundle['tables'], files: Map<string, Uint8Array>): Promise<ImportPlan> {
   const plan = planImport(tables);
@@ -132,14 +151,19 @@ export async function applyBundle(tables: Bundle['tables'], files: Map<string, U
   for (const a of (tables.attachments ?? []) as unknown as Attachment[]) {
     if (a.deleted_at) continue;
     const bytes = files.get(a.file_name);
-    const have = fileFor(a);
-    if (!bytes) {
-      if (have.exists) continue; // already on this phone
-      continue; // the sender had no copy either; the row still imports
+    if (!bytes) continue; // already on this phone, or the sender had no copy either; the row still imports
+    try {
+      const have = fileFor(a);
+      if ((await sha256Hex(bytes)) !== a.sha256) {
+        plan.badFiles.push(a.file_name);
+        continue;
+      }
+      // Rewrite a copy that is missing or truncated (size differs from the row).
+      if (!have.exists || (a.size && have.size !== a.size)) writeAttachmentBytes(a.file_name, bytes);
+    } catch (e) {
+      reportError(e, 'applyBundle.file', { file: a.file_name });
+      plan.badFiles.push(a.file_name);
     }
-    const hash = await sha256Hex(bytes);
-    if (hash !== a.sha256) throw new BundleFileError(a.file_name);
-    if (!have.exists) writeAttachmentBytes(a.file_name, bytes);
   }
 
   tx(() => {

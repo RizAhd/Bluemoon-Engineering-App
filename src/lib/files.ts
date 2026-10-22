@@ -7,8 +7,10 @@ import { Directory, File, Paths } from 'expo-file-system';
 import { ImageManipulator, SaveFormat } from 'expo-image-manipulator';
 import * as ImagePicker from 'expo-image-picker';
 
-import { getDb, newId, remove, save } from '@/db';
+import { getDb, getSetting, newId, remove, save, setSetting } from '@/db';
 import type { Attachment } from '@/db/types';
+
+import { reportError } from './errors';
 
 const MAX_EDGE = 1600;
 const JPEG_QUALITY = 0.72;
@@ -80,16 +82,46 @@ export async function addPhotos(ownerTable: string, ownerId: string, source: Pho
     allowsMultipleSelection: source === 'gallery',
     selectionLimit: 10,
   };
+  // Android may destroy this activity while the camera app is open; remember the owner so
+  // recoverPendingPhoto() can attach the photo after the restart.
+  if (source === 'camera') setSetting('pending_camera', JSON.stringify({ table: ownerTable, id: ownerId }));
   const res = source === 'camera' ? await ImagePicker.launchCameraAsync(opts) : await ImagePicker.launchImageLibraryAsync(opts);
+  if (source === 'camera') setSetting('pending_camera', null);
   if (res.canceled) return 0;
+  return storeAssets(ownerTable, ownerId, res.assets);
+}
 
+async function storeAssets(ownerTable: string, ownerId: string, assets: ImagePicker.ImagePickerAsset[]): Promise<number> {
   let n = 0;
-  for (const asset of res.assets) {
+  for (const asset of assets) {
     const small = await compress(asset.uri, asset.width, asset.height);
     await store(ownerTable, ownerId, small, 'photo', 'jpg', 'image/jpeg');
     n++;
   }
   return n;
+}
+
+/**
+ * If the app was killed while the camera was open, attach the photo that was
+ * taken to the record it was meant for. Returns how many photos were recovered.
+ * A photo whose record no longer exists is stored but hidden (discardOrphans).
+ */
+export async function recoverPendingPhoto(): Promise<number> {
+  const raw = getSetting('pending_camera');
+  if (!raw) return 0;
+  try {
+    const pending = await ImagePicker.getPendingResultAsync();
+    setSetting('pending_camera', null);
+    if (!pending || !('assets' in pending) || pending.canceled || !pending.assets?.length) return 0;
+    const owner = JSON.parse(raw) as { table: string; id: string };
+    const n = await storeAssets(owner.table, owner.id, pending.assets);
+    // A brand-new record that was never saved has no row: hide its photos again.
+    discardOrphans(owner.table, owner.id);
+    return n;
+  } catch (e) {
+    reportError(e, 'recoverPendingPhoto');
+    return 0;
+  }
 }
 
 /** Attach any file (e.g. a PDF someone sent) to a record. */
@@ -100,10 +132,14 @@ export async function addFile(ownerTable: string, ownerId: string, uri: string, 
 
 /** Save raw bytes (from an imported PDF or backup) as an attachment with a known id. */
 export function writeAttachmentBytes(fileName: string, bytes: Uint8Array) {
+  // Write under a temp name and rename, so a kill mid-write never leaves a truncated file.
+  const tmp = new File(attachmentsDir(), `${fileName}.tmp`);
+  if (tmp.exists) tmp.delete();
+  tmp.create();
+  tmp.writeSync(bytes);
   const f = new File(attachmentsDir(), fileName);
   if (f.exists) f.delete();
-  f.create();
-  f.writeSync(bytes);
+  tmp.moveSync(f);
 }
 
 export function removeAttachment(id: string) {

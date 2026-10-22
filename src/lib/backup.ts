@@ -16,8 +16,10 @@ import JSZip from 'jszip';
 import { deviceId, setSetting } from '@/db';
 import type { Attachment } from '@/db/types';
 import { nowIso } from '@/lib/dates';
+import { reportError } from '@/lib/errors';
 
 import { applyBundle, BUNDLE_FORMAT, BUNDLE_VERSION, collectAll, filesOf, readFileBytes, sha256Hex, type Bundle, type ImportPlan } from './bundle';
+import { fileFor, sha256 } from './files';
 import { decodeUtf8, encodeUtf8 } from './utf8';
 
 const PART_LIMIT = 40 * 1024 * 1024;
@@ -47,7 +49,12 @@ export async function makeBackup(onProgress?: (part: number, parts: number) => v
   const dataHash = await sha256Hex(data);
 
   // Split photos into parts by size.
-  const files = filesOf(tables);
+  // Skip files whose bytes no longer match their row, so one bad photo cannot poison every backup.
+  const files: Attachment[] = [];
+  for (const f of filesOf(tables)) {
+    if ((await sha256(fileFor(f))) === f.sha256) files.push(f);
+    else reportError(new Error('attachment does not match its hash'), 'makeBackup', { file: f.file_name });
+  }
   const groups: Attachment[][] = [[]];
   let size = data.byteLength;
   for (const f of files) {

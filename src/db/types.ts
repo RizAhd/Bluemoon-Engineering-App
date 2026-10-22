@@ -66,6 +66,14 @@ export interface WageEntry extends Base {
   note: string | null;
 }
 
+/** A worker assigned to a project, with the rate agreed for that project. */
+export interface ProjectWorker extends Base {
+  project_id: string;
+  worker_id: string;
+  rate_cents: number;
+  active: number;
+}
+
 export interface Tool extends Base {
   name: string;
   code: string | null;
@@ -120,6 +128,33 @@ export interface WorkerBalance {
   advance_cents: number;
   paid_cents: number;
   balance_cents: number;
+}
+
+/** v_project_worker_balance: one row per worker on a project. */
+export interface ProjectWorkerBalance {
+  project_id: string;
+  worker_id: string;
+  name: string;
+  trade: string | null;
+  phone: string | null;
+  rate_cents: number;
+  active: number;
+  earned_cents: number;
+  advance_cents: number;
+  paid_cents: number;
+  balance_cents: number;
+  days_total: number;
+}
+
+/** v_wage_day: what one worker did and was paid on one project on one day. */
+export interface WageDay {
+  project_id: string;
+  worker_id: string;
+  day: string;
+  days: number | null;
+  work_cents: number;
+  paid_cents: number;
+  advance_cents: number;
 }
 
 export interface ToolStatus {
