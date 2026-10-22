@@ -1,9 +1,10 @@
 import { router } from 'expo-router';
-import { Building2, ChevronDown, LayoutGrid, Menu, Plus } from 'lucide-react-native';
+import { Building2, ChevronDown, LayoutGrid, Plus, Settings } from 'lucide-react-native';
 import { useState, type ReactNode } from 'react';
 import { Pressable, View, type StyleProp, type ViewStyle } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { BrandMark } from '@/components/Brand';
 import { Button, IconButton } from '@/components/ui/Button';
 import { PickerSheet } from '@/components/ui/form';
 import { Txt } from '@/components/ui/Txt';
@@ -114,30 +115,48 @@ export interface TabHeaderProps {
   allowAll?: boolean;
   /** Show the project pill (Projects tab passes false). */
   showProject?: boolean;
-  /** One screen action (an `IconButton size={44}` with `onHeader` tone) placed left of the menu button. */
+  /** One screen action (an `IconButton size={44}` with `onHeader` tone), placed just left of the settings button. */
   right?: ReactNode;
-  /** Hide the menu button (rare). */
+  /** Hide the settings button (rare). */
   hideMenu?: boolean;
+  /** Show the Bluemoon logo mark before the title (the Today screen). */
+  brand?: boolean;
 }
 
-/** White header for tab screens: title, optional subtitle, screen action + menu button, project pill. */
-export function TabHeader({ title, subtitle, allowAll = true, showProject = true, right, hideMenu }: TabHeaderProps) {
+/**
+ * White header for tab screens: [logo] title + subtitle, then one row with the project pill
+ * on the left and the screen action + settings button on the right. The buttons live on the
+ * second row, not in the top-right corner, so they never sit under the status bar (or under
+ * Expo Go's own floating tools button while testing). Screens without a project pill keep
+ * the buttons on the title row.
+ */
+export function TabHeader({ title, subtitle, allowAll = true, showProject = true, right, hideMenu, brand }: TabHeaderProps) {
   const c = useColors();
   const t = useT();
   const insets = useSafeAreaInsets();
   const { gutter, maxWidth } = useLayout();
 
+  const actions = (
+    <>
+      {right}
+      {hideMenu ? null : (
+        <IconButton icon={Settings} label={t('settingsAndMore')} size={sizes.headerButton} tone="onHeader" pressedBg="headerDeep" onPress={() => router.push('/more')} />
+      )}
+    </>
+  );
+
   return (
     <View
       style={{
-        paddingTop: insets.top + space.sm,
+        paddingTop: insets.top + space.md,
         paddingBottom: space.md,
         backgroundColor: c.header,
         borderBottomWidth: hairline,
         borderBottomColor: c.border,
       }}>
       <View style={{ paddingHorizontal: gutter, gap: space.sm, maxWidth, width: '100%', alignSelf: 'center' }}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', minHeight: sizes.headerButton, gap: space.sm }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', minHeight: sizes.headerButton, gap: space.md }}>
+          {brand ? <BrandMark size={36} /> : null}
           <View style={{ flex: 1, gap: 2 }}>
             <Txt variant="heading" weight="semibold" accessibilityRole="header" color="onHeader" numberOfLines={1} maxFontSizeMultiplier={1.3}>
               {title}
@@ -148,16 +167,22 @@ export function TabHeader({ title, subtitle, allowAll = true, showProject = true
               </Txt>
             ) : null}
           </View>
-          {right}
-          {hideMenu ? null : <IconButton icon={Menu} label={t('menu')} size={sizes.headerButton} tone="onHeader" pressedBg="headerDeep" onPress={() => router.push('/more')} />}
+          {showProject ? null : actions}
         </View>
-        {showProject ? <ProjectPill allowAll={allowAll} /> : null}
+        {showProject ? (
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.xs }}>
+            <View style={{ flex: 1, flexDirection: 'row' }}>
+              <ProjectPill allowAll={allowAll} style={{ flexShrink: 1 }} />
+            </View>
+            {actions}
+          </View>
+        ) : null}
       </View>
     </View>
   );
 }
 
 /** Header action helper so screens don't repeat the sizing: `<TabHeader right={<HeaderAction icon={UserPlus} label=… onPress=… />} />`. */
-export function HeaderAction({ icon, label, onPress }: { icon: typeof Menu; label: string; onPress: () => void }) {
+export function HeaderAction({ icon, label, onPress }: { icon: typeof Settings; label: string; onPress: () => void }) {
   return <IconButton icon={icon} label={label} size={sizes.headerButton} tone="onHeader" pressedBg="headerDeep" onPress={onPress} />;
 }

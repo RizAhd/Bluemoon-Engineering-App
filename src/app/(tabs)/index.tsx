@@ -17,6 +17,7 @@ import {
 import { useMemo, useState } from 'react';
 import { Pressable, View } from 'react-native';
 
+import { BrandLogo } from '@/components/Brand';
 import { TabHeader } from '@/components/ProjectSwitcher';
 import { ContractBar, Stat, Tiles } from '@/components/Stats';
 import { Button } from '@/components/ui/Button';
@@ -107,8 +108,11 @@ export default function TodayScreen() {
   if (!projects.length) {
     return (
       <View style={{ flex: 1 }}>
-        <TabHeader title={t(greetingKey())} subtitle={subtitle} showProject={false} />
+        <TabHeader title={t(greetingKey())} subtitle={subtitle} showProject={false} brand />
         <Screen hairlineTop={false} paddingBottom={24}>
+          <View style={{ alignItems: 'center', paddingTop: space.xl }}>
+            <BrandLogo width={180} />
+          </View>
           <EmptyState
             icon={Building2}
             title={t('noProjects')}
@@ -141,7 +145,7 @@ export default function TodayScreen() {
 
   return (
     <View style={{ flex: 1 }}>
-      <TabHeader title={t(greetingKey())} subtitle={subtitle} />
+      <TabHeader title={t(greetingKey())} subtitle={subtitle} brand />
       <Screen hairlineTop={false}>
         {/* Data safety: red if the daily backup failed, amber if photos need a Drive copy, else a quiet green line. */}
         {autoError && !autoToday ? (
