@@ -284,11 +284,11 @@ describe('worker/assign: add a worker to a project', () => {
     expect(visibleText()).toContain(E('rateRequired'));
 
     // choose a worker who is already on the project: refused, nothing is chosen
-    await choose(E('worker'), E('worker'), 'Nimal Perera');
+    await choose(E('worker'), E('chooseWorker'), 'Nimal Perera');
     expect(inputValue(E('rateOnThisProject'))).toBe('');
 
     // choose Saman: his usual rate is filled in, and can be changed for this project
-    await choose(E('worker'), E('worker'), 'Saman Kumara');
+    await choose(E('worker'), E('chooseWorker'), 'Saman Kumara');
     expect(hasLabel(`${E('worker')}: Saman Kumara`)).toBe(true);
     expect(inputValue(E('rateOnThisProject'))).toBe('3,500');
     await typeInto(E('rateOnThisProject'), '3,800');
@@ -404,7 +404,7 @@ describe('wage form', () => {
     expect(visibleText()).toContain(E('errWorker'));
     expect(router.back).not.toHaveBeenCalled();
 
-    await choose(E('worker'), E('worker'), 'Asanka Perera');
+    await choose(E('worker'), E('chooseWorker'), 'Asanka Perera');
     expect(inputValue(E('amount'))).toBe('3,000');
     await pressLabel(E('oneAndHalf'));
     expect(inputValue(E('amount'))).toBe('4,500');
@@ -458,7 +458,7 @@ describe('tool form and issue / return', () => {
     await pressLabel(E('save'));
     expect(visibleText()).toContain(E('errWorker')); // somebody has to be responsible for it
     expect(rows('SELECT 1 FROM tool_movements')).toHaveLength(0);
-    await choose(E('takenBy'), E('worker'), 'Asanka Perera');
+    await choose(E('takenBy'), E('chooseWorker'), 'Asanka Perera');
     await typeInto(E('condition'), 'Good');
     await pressLabel(E('save'));
     expect(rows('SELECT kind, worker_id, project_id, condition FROM tool_movements WHERE deleted_at IS NULL')).toEqual([

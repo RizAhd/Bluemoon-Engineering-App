@@ -85,7 +85,7 @@ const en = {
   trade: 'Trade',
   dailyRate: 'Daily rate',
   earned: 'Earned',
-  advanceOver: 'Advance over',
+  advanceOver: 'Paid ahead',
   balance: 'Balance',
   settled: 'Settled',
   byProject: 'Per project',

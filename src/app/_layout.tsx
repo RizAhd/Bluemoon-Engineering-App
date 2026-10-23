@@ -89,6 +89,8 @@ export default function RootLayout() {
   const [dbError, setDbError] = useState<string | null>(openDb);
   // Uncaught fatal JS errors show the recovery screen instead of closing the app.
   const [fatal, setFatal] = useState<Error | null>(null);
+  // "Go to Today" from the recovery screen, carried out once the app is drawn again.
+  const [goHome, setGoHome] = useState(false);
   const dbReady = !dbError;
   // A font that fails to load falls back to the system font rather than a splash that never ends.
   const fontsReady = fontsLoaded || !!fontError;
@@ -97,6 +99,19 @@ export default function RootLayout() {
   const [splashDone, setSplashDone] = useState(false);
   const blocked = !!dbError || !!fatal || recovering;
   if (blocked && !splashDone) setSplashDone(true);
+
+  useEffect(() => {
+    if (!goHome || fatal) return;
+    const id = setTimeout(() => {
+      setGoHome(false);
+      try {
+        router.replace('/(tabs)');
+      } catch {
+        // still mounting: the app is already on its first screen, which is Today
+      }
+    }, 0);
+    return () => clearTimeout(id);
+  }, [goHome, fatal]);
 
   useEffect(() => {
     setFatalErrorListener((err) => setFatal(err));
@@ -117,8 +132,9 @@ export default function RootLayout() {
         error={fatal}
         onRetry={() => setFatal(null)}
         onHome={() => {
+          // The navigator is not mounted while this screen shows: open Today when it is, not before.
           setFatal(null);
-          router.replace('/(tabs)');
+          setGoHome(true);
         }}
       />
     );

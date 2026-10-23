@@ -15,6 +15,7 @@ import { useFirst, useQuery } from '@/db';
 import { deleteRecord, saveWorker, unassignWorker } from '@/db/repo';
 import type { WageEntry, WageKind, Worker, WorkerBalance } from '@/db/types';
 import { useCurrentProjectId, useProjects, useWorkerProjects } from '@/hooks/data';
+import { formatPhone } from '@/lib/names';
 import { useT } from '@/i18n';
 import { formatDay } from '@/lib/dates';
 import { showError } from '@/lib/errors';
@@ -248,7 +249,7 @@ export default function WorkerDetail() {
                     {[worker.trade, worker.daily_rate_cents ? `${t('dailyRate')} ${formatLKR(worker.daily_rate_cents)}` : null].filter(Boolean).join(' · ')}
                   </Txt>
                 ) : null}
-                {worker.phone ? <Button kind="ghost" compact icon={Phone} label={worker.phone} onPress={() => Linking.openURL(`tel:${worker.phone}`).catch((e) => showError(e, 'worker.call', t))} style={{ alignSelf: 'flex-start' }} /> : null}
+                {worker.phone ? <Button kind="ghost" compact icon={Phone} label={formatPhone(worker.phone)} onPress={() => Linking.openURL(`tel:${worker.phone}`).catch((e) => showError(e, 'worker.call', t))} style={{ alignSelf: 'flex-start' }} /> : null}
               </Card>
 
               <Tiles>

@@ -359,6 +359,7 @@ describe('the PDF row runs the screen\'s own export with its remembered choices'
 
   it('the estimate\'s own "Share estimate PDF" button still opens the PDF options', async () => {
     const id = saveEstimate({ client_name: 'Mr. Perera', title: 'Gate', issue_day: today() });
+    saveEstimateItem({ estimate_id: id, description: 'Gate', unit: 'nos', qty_milli: 1000, rate_cents: 100_000 });
     setRouteParams({ id });
     await renderScreen(<EstimateHub />);
     await pressLabel(E('shareEstimatePdf'));

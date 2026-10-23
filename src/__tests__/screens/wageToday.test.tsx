@@ -171,7 +171,7 @@ describe('wage/today: tick a worker, pick days, pay, save', () => {
     expect(workRows()[0]).toMatchObject({ days: 1, amount_cents: 300_000, worker_id: site.asanka, project_id: site.project, day: today() });
     expect(inputValue('Amount')).toBe('3,000');
     expect(inputValue('Pay now')).toBe(''); // money is never pre-filled
-    expect(visibleText()).toContain('To pay today Rs 3,000');
+    expect(visibleText()).toContain("Unpaid for today's work Rs 3,000");
 
     // pick 1.5 days: the wage follows the rate
     await pressLabel('1½ days');
@@ -223,7 +223,7 @@ describe('wage/today: tick a worker, pick days, pay, save', () => {
     expect(inputValue('Amount')).toBe('3,000');
     expect(inputValue('Pay now')).toBe('');
     expect(visibleText()).toContain('Paid today Rs 1,000');
-    expect(visibleText()).toContain('To pay today Rs 2,000');
+    expect(visibleText()).toContain("Unpaid for today's work Rs 2,000");
 
     await pressLabel('Pay all · Rs 2,000');
     expect(alert.mock.calls.at(-1)?.[0]).toBe('Pay all');

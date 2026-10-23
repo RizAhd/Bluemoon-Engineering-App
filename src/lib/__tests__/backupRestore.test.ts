@@ -11,6 +11,7 @@ import type { Attachment } from '@/db/types';
 import { readErrorLog } from '@/lib/errors';
 import { addFile, addPhotos } from '@/lib/files';
 import { mainPhone, openSecondPhone, queuePhotos, resetDb, seedDemo, type Phone } from '@/test-utils';
+import { localStamp } from '@/lib/backup';
 import { useClock } from '@/test-utils/dataKit';
 
 jest.setTimeout(180_000);
@@ -330,7 +331,8 @@ describe('makeBackup (the full backup with photos)', () => {
     const atts = await dataWithPhotos();
     const parts = await a.backup.makeBackup();
     expect(parts).toHaveLength(1);
-    expect(parts[0].name).toBe('Bluemoon-backup-2026-10-22-06-30.zip');
+    // named in the phone's own time, not UTC
+    expect(parts[0].name).toBe(`Bluemoon-backup-${localStamp(new Date('2026-10-22T06:30:45.000Z'))}.zip`);
     expect(parts[0].uri.startsWith(Paths.cache.uri)).toBe(true);
 
     const { zip, manifest } = await unzip(parts[0].bytesSync());
@@ -419,7 +421,8 @@ describe('makeBackup (the full backup with photos)', () => {
     }
 
     const parts = await a.backup.makeBackup();
-    expect(parts.map((p) => p.name)).toEqual(['Bluemoon-backup-2026-10-22-06-30-part1of2.zip', 'Bluemoon-backup-2026-10-22-06-30-part2of2.zip']);
+    const stamp = localStamp(new Date('2026-10-22T06:30:45.000Z'));
+    expect(parts.map((p) => p.name)).toEqual([`Bluemoon-backup-${stamp}-part1of2.zip`, `Bluemoon-backup-${stamp}-part2of2.zip`]);
     const m = await Promise.all(parts.map(async (p) => (await unzip(p.bytesSync())).manifest));
     expect(m.map((x) => [x.part, x.parts])).toEqual([[1, 2], [2, 2]]);
     expect(m[0].data_sha256).toBe(m[1].data_sha256); // the same records ride in every part

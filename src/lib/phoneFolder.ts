@@ -34,8 +34,8 @@ export function folderName(uri: string): string {
     path = tree;
   }
   const [volume, rest] = path.includes(':') ? [path.slice(0, path.indexOf(':')), path.slice(path.indexOf(':') + 1)] : ['', path];
-  const shown = rest || volume;
-  return volume && volume !== 'primary' && rest ? `${volume}/${rest}` : shown || uri;
+  const shown = (rest || volume).replace(/\/+$/, '');
+  return volume && volume !== 'primary' && shown ? `${volume}/${shown}` : shown || uri;
 }
 
 export function phoneFolderStatus(): PhoneFolderStatus {
@@ -59,6 +59,7 @@ export async function pickPhoneFolder(): Promise<boolean> {
 
 export function forgetPhoneFolder() {
   setSetting(KEY, null);
+  setSetting('backup_folder_of', null);
   setSetting('backup_folder_at', null);
   setSetting('backup_folder_error', null);
 }

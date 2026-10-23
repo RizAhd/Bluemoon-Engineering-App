@@ -183,7 +183,7 @@ function Inner({ params }: { params: Params }) {
           error={workerId ? null : form.err('taken_by')}
           allowNone
           optional={kind === 'return'}
-          placeholder={t('worker')}
+          placeholder={t('chooseWorker')}
           hint={projectId && roster.length ? t('projectWorkers') : undefined}
         />
         {!workerId ? (

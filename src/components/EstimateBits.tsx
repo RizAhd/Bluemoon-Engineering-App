@@ -40,6 +40,8 @@ export interface PresetFieldProps {
   keyboardType?: TextInputProps['keyboardType'];
   returnKeyType?: TextInputProps['returnKeyType'];
   placeholder?: string;
+  /** Leading icon in the text box, like the other fields. */
+  icon?: LucideIcon;
 }
 
 /**
@@ -47,13 +49,13 @@ export interface PresetFieldProps {
  * the text is shown selected; tapping a chip fills the field. Used for the validity days, the line
  * unit and the payment stage name.
  */
-export function PresetField({ label, fieldLabel, hideFieldLabel, presets, value, onChangeText, numeric, error, hint, keyboardType, returnKeyType, placeholder }: PresetFieldProps) {
+export function PresetField({ label, fieldLabel, hideFieldLabel, presets, value, onChangeText, numeric, error, hint, keyboardType, returnKeyType, placeholder, icon }: PresetFieldProps) {
   const trimmed = value.trim();
   const selected = presets.find((p) => p.value === trimmed)?.value ?? null;
   return (
     <View style={{ gap: space.md }}>
       <Chips label={label} options={presets} value={selected} onChange={onChangeText} numeric={numeric} />
-      <Field label={fieldLabel} hideLabel={hideFieldLabel} value={value} onChangeText={onChangeText} error={error} hint={hint} keyboardType={keyboardType} returnKeyType={returnKeyType} placeholder={placeholder} />
+      <Field label={fieldLabel} hideLabel={hideFieldLabel} value={value} onChangeText={onChangeText} error={error} hint={hint} keyboardType={keyboardType} returnKeyType={returnKeyType} placeholder={placeholder} icon={icon} />
     </View>
   );
 }

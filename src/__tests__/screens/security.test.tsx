@@ -239,6 +239,7 @@ describe('backup screen: password', () => {
     const alert = mockAlert();
     await renderScreen(<BackupScreen />);
     await pressLabel(E('restore'));
+    await waitFor(() => expect(alert).toHaveBeenCalled(), SLOW);
     await pressAlertButton(alert, E('restore'));
     await waitFor(() => expect(visibleText()).toContain(E('backupLockedTitle')), SLOW);
 

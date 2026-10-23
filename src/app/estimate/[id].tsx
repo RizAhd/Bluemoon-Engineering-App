@@ -54,7 +54,7 @@ import { showError } from '@/lib/errors';
 import { allocatePayments, formatPercent, formatQty, lineAmount, validUntil } from '@/lib/estimate';
 import { exportEstimatePdf } from '@/lib/estimatePdf';
 import { formatLKR } from '@/lib/money';
-import { withoutTitle } from '@/lib/names';
+import { formatPhone, withoutTitle } from '@/lib/names';
 import { radius, space, touch, useColors } from '@/theme';
 
 // ---------------------------------------------------------------- small pieces
@@ -430,7 +430,7 @@ export default function EstimateHub() {
                   {formatLKR(total.total_cents)}
                 </Txt>
               </View>
-              <Button icon={Share2} label={t('shareNow')} accessibilityLabel={t('shareEstimatePdf')} onPress={() => setSheetOpen(true)} />
+              <Button icon={Share2} label={t('shareNow')} accessibilityLabel={t('shareEstimatePdf')} onPress={() => setSheetOpen(true)} disabled={!items.length} />
             </View>
           }
           empty={
@@ -465,7 +465,7 @@ export default function EstimateHub() {
                     </Txt>
                     {(
                       [
-                        [Phone, est.client_phone],
+                        [Phone, est.client_phone ? formatPhone(est.client_phone) : null],
                         [Home, est.client_address],
                         [MapPin, est.location],
                       ] as const
@@ -524,7 +524,7 @@ export default function EstimateHub() {
                 <View style={{ gap: space.xs }}>
                   <ProgressBar
                     value={total.scheduled_bp / 100}
-                    tone={unscheduled > 0 ? 'warning' : 'success'}
+                    tone={unscheduled > 0 ? 'primary' : 'success'}
                     label={`${t('paymentSchedule')}: ${formatPercent(Math.min(10000, total.scheduled_bp))} %`}
                   />
                   <Txt variant="caption" color="textMuted" numeric>

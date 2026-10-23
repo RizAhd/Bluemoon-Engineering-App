@@ -3,7 +3,6 @@
  * estimate rows are supplied by mocks; expo-print, expo-asset and the file system are the harness
  * doubles from src/test-utils (setup.ts), so the real letterhead picture and real pdf-lib run.
  */
-import { Asset } from 'expo-asset';
 import { Directory, File, Paths } from 'expo-file-system';
 import * as Print from 'expo-print';
 import { decodePDFRawStream, PDFArray, PDFDict, PDFDocument, PDFHexString, PDFName, PDFRawStream, PDFString, StandardFonts } from 'pdf-lib';
@@ -21,6 +20,13 @@ import { silenceConsoleError } from '@/test-utils';
 
 jest.mock('@/db', () => ({ ...jest.requireActual('@/db'), deviceId: jest.fn(() => 'phone-a') }));
 jest.mock('@/db/estimates', () => ({ loadEstimate: jest.fn() }));
+// The embedded letterhead picture, swappable per test (an unreadable picture is the "cannot be read" case).
+const mockLetterhead = { data: null as string | null };
+jest.mock('@/lib/letterheadData', () => ({
+  get LETTERHEAD_JPEG_BASE64() {
+    return mockLetterhead.data ?? jest.requireActual('@/lib/letterheadData').LETTERHEAD_JPEG_BASE64;
+  },
+}));
 jest.mock('@/lib/company', () => ({ getCompanyProfile: jest.fn() }));
 jest.mock('@/lib/bundle', () => ({ ...jest.requireActual('@/lib/bundle'), collectEstimate: jest.fn() }));
 jest.mock('@/lib/errors', () => ({ ...jest.requireActual('@/lib/errors'), reportError: jest.fn() }));
@@ -378,13 +384,25 @@ describe('exportEstimatePdf', () => {
   });
 });
 
+describe('the embedded letterhead picture', () => {
+  it('is exactly assets/brand/letterhead.jpeg (regenerate with scripts/embed-letterhead.py)', () => {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { readFileSync } = require('node:fs') as typeof import('node:fs');
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { join } = require('node:path') as typeof import('node:path');
+    const file = readFileSync(join(__dirname, '../../../assets/brand/letterhead.jpeg')).toString('base64');
+    expect(jest.requireActual<typeof import('@/lib/letterheadData')>('@/lib/letterheadData').LETTERHEAD_JPEG_BASE64).toBe(file);
+  });
+});
+
 describe('exportEstimatePdf on the letterhead', () => {
   // The letterhead picture is cached after the first successful load, so the "cannot be read" case runs first.
   it('falls back to the plain quotation and says so when the letterhead picture cannot be read', async () => {
     const quiet = silenceConsoleError();
-    jest.spyOn(Asset, 'fromModule').mockImplementationOnce(() => ({ downloadAsync: jest.fn().mockRejectedValue(new Error('offline')), localUri: null }) as never);
+    mockLetterhead.data = '!!not base64!!';
     const notices: string[] = [];
     const out = await exportEstimatePdf('e1', { letterhead: true, lang: 'en', onNotice: (n) => notices.push(n) });
+    mockLetterhead.data = null;
     quiet.mockRestore();
 
     expect(notices).toEqual(['letterhead-unavailable']);
@@ -399,10 +417,11 @@ describe('exportEstimatePdf on the letterhead', () => {
     expect((await readProjectPdf(out.bytesSync())).status).toBe('ok');
   });
 
-  it('also falls back when the asset has no local file or is empty', async () => {
+  it('also falls back when the embedded picture is empty', async () => {
     const notices: string[] = [];
-    jest.spyOn(Asset, 'fromModule').mockImplementationOnce(() => ({ downloadAsync: jest.fn().mockResolvedValue(undefined), localUri: null }) as never);
+    mockLetterhead.data = '';
     await exportEstimatePdf('e1', { letterhead: true, lang: 'en', onNotice: (n) => notices.push(n) });
+    mockLetterhead.data = null;
     expect(notices).toEqual(['letterhead-unavailable']);
     expect(htmlOf(0)).toContain('.spacer-top { height: 16mm; }');
   });

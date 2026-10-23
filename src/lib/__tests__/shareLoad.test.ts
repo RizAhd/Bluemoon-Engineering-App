@@ -661,7 +661,7 @@ describe('the worker statement', () => {
     // and for the culvert alone: his payment there is found although he is not assigned
     const onCulvert = loadWorkerStatementShare(nimal, culvert);
     expect(onCulvert?.totals).toEqual({ earned_cents: 0, advance_cents: 0, paid_cents: 100_000, balance_cents: -100_000 });
-    expect(buildShareMessage('workerStatement', nimal, 'en', { projectId: culvert })).toContain('Advance over: Rs 1,000');
+    expect(buildShareMessage('workerStatement', nimal, 'en', { projectId: culvert })).toContain('Paid ahead: Rs 1,000');
   });
 
   it('lists the newest payments and advances (5), says how many more, and leaves out a deleted one', () => {
@@ -693,7 +693,7 @@ describe('the worker statement', () => {
     recordWorkDay({ project_id: p, worker_id: w, day: d(1), days: 1 });
     saveWageEntry({ worker_id: w, project_id: p, day: d(1), kind: 'advance', amount_cents: 150_000 });
     const text = buildShareMessage('workerStatement', w, 'en') as string;
-    expect(text).toContain('Advance over: Rs 500');
+    expect(text).toContain('Paid ahead: Rs 500');
     expect(text).toContain('P — 1 day — advance over Rs 500');
   });
 

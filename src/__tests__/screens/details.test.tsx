@@ -182,7 +182,7 @@ smokeScreen('worker/[id]', () => <WorkerDetail />, {
         'Rs 3,500', // still owed
         tr('weOwe'),
         `Mason · ${tr('dailyRate')} Rs 3,500`,
-        '0771234567',
+        '077 123 4567',
         tr('earned'),
         'Rs 17,500',
         tr('advances'),

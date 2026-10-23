@@ -92,6 +92,7 @@ function Inner({ existing, projectParam }: { existing: SiteNote | null; projectP
         <DateField label={t('date')} value={day} onChange={setDay} maxDay={today()} error={form.err('day')} />
         <Field
           label={t('whatHappened')}
+          placeholder={t('phSiteNote')}
           value={body}
           onChangeText={(s) => {
             setBody(s);

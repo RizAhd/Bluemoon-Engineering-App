@@ -746,12 +746,12 @@ describe('a label whose value is empty is left out', () => {
     expect(workerStatementMessage(bare, 'en')).toBe(lines('*Kamal Silva*', 'Earned: Rs 0', 'Advances: Rs 0', 'Paid: Rs 0', 'Balance: Settled', '', FOOTER.en));
   });
 
-  it('a worker who has had more than he earned: "Advance over", and the same in the project lines', () => {
+  it('a worker who has had more than he earned: "Paid ahead", and the same in the project lines', () => {
     const text = workerStatementMessage(
       { ...statement, totals: { earned_cents: 100_000, advance_cents: 150_000, paid_cents: 0, balance_cents: -50_000 }, projects: [{ name: 'Site A', days_total: 1, balance_cents: -50_000 }, { name: 'Site B', days_total: 0, balance_cents: 0 }] },
       'en',
     );
-    expect(text).toContain('Advance over: Rs 500');
+    expect(text).toContain('Paid ahead: Rs 500');
     expect(text).toContain('Site A — 1 day — advance over Rs 500');
     expect(text).toContain('Site B — settled');
     expect(text).not.toContain('To pay');

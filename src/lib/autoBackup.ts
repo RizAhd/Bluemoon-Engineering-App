@@ -16,7 +16,8 @@ import * as BackgroundTask from 'expo-background-task';
 import { Directory, File, Paths } from 'expo-file-system';
 import * as TaskManager from 'expo-task-manager';
 
-import { getDb, getSetting, setSetting } from '@/db';
+import { all, getDb, getSetting, setSetting } from '@/db';
+import { DATA_TABLES } from '@/db/schema';
 import { nowIso, today } from '@/lib/dates';
 
 import { dataSnapshot, restorePart, verifyBackup } from './backup';
@@ -96,9 +97,20 @@ export async function restoreNewestAutoBackup(): Promise<boolean> {
   return true;
 }
 
+/**
+ * A fingerprint of every record: row count and newest change per table. It changes whenever anything is
+ * added, edited or deleted, so today's snapshot can be redone after new work instead of waiting for tomorrow.
+ */
+export function dataMark(): string {
+  return DATA_TABLES.map((t) => {
+    const r = all<{ n: number; u: string | null }>(`SELECT COUNT(*) AS n, MAX(updated_at) AS u FROM ${t}`)[0];
+    return `${r?.n ?? 0}:${r?.u ?? ''}`;
+  }).join('|');
+}
+
 let running: Promise<'done' | 'skipped' | 'failed'> | null = null;
 
-/** Write today's snapshot unless it already exists. Safe to call often. */
+/** Write today's snapshot unless it already exists and nothing has changed since. Safe to call often. */
 export function runAutoBackupIfDue(force = false): Promise<'done' | 'skipped' | 'failed'> {
   if (running) return running;
   const run: Promise<'done' | 'skipped' | 'failed'> = (async () => {
@@ -110,7 +122,9 @@ export function runAutoBackupIfDue(force = false): Promise<'done' | 'skipped' | 
       if (getSetting('auto_backup') === 'off' && !force) return 'skipped';
       const day = today();
       const target = new File(backupsDir(), `${PREFIX}${day}.zip`);
-      if (!force && target.exists && getSetting('auto_backup_day') === day) {
+      const mark = dataMark();
+      // today's file is up to date: skip. A record added after this morning's backup makes it out of date.
+      if (!force && target.exists && getSetting('auto_backup_day') === day && getSetting('auto_backup_mark') === mark) {
         pruneAutoBackups();
         return 'skipped';
       }
@@ -129,6 +143,7 @@ export function runAutoBackupIfDue(force = false): Promise<'done' | 'skipped' | 
 
       setSetting('auto_backup_day', day);
       setSetting('auto_backup_at', nowIso());
+      setSetting('auto_backup_mark', mark);
       setSetting('auto_backup_error', null);
       pruneAutoBackups();
       return 'done';
@@ -154,8 +169,8 @@ export function runAutoBackupIfDue(force = false): Promise<'done' | 'skipped' | 
 }
 
 /**
- * Copies today's snapshot to the places outside the app: the owner's phone folder (once a day) and Google
- * Drive (once a day, when connected and online). Each is best effort and on its own: a full SD card or no
+ * Copies today's snapshot to the places outside the app: the owner's phone folder and Google Drive (when
+ * connected and online), each time the snapshot is redone. Each is best effort and on its own: a full SD card or no
  * signal never fails the backup itself, and a missed copy is tried again the next time the app opens.
  */
 export async function mirrorTodaysSnapshot(): Promise<{ folder: 'done' | 'skipped' | 'failed'; drive: 'done' | 'skipped' | 'failed' }> {
@@ -163,18 +178,20 @@ export async function mirrorTodaysSnapshot(): Promise<{ folder: 'done' | 'skippe
   const name = `${PREFIX}${day}.zip`;
   const file = new File(backupsDir(), name);
   if (!file.exists) return { folder: 'skipped', drive: 'skipped' };
+  // which version of today's snapshot this is: a copy is redone when the snapshot was redone
+  const stamp = getSetting('auto_backup_at') ?? day;
   let folder: 'done' | 'skipped' | 'failed' = 'skipped';
-  if (getSetting('backup_folder_uri') && getSetting('backup_folder_day') !== day) {
+  if (getSetting('backup_folder_uri') && getSetting('backup_folder_of') !== stamp) {
     try {
       if (copyToPhoneFolder(name, file.bytesSync())) {
-        setSetting('backup_folder_day', day);
+        setSetting('backup_folder_of', stamp);
         folder = 'done';
       }
     } catch {
       folder = 'failed';
     }
   }
-  const drive = await uploadSnapshotIfDue(day, name, () => file.bytesSync());
+  const drive = await uploadSnapshotIfDue(stamp, name, () => file.bytesSync());
   return { folder, drive };
 }
 

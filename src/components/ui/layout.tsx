@@ -53,7 +53,9 @@ export function Screen({ children, scroll = true, footer, padTop = true, hairlin
   const { gutter, column, short } = useLayout();
   const box = useRef<ComponentRef<typeof View>>(null);
   const scroller = useRef<ComponentRef<typeof ScrollView>>(null);
-  const keyboard = useKeyboardInset(box, scroll ? scroller : undefined);
+  // where the list is scrolled to, so a focused field can be brought into view from its place on the screen
+  const offset = useRef(0);
+  const keyboard = useKeyboardInset(box, scroll ? scroller : undefined, offset);
   const inlineFooter = !!footer && scroll && short;
   const bottom = paddingBottom ?? (footer ? space.xl : sizes.tabScrollBottom);
   const body = scroll ? (
@@ -61,7 +63,12 @@ export function Screen({ children, scroll = true, footer, padTop = true, hairlin
       ref={scroller}
       keyboardShouldPersistTaps="handled"
       keyboardDismissMode="on-drag"
+      scrollEventThrottle={32}
       {...scrollProps}
+      onScroll={(e) => {
+        offset.current = e.nativeEvent.contentOffset.y;
+        scrollProps?.onScroll?.(e);
+      }}
       contentContainerStyle={[
         column,
         {
@@ -80,7 +87,7 @@ export function Screen({ children, scroll = true, footer, padTop = true, hairlin
     <View style={{ flex: 1 }}>{children}</View>
   );
   return (
-    <FocusChainProvider reveal={() => revealFocused(scroller.current)}>
+    <FocusChainProvider reveal={() => revealFocused(scroller.current, offset.current)}>
       <View ref={box} collapsable={false} style={{ flex: 1, backgroundColor: c.bg, paddingBottom: keyboard }}>
         {hairlineTop ? <View style={{ height: hairline, backgroundColor: c.border }} /> : null}
         {body}
@@ -96,7 +103,11 @@ export function Screen({ children, scroll = true, footer, padTop = true, hairlin
  * display and only the part the keyboard really covers is given back as padding (a header above, a tab
  * bar below or a sheet all come out right). With `scroller`, the focused field is then scrolled into view.
  */
-export function useKeyboardInset(box: RefObject<ComponentRef<typeof View> | null>, scroller?: RefObject<ComponentRef<typeof ScrollView> | null>): number {
+export function useKeyboardInset(
+  box: RefObject<ComponentRef<typeof View> | null>,
+  scroller?: RefObject<ComponentRef<typeof ScrollView> | null>,
+  offset?: RefObject<number>,
+): number {
   const [inset, setInset] = useState(0);
   useEffect(() => {
     const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
@@ -110,7 +121,7 @@ export function useKeyboardInset(box: RefObject<ComponentRef<typeof View> | null
         const covered = Math.max(0, Math.round(y + h - top));
         setInset((was) => (Math.abs(covered - was) < 1 ? was : covered));
         // after the new padding is laid out, or the field is scrolled against the old, taller viewport
-        if (scroller) setTimeout(() => revealFocused(scroller.current), 80);
+        if (scroller) setTimeout(() => revealFocused(scroller.current, offset?.current ?? 0), 120);
       });
     });
     const hide = Keyboard.addListener(hideEvent, () => setInset(0));
@@ -118,24 +129,28 @@ export function useKeyboardInset(box: RefObject<ComponentRef<typeof View> | null
       show.remove();
       hide.remove();
     };
-  }, [box, scroller]);
+  }, [box, scroller, offset]);
   return inset;
 }
 
-/** Scroll so the focused text field sits in the visible part of `scroller`, with some room under it for its hint. */
-function revealFocused(scroller: ComponentRef<typeof ScrollView> | null) {
+/**
+ * Scroll so the focused text field sits well inside the visible part of `scroller` (about 100 dp under its
+ * top, so its label shows above it and its hint and the next field below), when it is hidden or tight against
+ * an edge. Both are measured on the screen, so it works whatever the field is nested in.
+ */
+function revealFocused(scroller: ComponentRef<typeof ScrollView> | null, scrolledTo: number) {
   const field = TextInput.State.currentlyFocusedInput?.() as unknown as ComponentRef<typeof View> | null;
-  const inner = scroller?.getInnerViewNode?.();
-  if (!scroller || !field?.measureLayout || !inner) return;
+  if (!scroller || !field?.measureInWindow) return;
   try {
-    field.measureLayout(
-      inner,
-      // the field lands a third of the way down, with its label above and its hint and the next field below
-      (_x, y) => scroller.scrollTo({ y: Math.max(0, y - space.xxxl * 2.5), animated: true }),
-      () => {},
-    );
+    scroller.measureInWindow((_sx, sy, _sw, sh) => {
+      field.measureInWindow((_x, y, _w, h) => {
+        const room = space.xxxl + space.xl; // under the field: its hint and the start of the next one
+        if (y >= sy + space.lg && y + h + room <= sy + sh) return; // already comfortably in view
+        scroller.scrollTo({ y: Math.max(0, scrolledTo + y - sy - space.xxxl * 2.5), animated: true });
+      });
+    });
   } catch {
-    // a field that is not inside this scroll view: nothing to do
+    // a field that is not on screen any more: nothing to do
   }
 }
 

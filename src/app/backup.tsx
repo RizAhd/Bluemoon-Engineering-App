@@ -152,7 +152,9 @@ export default function BackupScreen() {
     if (busy) return;
     const res = await guard('backup.pick', t, () => File.pickFileAsync({ mimeTypes: ['application/zip', 'application/octet-stream'], multipleFiles: true }));
     if (!res || res.canceled) return;
-    confirmRestore(res.result.map((f) => f.uri));
+    // a dialog opened in the same moment the file picker closes came up without its title on some phones
+    const uris = res.result.map((f) => f.uri);
+    setTimeout(() => confirmRestore(uris), 250);
   }
 
   function confirmRestore(uris: string[]) {
@@ -180,8 +182,10 @@ export default function BackupScreen() {
       }
       setUnlocking(null);
       setRestorePw('');
-      setResult(`${t('restoreDone')}: +${added} ${t('newRecords')} · ${updated} ${t('updatedRecords')} · ${photos} ${t('receiptPhotos')}`);
-      toast(t('restoreDone'));
+      const summary = `${t('restoreDone')}: +${added} ${t('newRecords')} · ${updated} ${t('updatedRecords')} · ${photos} ${t('receiptPhotos')}`;
+      setResult(summary);
+      // the card with the result is at the bottom of the page: the toast says it where the person is looking
+      toast(summary);
     } catch (e) {
       if (e instanceof BackupError && (e.message === 'needs-password' || e.message === 'wrong-password')) {
         // Ask for the password and start again from the first file: a restore only merges, so nothing is counted twice.
@@ -309,6 +313,7 @@ export default function BackupScreen() {
         <Card>
           <Field
             label={t('password')}
+            icon={LockKeyhole}
             value={password}
             onChangeText={(s) => {
               setPassword(s);
@@ -324,6 +329,8 @@ export default function BackupScreen() {
           />
           <Field
             label={t('passwordAgain')}
+            icon={LockKeyhole}
+            placeholder={t('phPasswordAgain')}
             value={password2}
             onChangeText={(s) => {
               setPassword2(s);
@@ -365,6 +372,7 @@ export default function BackupScreen() {
         <View style={{ paddingHorizontal: space.lg, gap: space.lg, paddingBottom: space.lg }}>
           <Field
             label={t('password')}
+            icon={KeyRound}
             value={restorePw}
             onChangeText={(s) => {
               setRestorePw(s);

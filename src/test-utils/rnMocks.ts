@@ -102,8 +102,9 @@ jest.mock('expo-router', () => {
     __esModule: true,
     router,
     useRouter: () => router,
-    // Screens listen for "beforeRemove" (the unsaved-changes question); nothing leaves in a test, so nothing fires.
     useNavigation: () => navigation,
+    // The unsaved-changes question: nothing leaves in a test, so nothing is ever prevented.
+    usePreventRemove: () => () => {},
     useLocalSearchParams: () => params(),
     useGlobalSearchParams: () => params(),
     usePathname: () => state()?.pathname ?? '/',

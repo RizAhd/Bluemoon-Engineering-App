@@ -1,5 +1,5 @@
 import * as Haptics from 'expo-haptics';
-import { router, useNavigation } from 'expo-router';
+import { router, usePreventRemove } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
 import { Alert } from 'react-native';
 
@@ -100,6 +100,7 @@ export function useRecordForm(table: string, existingId?: string) {
             return;
           }
           toast(t('deleted'));
+          saved.current = true; // deleted on purpose: leave without the unsaved-changes question
           if (pop > 1) router.dismiss(pop);
           else router.back();
         },
@@ -131,35 +132,25 @@ export function useRecordForm(table: string, existingId?: string) {
  */
 export function useLeaveGuard(values: unknown[], saved?: { current: boolean }) {
   const t = useT();
-  // typed loosely: the root navigator's event map does not list 'beforeRemove', every stack screen has it
-  const navigation = useNavigation() as unknown as {
-    addListener?: (event: 'beforeRemove', cb: (e: { preventDefault: () => void; data: { action: unknown } }) => void) => () => void;
-    dispatch: (action: unknown) => void;
-  };
   const now = JSON.stringify(values);
   const [start] = useState(now);
-  const isDirty = now !== start;
-  const dirty = useRef(false);
-  useEffect(() => {
-    dirty.current = isDirty;
-  }, [isDirty]);
-
-  useEffect(() => {
-    if (!navigation?.addListener) return;
-    return navigation.addListener('beforeRemove', (e) => {
-      if (!dirty.current || saved?.current) return;
-      e.preventDefault();
-      Alert.alert(t('discardTitle'), t('discardBody'), [
-        { text: t('keepEditing'), style: 'cancel' },
-        {
-          text: t('discard'),
-          style: 'destructive',
-          onPress: () => {
-            dirty.current = false;
-            navigation.dispatch(e.data.action);
-          },
+  const [discarded, setDiscarded] = useState(false);
+  const dirty = now !== start && !discarded;
+  // usePreventRemove (not a 'beforeRemove' listener): the native stack closes a screen natively on the Android
+  // back button and the header arrow, and only this hook stops that, as well as a removal from code.
+  usePreventRemove(dirty, ({ repeat }) => {
+    // a save or delete that is leaving on purpose goes straight through
+    if (saved?.current) return repeat();
+    Alert.alert(t('discardTitle'), t('discardBody'), [
+      { text: t('keepEditing'), style: 'cancel' },
+      {
+        text: t('discard'),
+        style: 'destructive',
+        onPress: () => {
+          setDiscarded(true);
+          repeat();
         },
-      ]);
-    });
-  }, [navigation, saved, t]);
+      },
+    ]);
+  });
 }

@@ -1,5 +1,5 @@
 import { router } from 'expo-router';
-import { Hammer, Plus } from 'lucide-react-native';
+import { Hammer, PackagePlus, Plus } from 'lucide-react-native';
 import { memo, useMemo, useState } from 'react';
 import { View } from 'react-native';
 
@@ -99,7 +99,8 @@ export default function ToolsScreen() {
           rows.length ? (
             <>
               <ShareHeaderButton onPress={share.open} />
-              <HeaderAction icon={Plus} label={t('newTool')} onPress={goNew} />
+              {/* a tool-shaped "new", so it does not read as a second copy of the round + (which adds anything) */}
+              <HeaderAction icon={PackagePlus} label={t('newTool')} onPress={goNew} />
             </>
           ) : undefined
         }

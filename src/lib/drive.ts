@@ -102,7 +102,7 @@ export async function disconnectDrive() {
   } catch {
     // signed out locally either way
   }
-  for (const k of ['drive_email', 'drive_last_at', 'drive_error', 'drive_folder_id', 'drive_auto_day']) setSetting(k, null);
+  for (const k of ['drive_email', 'drive_last_at', 'drive_error', 'drive_folder_id', 'drive_auto_of']) setSetting(k, null);
 }
 
 async function token(): Promise<string> {
@@ -202,13 +202,16 @@ async function trimDrive(auth: string, parent: string) {
   for (const f of list.files.slice(DRIVE_KEEP)) await call(`${API}/files/${f.id}`, { method: 'DELETE' }, auth).catch(() => undefined);
 }
 
-/** Uploads today's snapshot once a day while Drive is connected. Never throws; returns what happened. */
-export async function uploadSnapshotIfDue(day: string, name: string, read: () => Uint8Array): Promise<'done' | 'skipped' | 'failed'> {
+/**
+ * Uploads today's snapshot while Drive is connected, once per version of it (`stamp` changes when the snapshot
+ * is redone after new records). Never throws; returns what happened.
+ */
+export async function uploadSnapshotIfDue(stamp: string, name: string, read: () => Uint8Array): Promise<'done' | 'skipped' | 'failed'> {
   if (!driveConnected()) return 'skipped';
-  if (getSetting('drive_auto_day') === day) return 'skipped';
+  if (getSetting('drive_auto_of') === stamp) return 'skipped';
   try {
     await uploadToDrive(name, read());
-    setSetting('drive_auto_day', day);
+    setSetting('drive_auto_of', stamp);
     return 'done';
   } catch {
     return 'failed';

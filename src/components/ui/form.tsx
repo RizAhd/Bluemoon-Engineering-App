@@ -1,7 +1,7 @@
 import DateTimePicker from '@react-native-community/datetimepicker';
 import * as Haptics from 'expo-haptics';
 import type { LucideIcon } from 'lucide-react-native';
-import { AlertCircle, Calendar, Check, ChevronDown, Search, X } from 'lucide-react-native';
+import { AlertCircle, Calendar, Check, ChevronDown, Eye, EyeOff, Search, X } from 'lucide-react-native';
 import { memo, useRef, useState, type ComponentRef, type ReactNode } from 'react';
 import { FlatList, Keyboard, Modal, Platform, Pressable, TextInput, View, type DimensionValue, type StyleProp, type TextInputProps, type ViewStyle } from 'react-native';
 import Animated from 'react-native-reanimated';
@@ -161,8 +161,12 @@ export interface FieldProps extends TextInputProps {
 export function Field({ label, optional, error, hint, multiline, hideLabel, disabled, editable, style, icon: Icon, ...input }: FieldProps) {
   const c = useColors();
   const font = useFont();
+  const t = useT();
   const ref = useRef<ComponentRef<typeof TextInput>>(null);
   const [focus, setFocus] = useState(false);
+  // A password box gets an eye button: people type passwords on a small keypad and need to check them.
+  const secret = !!input.secureTextEntry;
+  const [shown, setShown] = useState(false);
   const off = disabled || editable === false;
   const box = useBoxColors({ focus, error, disabled: off });
   // Multi-line boxes keep Enter for new lines; every other field gets a Next key that moves down the form.
@@ -178,6 +182,7 @@ export function Field({ label, optional, error, hint, multiline, hideLabel, disa
           ref={ref}
           {...input}
           {...chain}
+          secureTextEntry={secret && !shown}
           editable={!off}
           accessibilityLabel={label}
           multiline={multiline}
@@ -198,7 +203,7 @@ export function Field({ label, optional, error, hint, multiline, hideLabel, disa
               minHeight: multiline ? 102 : touch - 2,
               textAlignVertical: multiline ? 'top' : 'center',
               paddingLeft: 0,
-              paddingRight: space.lg,
+              paddingRight: secret ? 0 : space.lg,
               paddingVertical: multiline ? space.md : 0,
               color: box.color,
               // The example text sits a step smaller than what is typed, so it never reads as a filled-in value.
@@ -208,6 +213,9 @@ export function Field({ label, optional, error, hint, multiline, hideLabel, disa
             style,
           ]}
         />
+        {secret ? (
+          <IconButton icon={shown ? EyeOff : Eye} label={t(shown ? 'hidePassword' : 'showPassword')} size={44} tone="textMuted" onPress={() => setShown((v) => !v)} />
+        ) : null}
       </InputBox>
       <HelperText error={error} hint={hint} />
     </View>
@@ -273,7 +281,7 @@ export function AmountField({ label, value, onChangeText, error, autoFocus, opti
           ref={ref}
           accessibilityLabel={label}
           // Shown with thousands separators while not being edited ("2,200", not "2200").
-          value={focus || !value ? value : (() => {
+          value={!value ? value : focus ? groupTyped(value) : (() => {
             const cents = parseCents(value);
             return cents === null ? value : formatAmount(cents);
           })()}

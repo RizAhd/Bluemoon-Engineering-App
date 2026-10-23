@@ -86,7 +86,7 @@ export function BackupPlaces() {
     try {
       // today's snapshot first (if the day has none yet), then send it even if it went up earlier today
       await runAutoBackupIfDue();
-      setSetting('drive_auto_day', null);
+      setSetting('drive_auto_of', null);
       const r = await mirrorTodaysSnapshot();
       if (r.drive === 'done') toast(t('driveUploaded'));
       else toast(t(driveErrorKey(new DriveError((getSetting('drive_error') ?? '').split(' ')[1] as DriveError['reason']))), { tone: 'danger' });

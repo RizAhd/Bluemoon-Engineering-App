@@ -81,7 +81,8 @@ export async function makeBackup(onProgress?: (part: number, parts: number) => v
     size += f.size;
   }
 
-  const stamp = nowIso().slice(0, 16).replace(/[:T]/g, '-');
+  // the phone's own date and time in the name ("…-2026-10-24-01-11"), as the person sees it in the Files app
+  const stamp = localStamp(new Date());
   const out: File[] = [];
   for (let i = 0; i < groups.length; i++) {
     onProgress?.(i + 1, groups.length);
@@ -214,4 +215,10 @@ export async function restorePart(uri: string, password?: string): Promise<{ pla
   const bundle: Bundle = JSON.parse(decodeUtf8(data));
   const plan = await applyBundle(bundle.tables, files);
   return { plan, photos: files.size, part: manifest.part, parts: manifest.parts };
+}
+
+/** "2026-10-24-01-11" in the phone's time zone. */
+export function localStamp(d: Date): string {
+  const p = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}-${p(d.getHours())}-${p(d.getMinutes())}`;
 }

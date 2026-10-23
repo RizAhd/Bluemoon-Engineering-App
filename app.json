@@ -66,6 +66,8 @@
       "expo-background-task",
       "./plugins/withBackupRules",
       "./plugins/withDialogTheme",
+      "./plugins/withConfigChanges",
+      "./plugins/withSharingFix",
       "expo-status-bar",
       "expo-secure-store"
     ],

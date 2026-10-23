@@ -196,7 +196,7 @@ describe('useRecordForm: every field error is also said in a toast', () => {
       </>,
     );
     await pressLabel(E('save'));
-    expect(screen.getAllByText(E('errWorker'))).toHaveLength(2);
+    expect(screen.getAllByText(E('errWorker'))).toHaveLength(3);
     expect(router.back).not.toHaveBeenCalled();
   });
 
@@ -325,7 +325,7 @@ describe('wage form: a worker who is not on the roster can still be paid', () =>
     const { project } = siteWithRoster();
     setRouteParams({ workerId: 'gone', projectId: project, kind: 'advance' });
     await renderScreen(<WageForm />);
-    expect(hasLabel(`${E('worker')}: ${E('worker')}`)).toBe(true);
+    expect(hasLabel(`${E('worker')}: ${E('chooseWorker')}`)).toBe(true);
     await pressLabel(E('save'));
     expect(visibleText()).toContain(E('errWorker'));
     expect(payments()).toEqual([]);

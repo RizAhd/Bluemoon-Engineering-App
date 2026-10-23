@@ -10,7 +10,6 @@
  *
  * Import: no internet, no AI. Read the attachments, check the hash, merge rows.
  */
-import { Asset } from 'expo-asset';
 import { File, Paths } from 'expo-file-system';
 import * as Print from 'expo-print';
 import {
@@ -33,7 +32,7 @@ import { reportError } from '@/lib/errors';
 
 import { BUNDLE_FORMAT, BUNDLE_VERSION, collectProject, filesOf, readFileBytes, sha256Hex, type Bundle } from './bundle';
 import { A4_H, A4_W, applyLetterhead } from './letterhead';
-import { printedPdfBytes } from './printBytes';
+import { base64ToBytes, printedPdfBytes } from './printBytes';
 import { buildReportHtml } from './reportHtml';
 import { decodeUtf8, encodeUtf8 } from './utf8';
 
@@ -58,12 +57,11 @@ let letterheadCache: Uint8Array | null = null;
 /** The letterhead picture (bundled with the app). Cached after the first load. Shared with the estimate PDF. */
 export async function loadLetterhead(): Promise<Uint8Array> {
   if (letterheadCache) return letterheadCache;
-  const asset = Asset.fromModule(require('../../assets/brand/letterhead.jpeg'));
-  await asset.downloadAsync();
-  const uri = asset.localUri;
-  if (!uri) throw new Error('letterhead asset has no local file');
-  const bytes = await new File(uri).bytes();
-  if (bytes.byteLength < 1000) throw new Error('letterhead asset is empty');
+  // Embedded in the bundle: a bundled image file has no readable path in a release APK.
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { LETTERHEAD_JPEG_BASE64 } = require('./letterheadData') as typeof import('./letterheadData');
+  const bytes = base64ToBytes(LETTERHEAD_JPEG_BASE64);
+  if (bytes.byteLength < 1000) throw new Error('letterhead picture is empty');
   letterheadCache = bytes;
   return bytes;
 }

@@ -395,12 +395,9 @@ describe('estimate form', () => {
     expect(hasLabel(E('taxPercent'))).toBe(true);
     expect(visibleText()).toContain(E('errTax'));
     await typeInto(E('taxPercent'), '18,5');
-    await typeInto(E('discount'), '500');
-    await pressLabel(E('save'));
-    expect(visibleText()).toContain(E('errDiscountTooHigh')); // no lines yet, so no discount
-    expect(estimates()).toHaveLength(0);
-
-    await typeInto(E('discount'), '');
+    // no lines yet, so no discount field: it says where the discount is added instead
+    expect(hasLabel(E('discount'))).toBe(false);
+    expect(visibleText()).toContain(E('discountAfterItems'));
     await pressLabel(E('save'));
     expect(estimates()).toHaveLength(1);
     expect(estimates()[0]).toMatchObject({ valid_days: 15, tax_bp: 1850, discount_cents: 0 });
@@ -599,7 +596,7 @@ describe('estimate payment stage form', () => {
     setRouteParams({ id: middle.id, estimateId: id });
     await renderScreen(shown(<EstimatePaymentScreen />));
     expect(inputValue(E('stagePercent'))).toBe('40');
-    expect(visibleText()).toContain(E('percentAvailable', { pct: '40' }));
+    expect(visibleText()).toContain(E('percentAvailable', { pct: '0' }));
     await typeInto(E('stagePercent'), '30');
     expect(visibleText()).toContain('Rs 300'); // 30 % of Rs 1,000
     await pressLabel(E('save'));

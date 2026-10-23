@@ -107,7 +107,7 @@ export function PhotoStrip({
         onDelete={
           editable && view
             ? () => {
-                Alert.alert(t('confirmDelete'), t('confirmDeleteBody'), [
+                Alert.alert(t('deletePhotoTitle'), t('deletePhotoBody'), [
                   { text: t('cancel'), style: 'cancel' },
                   {
                     text: t('delete'),

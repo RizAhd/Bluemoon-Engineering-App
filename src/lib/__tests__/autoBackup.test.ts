@@ -66,14 +66,23 @@ describe('runAutoBackupIfDue', () => {
     expect(only.size).toBeGreaterThan(500);
   });
 
-  it('only once a day: calling again (the app opens many times) does not write again', async () => {
+  it('calling again with nothing new (the app opens many times) does not write again', async () => {
     seedDemo();
     await runAutoBackupIfDue();
     const before = fileOf(TODAY).bytesSync();
-    saveProject({ name: 'Added later today' });
     for (let i = 0; i < 3; i++) expect(await runAutoBackupIfDue()).toBe('skipped');
     expect(Array.from(fileOf(TODAY).bytesSync())).toEqual(Array.from(before));
     expect(names()).toHaveLength(1);
+  });
+
+  it("a record added later the same day is in today's snapshot by the next run, written once", async () => {
+    seedDemo();
+    await runAutoBackupIfDue();
+    saveProject({ name: 'Added later today' });
+    expect(await runAutoBackupIfDue()).toBe('done');
+    expect(await runAutoBackupIfDue()).toBe('skipped');
+    expect(names()).toHaveLength(1); // still one file for the day, now with the new project
+    expect(await verifyBackup(fileOf(TODAY).bytesSync())).toBe(true);
   });
 
   it('the next day writes a new file and keeps the old one', async () => {

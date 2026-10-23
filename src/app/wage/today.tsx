@@ -422,9 +422,10 @@ export default function TodaysWorkScreen() {
                 </View>
               </View>
             )}
-            {payAllTotal > 0 && !kbOpen ? (
+            {payAllTotal > 0 ? (
               <>
-                {/* "Pay all" only when this pays everything still owed; a typed part payment says just what it pays */}
+                {/* "Pay all" only when this pays everything still owed; a typed part payment says just what it pays.
+                    Shown with the keyboard open too, so closing the keyboard never swaps the button under the finger. */}
                 <Button
                   label={payAllTotal >= totalToPay ? `${t('payAll')} · ${formatLKR(payAllTotal)}` : t('payAmount', { amount: formatLKR(payAllTotal) })}
                   onPress={onPayAll}

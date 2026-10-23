@@ -1,5 +1,5 @@
 import { Stack, useLocalSearchParams } from 'expo-router';
-import { Calculator, Percent, Trash2 } from 'lucide-react-native';
+import { Calculator, Flag, Percent, Trash2 } from 'lucide-react-native';
 import { useState } from 'react';
 import { View } from 'react-native';
 
@@ -93,6 +93,7 @@ function StageForm({ estimateId, existing }: { estimateId: string; existing: Est
             form.clearError('label');
           }}
           numeric
+          icon={Flag}
           placeholder={t('phStage')}
           error={form.err('label')}
           returnKeyType="next"
@@ -107,7 +108,8 @@ function StageForm({ estimateId, existing }: { estimateId: string; existing: Est
           error={form.err('percent')}
           icon={Percent}
           placeholder={t('phPercent')}
-          hint={t('percentAvailable', { pct: formatPercent(free) })}
+          // what is left after this stage, as it is typed ("Still to schedule after this: 60 %")
+          hint={t('percentAvailable', { pct: formatPercent(Math.max(0, free - (bp ?? 0))) })}
           keyboardType="decimal-pad"
           autoFocus={!form.isNew}
         />

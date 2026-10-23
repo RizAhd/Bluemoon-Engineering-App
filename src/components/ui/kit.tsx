@@ -163,7 +163,7 @@ export function ProgressBar({ value, tone = 'primary', label, height = 8 }: { va
         accessibilityValue={{ min: 0, max: 100, now: Math.round(pct) }}
         height={height}
         borderRadius={height / 2}
-        backgroundColor="surface2"
+        backgroundColor="border"
         overflow="hidden">
         <Progress.Indicator transition="medium" backgroundColor={fill[tone]} borderRadius={height / 2} />
       </Progress>

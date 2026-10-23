@@ -77,6 +77,7 @@ function Inner({ existing }: { existing: Worker | null }) {
         <Field label={t('phone')} optional icon={Phone} placeholder={t('phPhone')} value={phone} onChangeText={setPhone} keyboardType="phone-pad" />
         <AmountField
           label={t('dailyRate')}
+          placeholder={t('phDayRate')}
           value={rate}
           onChangeText={(s) => {
             setRate(s);

@@ -7,7 +7,7 @@ import { PresetField } from '@/components/EstimateBits';
 import { Button } from '@/components/ui/Button';
 import { toast } from '@/components/ui/feedback';
 import { AmountField, DateField, Field, FormSection } from '@/components/ui/form';
-import { ListCard, ListRow, Screen } from '@/components/ui/layout';
+import { InfoLine, ListCard, ListRow, Screen } from '@/components/ui/layout';
 import { saveEstimate, suggestEstimateNumber, type EstimateInput } from '@/db/estimates';
 import type { Estimate } from '@/db/types';
 import { useEstimate } from '@/hooks/data';
@@ -188,6 +188,7 @@ function EstimateFormInner({ existing, openMore }: { existing: Estimate | null; 
           <PresetField
             label={t('validFor')}
             fieldLabel={t('numberOfDays')}
+            icon={CalendarClock}
             presets={VALID_PRESETS.map((n) => ({ value: String(n), label: t('daysCount', { n }) }))}
             value={validDays}
             onChangeText={(s) => {
@@ -217,19 +218,24 @@ function EstimateFormInner({ existing, openMore }: { existing: Estimate | null; 
               autoCapitalize="characters"
               returnKeyType="next"
             />
-            <AmountField
-              label={t('discount')}
-              optional
-              placeholder={t('phDiscount')}
-              value={discount}
-              onChangeText={(s) => {
-                setDiscount(s);
-                edited('discount');
-              }}
-              error={form.err('discount')}
-              hint={locked ? t('fieldLockedAccepted') : undefined}
-              disabled={locked}
-            />
+{/* A new estimate has no lines yet, so no subtotal to take a discount from: say where it goes instead of refusing it. */}
+            {form.isNew ? (
+              <InfoLine icon={Percent} text={t('discountAfterItems')} />
+            ) : (
+                          <AmountField
+                label={t('discount')}
+                optional
+                placeholder={t('phDiscount')}
+                value={discount}
+                onChangeText={(s) => {
+                  setDiscount(s);
+                  edited('discount');
+                }}
+                error={form.err('discount')}
+                hint={locked ? t('fieldLockedAccepted') : undefined}
+                disabled={locked}
+              />
+            )}
             <Field
               label={t('taxPercent')}
               optional

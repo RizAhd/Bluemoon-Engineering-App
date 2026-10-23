@@ -384,7 +384,7 @@ smokeScreen('estimate/payment', () => <EstimatePaymentScreen />, {
       expect: (tr) => {
         const { payments, total } = loaded(DRAFT);
         const amounts = allocatePayments(total.total_cents, payments.map((p) => p.percent_bp));
-        return [tr('editStage'), payments[1].label, '40', formatLKR(amounts[1]), tr('percentAvailable', { pct: '40' })];
+        return [tr('editStage'), payments[1].label, '40', formatLKR(amounts[1]), tr('percentAvailable', { pct: '0' })];
       },
       check: (tr) => expect(screen.getAllByLabelText(tr('delete'))).toHaveLength(1),
     },

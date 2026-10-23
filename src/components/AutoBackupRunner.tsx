@@ -17,7 +17,8 @@ export function AutoBackupRunner() {
     // Let the first screen draw before doing any work.
     const first = setTimeout(() => void runDailyBackup(), 2500);
     const sub = AppState.addEventListener('change', (s) => {
-      if (s === 'active') void runDailyBackup();
+      // on return, and on leaving: what was just entered is in a backup before the phone is put away
+      if (s === 'active' || s === 'background') void runDailyBackup();
     });
     return () => {
       clearTimeout(first);

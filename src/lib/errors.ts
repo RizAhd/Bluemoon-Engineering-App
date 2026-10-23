@@ -150,6 +150,13 @@ export async function guard<R>(context: string, t: T, fn: () => Promise<R> | R):
 let installed = false;
 let onFatal: ((err: Error) => void) | null = null;
 
+/** The router was called before (or between) the navigator's first render: harmless, nothing was changed. */
+export function isNavigatorNotReady(err: unknown): boolean {
+  return /imperative router is unavailable|navigator is not (yet )?mounted|navigation object hasn't been initialized/i.test(
+    err instanceof Error ? err.message : String(err),
+  );
+}
+
 /** Lets the root layout react to a fatal error (e.g. show the recovery screen). */
 export function setFatalErrorListener(fn: ((err: Error) => void) | null) {
   onFatal = fn;
@@ -168,6 +175,9 @@ export function installGlobalErrorHandlers(): void {
   };
   const prev = g.ErrorUtils?.getGlobalHandler?.();
   g.ErrorUtils?.setGlobalHandler?.((err, fatal) => {
+    // A tap that tried to navigate in the instant the navigator was not mounted (the screen being rebuilt)
+    // changes nothing on the phone: log it and carry on, never turn it into the recovery screen.
+    if (fatal && isNavigatorNotReady(err)) fatal = false;
     reportError(err, fatal ? 'uncaught-fatal' : 'uncaught');
     if (fatal && onFatal) {
       try {

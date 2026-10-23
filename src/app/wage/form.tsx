@@ -144,7 +144,7 @@ function Inner({ existing, params }: { existing: WageEntry | null; params: { wor
             form.clearError('worker_id');
           }}
           error={form.err('worker_id')}
-          placeholder={t('worker')}
+          placeholder={t('chooseWorker')}
         />
         {kind === 'work' ? (
           <>
@@ -187,7 +187,7 @@ function Inner({ existing, params }: { existing: WageEntry | null; params: { wor
           autoFocus={form.isNew && kind !== 'work'}
         />
         <DateField label={t('date')} value={day} onChange={setDay} maxDay={today()} error={form.err('day')} />
-        <Field label={t('note')} optional placeholder={t('phWageNote')} value={note} onChangeText={setNote} />
+        <Field label={t('note')} optional placeholder={t(kind === 'advance' ? 'phWageNote' : kind === 'work' ? 'phWorkNote' : 'phPayNote')} value={note} onChangeText={setNote} />
       </Screen>
     </>
   );

@@ -172,7 +172,8 @@ function ItemForm({ estimateId, existing }: { estimateId: string; existing: Esti
           value={unit}
           onChangeText={setUnit}
           numeric
-          placeholder="sq.m"
+          icon={Ruler}
+          placeholder={t('phUnit')}
           hint={t('unitHint')}
           returnKeyType="next"
         />

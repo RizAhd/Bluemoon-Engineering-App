@@ -191,7 +191,7 @@ function Inner({ projectId, workerId }: { projectId: string; workerId?: string }
         {!editing && effective === 'existing' ? (
           <SelectField
             label={t('worker')}
-            placeholder={t('worker')}
+            placeholder={t('chooseWorker')}
             items={workers.map((w) => ({
               id: w.id,
               title: w.name,
@@ -235,6 +235,7 @@ function Inner({ projectId, workerId }: { projectId: string; workerId?: string }
 
         <AmountField
           label={t('rateOnThisProject')}
+          placeholder={t('phDayRate')}
           value={rate}
           onChangeText={(s) => {
             setRate(s);

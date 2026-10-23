@@ -98,6 +98,17 @@ function withStyles(config) {
     setItem(picker, 'android:textColorSecondary', '@color/bm_dialog_muted');
     setItem(picker, 'android:buttonBarButtonStyle', '@style/BluemoonAlertButton');
     setItem(picker, 'buttonBarButtonStyle', '@style/BluemoonAlertButton');
+    // the number on the chosen day sits on the blue circle: white
+    setItem(picker, 'android:textColorPrimaryInverse', '#FFFFFF');
+    setItem(picker, 'android:datePickerStyle', '@style/BluemoonDatePickerStyle');
+
+    // the header band (year and chosen date) in the app's blue instead of grey
+    let pickerStyle = styles.find((s) => s.$.name === 'BluemoonDatePickerStyle');
+    if (!pickerStyle) {
+      pickerStyle = { $: { name: 'BluemoonDatePickerStyle', parent: 'android:Widget.Material.DatePicker' }, item: [] };
+      styles.push(pickerStyle);
+    }
+    setItem(pickerStyle, 'android:headerBackground', '@color/bm_dialog_fill');
 
     const app = styles.find((s) => s.$.name === 'AppTheme');
     if (app) {
