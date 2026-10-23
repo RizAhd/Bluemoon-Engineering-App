@@ -20,6 +20,8 @@ import { getDb, getSetting, setSetting } from '@/db';
 import { nowIso, today } from '@/lib/dates';
 
 import { dataSnapshot, restorePart, verifyBackup } from './backup';
+import { uploadSnapshotIfDue } from './drive';
+import { copyToPhoneFolder } from './phoneFolder';
 
 export const KEEP_DAYS = 25;
 const MAX_BYTES = 8 * 1024 * 1024;
@@ -151,9 +153,41 @@ export function runAutoBackupIfDue(force = false): Promise<'done' | 'skipped' | 
   return run;
 }
 
+/**
+ * Copies today's snapshot to the places outside the app: the owner's phone folder (once a day) and Google
+ * Drive (once a day, when connected and online). Each is best effort and on its own: a full SD card or no
+ * signal never fails the backup itself, and a missed copy is tried again the next time the app opens.
+ */
+export async function mirrorTodaysSnapshot(): Promise<{ folder: 'done' | 'skipped' | 'failed'; drive: 'done' | 'skipped' | 'failed' }> {
+  const day = today();
+  const name = `${PREFIX}${day}.zip`;
+  const file = new File(backupsDir(), name);
+  if (!file.exists) return { folder: 'skipped', drive: 'skipped' };
+  let folder: 'done' | 'skipped' | 'failed' = 'skipped';
+  if (getSetting('backup_folder_uri') && getSetting('backup_folder_day') !== day) {
+    try {
+      if (copyToPhoneFolder(name, file.bytesSync())) {
+        setSetting('backup_folder_day', day);
+        folder = 'done';
+      }
+    } catch {
+      folder = 'failed';
+    }
+  }
+  const drive = await uploadSnapshotIfDue(day, name, () => file.bytesSync());
+  return { folder, drive };
+}
+
+/** The daily backup, then its copies to the phone folder and Drive. What the app runs on open and on return. */
+export async function runDailyBackup(): Promise<void> {
+  const res = await runAutoBackupIfDue();
+  if (res !== 'failed') await mirrorTodaysSnapshot().catch(() => undefined);
+}
+
 // The task must be defined at module top level so Android can start it with the app closed.
 TaskManager.defineTask(TASK, async () => {
   const res = await runAutoBackupIfDue();
+  if (res !== 'failed') await mirrorTodaysSnapshot().catch(() => undefined);
   return res === 'failed' ? BackgroundTask.BackgroundTaskResult.Failed : BackgroundTask.BackgroundTaskResult.Success;
 });
 

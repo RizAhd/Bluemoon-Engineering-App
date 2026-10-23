@@ -232,7 +232,7 @@ smokeScreen('Expenses tab (demo data)', () => <ExpensesScreen />, {
       expect: (tr) => [
         tr('expenses'),
         tr('thisMonth'),
-        tr('totalCost'),
+        tr('allExpenses'),
         tr('allProjects'),
         tr('today'),
         'Lanka Cement Depot, Welimada',

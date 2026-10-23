@@ -11,8 +11,10 @@
 
 export const palette = {
   light: {
-    bg: '#F7F8FA',
+    bg: '#F3F5F8',
     card: '#FFFFFF',
+    /** Text-field fill: white wells on the grey page, lifted by a soft shadow (elevation.field). */
+    field: '#FFFFFF',
     text: '#101828',
     textMuted: '#475467',
     border: '#E4E7EC',
@@ -55,13 +57,18 @@ export const palette = {
     shadow: 'rgba(16,24,40,0.18)',
     overlay: 'rgba(16,24,40,0.55)',
     slatePressed: '#1D2939',
+    /** Toasts: the inverse of the page (dark on light, light on dark). */
+    inverse: '#1D2939',
+    onInverse: '#FFFFFF',
   },
   dark: {
     bg: '#0B1120',
-    card: '#121A2A',
+    card: '#141E31',
+    /** Dark text-field fill: a step lighter than the cards, so an input never melts into its card. */
+    field: '#1A2439',
     text: '#EDF1F7',
     textMuted: '#A3AEC2',
-    border: '#26304A',
+    border: '#2A3552',
     borderStrong: '#67769F',
     muted: '#253047',
     primary: '#7AA2FF',
@@ -72,28 +79,31 @@ export const palette = {
     fill: '#2563EB',
     fillPressed: '#1D4ED8',
     onFill: '#FFFFFF',
-    slate: '#E6EBF5',
-    onSlate: '#0B1120',
+    /** Dark: selected chips and segments are a calm blue, not a glaring white block. */
+    slate: '#3D5A99',
+    onSlate: '#FFFFFF',
     success: '#5BD08A',
     successSoft: '#11291C',
     warning: '#F5B443',
     warningSoft: '#2E2410',
     danger: '#F9847A',
     dangerSoft: '#35191B',
-    tabBar: '#121A2A',
-    header: '#121A2A',
+    tabBar: '#141E31',
+    header: '#141E31',
     headerDeep: '#253047',
     onHeader: '#EDF1F7',
     onHeaderMuted: '#A3AEC2',
-    headerSoft: '#1A2334',
-    surface2: '#1A2334',
+    headerSoft: '#1C2740',
+    surface2: '#1C2740',
     surface3: '#1F293B',
     divider: '#1F2838',
     placeholder: '#8A96AD',
     focusRing: 'rgba(122,162,255,0.36)',
     shadow: 'rgba(0,0,0,0.45)',
     overlay: 'rgba(0,0,0,0.62)',
-    slatePressed: '#D0D5DD',
+    slatePressed: '#34508C',
+    inverse: '#E6EBF5',
+    onInverse: '#0B1120',
   },
 } as const;
 
@@ -129,24 +139,24 @@ export const windowClass = { mediumFrom: 600, expandedFrom: 840, shortBelow: 480
 export const listTuning = { initialNumToRender: 12, maxToRenderPerBatch: 8, windowSize: 9 } as const;
 
 export const type = {
-  caption: 14,
-  body: 16.5,
-  bodyLg: 18.5,
-  title: 20,
-  heading: 24,
-  amount: 31,
-  amountXl: 40,
+  caption: 12,
+  body: 14,
+  bodyLg: 15.5,
+  title: 17,
+  heading: 20.5,
+  amount: 26.5,
+  amountXl: 34,
 } as const;
 
 /** Line height per variant (even numbers, near the 4 pt grid): Latin, and +2 for Sinhala / Tamil so marks never clip. */
 export const lineHeight = {
-  caption: { latin: 20, complex: 22 },
-  body: { latin: 24, complex: 26 },
-  bodyLg: { latin: 26, complex: 28 },
-  title: { latin: 28, complex: 30 },
-  heading: { latin: 32, complex: 34 },
-  amount: { latin: 38, complex: 38 },
-  amountXl: { latin: 48, complex: 48 },
+  caption: { latin: 16, complex: 18 },
+  body: { latin: 20, complex: 22 },
+  bodyLg: { latin: 22, complex: 24 },
+  title: { latin: 24, complex: 26 },
+  heading: { latin: 28, complex: 30 },
+  amount: { latin: 32, complex: 32 },
+  amountXl: { latin: 42, complex: 42 },
 } as const satisfies Record<keyof typeof type, { latin: number; complex: number }>;
 
 /**
@@ -156,11 +166,11 @@ export const lineHeight = {
 export const tracking = {
   caption: 0.1,
   body: 0,
-  bodyLg: -0.17,
-  title: -0.18,
-  heading: -0.44,
-  amount: -0.56,
-  amountXl: -0.72,
+  bodyLg: -0.15,
+  title: -0.16,
+  heading: -0.38,
+  amount: -0.48,
+  amountXl: -0.62,
 } as const satisfies Record<keyof typeof type, number>;
 
 /** How far system font scaling may enlarge each variant. */
@@ -175,7 +185,7 @@ export const fontScaleMax = {
 } as const satisfies Record<keyof typeof type, number>;
 
 /** Tab-bar labels are the smallest text in the app (the PDF's floor for menu labels is 12). */
-export const tabLabel = { size: 13, lineHeight: 17 } as const;
+export const tabLabel = { size: 11, lineHeight: 14 } as const;
 
 export type Weight = 'regular' | 'semibold' | 'bold';
 
@@ -184,6 +194,16 @@ export type Weight = 'regular' | 'semibold' | 'bold';
  * buttons, chips and icon buttons shrink to controlPressScale (motion.md: 0.97 in 100 ms, back in 180 ms).
  */
 export const motion = { fast: 100, base: 180, slow: 240, pressScale: 0.96, controlPressScale: 0.97 } as const;
+
+/**
+ * Depth. Light: soft shadows lift white surfaces off the grey page. Dark: shadows do not read, so depth there
+ * comes from lighter surfaces (card → field → sheet) and these return nothing.
+ */
+export const elevation = {
+  field: { shadowColor: '#101828', shadowOpacity: 0.06, shadowRadius: 2, shadowOffset: { width: 0, height: 1 }, elevation: 1 },
+  card: { shadowColor: '#101828', shadowOpacity: 0.05, shadowRadius: 3, shadowOffset: { width: 0, height: 1 }, elevation: 1 },
+  raised: { shadowColor: '#101828', shadowOpacity: 0.12, shadowRadius: 10, shadowOffset: { width: 0, height: 4 }, elevation: 4 },
+} as const;
 
 /** Sizes that recur across components, so screens don't invent their own. */
 export const sizes = {

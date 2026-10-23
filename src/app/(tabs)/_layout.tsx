@@ -3,12 +3,15 @@ import { router, Tabs, usePathname } from 'expo-router';
 import { Building2, Hammer, HardHat, Plus, Receipt, Sun } from 'lucide-react-native';
 import { useEffect, useState } from 'react';
 import { type ColorValue, Keyboard, Platform, Pressable, Text, View } from 'react-native';
+import Animated, { FadeInDown } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { Txt } from '@/components/ui/Txt';
 import { useProjects } from '@/hooks/data';
 import { useT } from '@/i18n';
-import { fabEdgeDark, hairline, radius, sizes, space, tabLabel, useColors, useFont, useLayout, useMotion, useScheme } from '@/theme';
+import { fabEdgeDark, hairline, radius, sizes, space, tabLabel, useColors, useFont, useMotion, useScheme } from '@/theme';
+
+/** The FAB rises into place when it appears (a new tab, the keyboard closing). */
+const FAB_IN = FadeInDown.duration(220);
 
 /** Largest text-size multiplier the tab labels follow. */
 const TAB_LABEL_MAX_SCALE = 1.2;
@@ -34,7 +37,7 @@ export default function TabLayout() {
   const t = useT();
   const font = useFont();
   const insets = useSafeAreaInsets();
-  const { narrow } = useLayout();
+
   const m = useMotion();
   const pathname = usePathname();
   const keyboardOpen = useKeyboardOpen();
@@ -85,7 +88,8 @@ export default function TabLayout() {
           tabBarLabelStyle: { fontFamily: font('semibold'), fontSize: tabLabel.size, lineHeight: tabLabel.lineHeight, marginTop: space.xs },
           tabBarAllowFontScaling: true,
           sceneStyle: { backgroundColor: c.bg },
-          animation: 'none',
+          // switching tabs slides the new list in a short way and fades it, instead of a hard cut
+          animation: 'shift',
         }}>
         <Tabs.Screen name="index" options={{ title: t('tabToday'), tabBarIcon: ({ color, focused }) => <TabIcon icon={Sun} color={color} focused={focused} /> }} />
         <Tabs.Screen name="projects" options={{ title: t('tabProjects'), tabBarIcon: ({ color, focused }) => <TabIcon icon={Building2} color={color} focused={focused} /> }} />
@@ -94,8 +98,13 @@ export default function TabLayout() {
         <Tabs.Screen name="tools" options={{ title: t('tabTools'), tabBarIcon: ({ color, focused }) => <TabIcon icon={Hammer} color={color} focused={focused} /> }} />
       </Tabs>
 
-      {/* Extended FAB: always the same place, label says what it adds. Hidden while typing. */}
+      {/* FAB: a 56 dp "+" square, always the same place; its spoken label says what it adds. An icon-only FAB
+          covers far less of the list than a labelled one (whose Sinhala / Tamil label ran half the width). Hidden while typing. */}
       {showFab ? (
+        <Animated.View
+          key={fabTarget}
+          entering={m.reduced ? undefined : FAB_IN}
+          style={{ position: 'absolute', right: space.lg, bottom: barHeight + space.lg }}>
         <Pressable
           accessibilityRole="button"
           accessibilityLabel={fabLabel}
@@ -104,12 +113,8 @@ export default function TabLayout() {
             router.push(fabTarget);
           }}
           style={({ pressed }) => ({
-            position: 'absolute',
-            right: space.lg,
-            bottom: barHeight + space.lg,
             height: sizes.fab,
-            minWidth: sizes.fab,
-            paddingHorizontal: narrow ? 0 : 20,
+            width: sizes.fab,
             borderRadius: radius.xl,
             backgroundColor: pressed ? c.fillPressed : c.fill,
             alignItems: 'center',
@@ -125,13 +130,9 @@ export default function TabLayout() {
             shadowRadius: 8,
             shadowOffset: { width: 0, height: 4 },
           })}>
-          <Plus size={22} color={c.onFill} strokeWidth={2.5} />
-          {narrow ? null : (
-            <Txt weight="semibold" style={{ color: c.onFill }} numberOfLines={1} maxFontSizeMultiplier={1.3}>
-              {fabLabel}
-            </Txt>
-          )}
+          <Plus size={26} color={c.onFill} strokeWidth={2.5} />
         </Pressable>
+        </Animated.View>
       ) : null}
     </View>
   );
@@ -141,8 +142,24 @@ export default function TabLayout() {
 function TabIcon({ icon: Icon, color, focused }: { icon: typeof Sun; color: ColorValue; focused: boolean }) {
   const c = useColors();
   return (
-    <View style={{ width: 56, height: 32, borderRadius: radius.xl, backgroundColor: focused ? c.primarySoft : 'transparent', alignItems: 'center', justifyContent: 'center' }}>
-      <Icon size={22} color={color} strokeWidth={2} />
+    <View style={{ width: 56, height: 32, alignItems: 'center', justifyContent: 'center' }}>
+      {/* the pill grows out from the icon, the way Material 3 marks the chosen tab; the icon itself never scales */}
+      <Animated.View
+        style={{
+          position: 'absolute',
+          top: 0,
+          right: 0,
+          bottom: 0,
+          left: 0,
+          borderRadius: radius.xl,
+          backgroundColor: focused ? c.primarySoft : 'transparent',
+          transform: [{ scaleX: focused ? 1 : 0.5 }],
+          transitionProperty: ['backgroundColor', 'transform'],
+          transitionDuration: 220,
+          transitionTimingFunction: 'ease-out',
+        }}
+      />
+      <Icon size={22} color={color} strokeWidth={focused ? 2.3 : 2} />
     </View>
   );
 }

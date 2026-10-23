@@ -296,11 +296,17 @@ export default function ProjectDetail() {
           />
         </ListCard>
 
-        {cats.length ? (
+        {cats.length || cost.labour_cents > 0 ? (
           <>
             <SectionTitle title={t('byCategory')} />
             <Card>
-              <CategoryBars rows={cats.map((r) => ({ label: t(`cat_${r.category}` as TKey), cents: r.s }))} />
+              {/* wages are part of the total cost above, so they get their own bar beside the expense categories */}
+              <CategoryBars
+                rows={[
+                  ...cats.map((r) => ({ label: t(`cat_${r.category}` as TKey), cents: r.s })),
+                  ...(cost.labour_cents > 0 ? [{ label: t('wages'), cents: cost.labour_cents }] : []),
+                ].sort((a, b) => b.cents - a.cents)}
+              />
             </Card>
           </>
         ) : null}

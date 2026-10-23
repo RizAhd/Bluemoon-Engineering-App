@@ -138,10 +138,17 @@ function ItemForm({ estimateId, existing }: { estimateId: string; existing: Esti
       />
       <Screen
         footer={
-          <>
-            <Button label={t('save')} onPress={onSave} full />
-            {form.isNew ? <Button kind="secondary" label={t('saveAndAddAnother')} onPress={onSaveAndAdd} full /> : null}
-          </>
+          // side by side, so the footer is one row tall and the form keeps its room while the keyboard is up
+          <View style={{ flexDirection: 'row', gap: space.sm }}>
+            {form.isNew ? (
+              <View style={{ flex: 1 }}>
+                <Button kind="secondary" label={t('saveAndNext')} accessibilityLabel={t('saveAndAddAnother')} onPress={onSaveAndAdd} full />
+              </View>
+            ) : null}
+            <View style={{ flex: 1 }}>
+              <Button label={t('save')} onPress={onSave} full />
+            </View>
+          </View>
         }>
         <Field
           key={`description-${round}`}

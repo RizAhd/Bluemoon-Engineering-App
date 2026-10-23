@@ -1,5 +1,5 @@
 import { Stack, useLocalSearchParams } from 'expo-router';
-import { Phone, Trash2, UserRound } from 'lucide-react-native';
+import { Phone, Trash2, UserRound, Wrench } from 'lucide-react-native';
 import { useState } from 'react';
 
 import { Button, HeaderButton } from '@/components/ui/Button';
@@ -73,7 +73,7 @@ function Inner({ existing }: { existing: Worker | null }) {
           autoCapitalize="words"
           returnKeyType="next"
         />
-        <Field label={t('trade')} optional placeholder={t('tradeHint')} value={trade} onChangeText={setTrade} returnKeyType="next" />
+        <Field label={t('trade')} optional icon={Wrench} placeholder={t('tradeHint')} value={trade} onChangeText={setTrade} autoCapitalize="words" />
         <Field label={t('phone')} optional icon={Phone} placeholder={t('phPhone')} value={phone} onChangeText={setPhone} keyboardType="phone-pad" />
         <AmountField
           label={t('dailyRate')}

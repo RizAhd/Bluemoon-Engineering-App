@@ -9,8 +9,9 @@ const path = require('path');
 const { withAndroidStyles, withDangerousMod } = require('expo/config-plugins');
 
 // The same values as src/theme/tokens.ts (surface3, text, textMuted, primary/fill).
-const LIGHT = { surface: '#FFFFFF', text: '#101828', muted: '#475467', accent: '#1D4ED8' };
-const DARK = { surface: '#1F293B', text: '#EDF1F7', muted: '#A3AEC2', accent: '#7AA2FF' };
+// `fill` carries white text (date picker header, selected day): the tokens' fill colour in both schemes.
+const LIGHT = { surface: '#FFFFFF', text: '#101828', muted: '#475467', accent: '#1D4ED8', fill: '#1D4ED8' };
+const DARK = { surface: '#1F293B', text: '#EDF1F7', muted: '#A3AEC2', accent: '#7AA2FF', fill: '#2563EB' };
 
 const colors = (c) => `<?xml version="1.0" encoding="utf-8"?>
 <resources>
@@ -18,6 +19,7 @@ const colors = (c) => `<?xml version="1.0" encoding="utf-8"?>
   <color name="bm_dialog_text">${c.text}</color>
   <color name="bm_dialog_muted">${c.muted}</color>
   <color name="bm_dialog_accent">${c.accent}</color>
+  <color name="bm_dialog_fill">${c.fill}</color>
 </resources>
 `;
 
@@ -81,10 +83,28 @@ function withStyles(config) {
     setItem(button, 'android:textColor', '@color/bm_dialog_accent');
     setItem(button, 'android:textStyle', 'bold');
 
+    // The calendar (date picker) dialog: the app's blue header and selected day instead of the stock teal,
+    // on the same rounded surface as the alerts.
+    let picker = styles.find((s) => s.$.name === 'BluemoonDatePicker');
+    if (!picker) {
+      picker = { $: { name: 'BluemoonDatePicker', parent: 'Theme.AppCompat.DayNight.Dialog' }, item: [] };
+      styles.push(picker);
+    }
+    setItem(picker, 'android:windowBackground', '@drawable/bm_dialog_bg');
+    setItem(picker, 'colorAccent', '@color/bm_dialog_fill');
+    setItem(picker, 'android:colorAccent', '@color/bm_dialog_fill');
+    setItem(picker, 'colorPrimary', '@color/bm_dialog_fill');
+    setItem(picker, 'android:textColorPrimary', '@color/bm_dialog_text');
+    setItem(picker, 'android:textColorSecondary', '@color/bm_dialog_muted');
+    setItem(picker, 'android:buttonBarButtonStyle', '@style/BluemoonAlertButton');
+    setItem(picker, 'buttonBarButtonStyle', '@style/BluemoonAlertButton');
+
     const app = styles.find((s) => s.$.name === 'AppTheme');
     if (app) {
       setItem(app, 'alertDialogTheme', '@style/BluemoonAlert');
       setItem(app, 'android:alertDialogTheme', '@style/BluemoonAlert');
+      setItem(app, 'android:datePickerDialogTheme', '@style/BluemoonDatePicker');
+      setItem(app, 'android:timePickerDialogTheme', '@style/BluemoonDatePicker');
     }
     cfg.modResults.resources.style = styles;
     return cfg;

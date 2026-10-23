@@ -16,6 +16,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { hairline, radius, sizes, space, touch, useColors, useLayout, type Palette } from '@/theme';
 
+import { FocusChainProvider } from './focusChain';
 import { Initials, initialsOf } from './kit';
 import { Txt } from './Txt';
 
@@ -63,7 +64,13 @@ export function Screen({ children, scroll = true, footer, padTop = true, hairlin
       {...scrollProps}
       contentContainerStyle={[
         column,
-        { paddingHorizontal: gutter, paddingTop: padTop ? space.lg : 0, gap, paddingBottom: inlineFooter ? Math.max(insets.bottom, space.lg) : bottom },
+        {
+          paddingHorizontal: gutter,
+          paddingTop: padTop ? space.lg : 0,
+          gap,
+          // with the keyboard up, extra room under the last field lets any field scroll clear of the footer
+          paddingBottom: (inlineFooter ? Math.max(insets.bottom, space.lg) : bottom) + (keyboard > 0 ? space.xxxl * 3 : 0),
+        },
         contentStyle,
       ]}>
       {children}
@@ -73,11 +80,13 @@ export function Screen({ children, scroll = true, footer, padTop = true, hairlin
     <View style={{ flex: 1 }}>{children}</View>
   );
   return (
-    <View ref={box} collapsable={false} style={{ flex: 1, backgroundColor: c.bg, paddingBottom: keyboard }}>
-      {hairlineTop ? <View style={{ height: hairline, backgroundColor: c.border }} /> : null}
-      {body}
-      {footer && !inlineFooter ? <StickyFooter keyboardOpen={keyboard > 0}>{footer}</StickyFooter> : null}
-    </View>
+    <FocusChainProvider reveal={() => revealFocused(scroller.current)}>
+      <View ref={box} collapsable={false} style={{ flex: 1, backgroundColor: c.bg, paddingBottom: keyboard }}>
+        {hairlineTop ? <View style={{ height: hairline, backgroundColor: c.border }} /> : null}
+        {body}
+        {footer && !inlineFooter ? <StickyFooter keyboardOpen={keyboard > 0}>{footer}</StickyFooter> : null}
+      </View>
+    </FocusChainProvider>
   );
 }
 
@@ -100,7 +109,8 @@ export function useKeyboardInset(box: RefObject<ComponentRef<typeof View> | null
         // measured without the padding this hook already added
         const covered = Math.max(0, Math.round(y + h - top));
         setInset((was) => (Math.abs(covered - was) < 1 ? was : covered));
-        if (scroller) requestAnimationFrame(() => revealFocused(scroller.current));
+        // after the new padding is laid out, or the field is scrolled against the old, taller viewport
+        if (scroller) setTimeout(() => revealFocused(scroller.current), 80);
       });
     });
     const hide = Keyboard.addListener(hideEvent, () => setInset(0));
@@ -120,7 +130,8 @@ function revealFocused(scroller: ComponentRef<typeof ScrollView> | null) {
   try {
     field.measureLayout(
       inner,
-      (_x, y) => scroller.scrollTo({ y: Math.max(0, y - space.xxxl * 2), animated: true }),
+      // the field lands a third of the way down, with its label above and its hint and the next field below
+      (_x, y) => scroller.scrollTo({ y: Math.max(0, y - space.xxxl * 2.5), animated: true }),
       () => {},
     );
   } catch {

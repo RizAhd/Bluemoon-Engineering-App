@@ -130,7 +130,7 @@ export function ToastHost() {
 
   if (!msg) return null;
   const danger = msg.tone === 'danger';
-  const fg = danger ? c.danger : c.onSlate;
+  const fg = danger ? c.danger : c.onInverse;
   const Icon = danger ? AlertTriangle : CheckCircle2;
   const close = () => setMsg(null);
   return (
@@ -145,9 +145,9 @@ export function ToastHost() {
             flexDirection: 'row',
             alignItems: 'center',
             gap: space.sm,
-            backgroundColor: danger ? c.dangerSoft : c.slate,
+            backgroundColor: danger ? c.dangerSoft : c.inverse,
             borderWidth: hairline,
-            borderColor: danger ? c.danger : c.slate,
+            borderColor: danger ? c.danger : c.inverse,
             paddingLeft: space.lg,
             paddingRight: msg.action || danger ? space.xs : space.lg,
             paddingVertical: space.xs,

@@ -235,18 +235,17 @@ describe('tab layout: floating action button', () => {
     expect(hasLabel(E('newProject'))).toBe(true);
   });
 
-  it('on a very narrow phone (under 360 wide) it shrinks to an icon, still named for screen readers', async () => {
+  it('is a "+" icon on every width (it covers less of the list), still named for screen readers', async () => {
     seedDemo();
     setPathname('/');
-    setWindow(320);
-    await renderScreen(<TabLayout />);
-    expect(hasLabel(E('quickAdd'))).toBe(true);
-    expect(visibleText()).not.toContain(E('quickAdd'));
-    expectClean('tab layout narrow');
-    await screen.unmount();
-    setWindow(360);
-    await renderScreen(<TabLayout />);
-    expect(visibleText()).toContain(E('quickAdd'));
+    for (const w of [320, 412]) {
+      setWindow(w);
+      await renderScreen(<TabLayout />);
+      expect(hasLabel(E('quickAdd'))).toBe(true);
+      expect(visibleText()).not.toContain(E('quickAdd'));
+      expectClean(`tab layout ${w}`);
+      await screen.unmount();
+    }
   });
 
   it.each(['si', 'ta'] as const)('is labelled in %s and drawn in dark', async (lang) => {

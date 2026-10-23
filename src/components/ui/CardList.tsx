@@ -17,10 +17,11 @@
  * `stickyFooter` is the screen's footer (a primary button): sticky under the list, or at the end of the list
  * when the window is under 480 dp tall.
  */
-import { memo, useMemo, type ReactElement, type ReactNode } from 'react';
+import { memo, useEffect, useMemo, useState, type ReactElement, type ReactNode } from 'react';
 import { FlatList, Platform, View, type FlatListProps } from 'react-native';
+import Animated, { FadeInDown } from 'react-native-reanimated';
 
-import { hairline, listTuning, radius, sizes, space, useColors, useLayout } from '@/theme';
+import { hairline, listTuning, radius, sizes, space, useColors, useLayout, useMotion } from '@/theme';
 
 import { GroupLabel, StickyFooter } from './layout';
 
@@ -104,6 +105,7 @@ export function CardList<T>({ sections, keyOf, renderRow, header, footer, empty,
   const left = inset === true ? 68 : inset === false ? -1 : typeof inset === 'number' ? inset : space.lg;
   const footerInline = !!stickyFooter && short;
   const bottom = paddingBottom ?? (stickyFooter ? space.xl : sizes.tabScrollBottom);
+  const intro = useIntro();
 
   const listFooter =
     footer || footerInline ? (
@@ -128,14 +130,42 @@ export function CardList<T>({ sections, keyOf, renderRow, header, footer, empty,
         ListHeaderComponent={hasHeader ? <View>{header}</View> : undefined}
         ListEmptyComponent={empty ? <View style={{ marginTop: hasHeader ? gap : 0 }}>{empty}</View> : undefined}
         ListFooterComponent={listFooter ?? undefined}
-        renderItem={({ item }) => <CardItem item={item} renderRow={renderRow} gap={gap} dividerLeft={left} />}
+        renderItem={({ item, index }) => <CardItem item={item} renderRow={renderRow} gap={gap} dividerLeft={left} enterAt={intro && index < INTRO_ROWS ? index : -1} />}
       />
       {stickyFooter && !footerInline ? <StickyFooter>{stickyFooter}</StickyFooter> : null}
     </>
   );
 }
 
-function CardItemInner<T>({ item, renderRow, gap, dividerLeft }: { item: Item<T>; renderRow: (row: T) => ReactElement; gap: number; dividerLeft: number }) {
+/** How many of the first items glide in when a list opens; the rest (and anything scrolled to later) just appear. */
+const INTRO_ROWS = 10;
+const INTRO_STEP = 28;
+
+/** One builder per opening row, made once (not on every render). */
+const INTRO = Array.from({ length: INTRO_ROWS }, (_, i) => FadeInDown.duration(260).delay(i * INTRO_STEP));
+
+/** True for the first moments of a list's life: only the opening view of a list animates, never scrolling. */
+function useIntro(): boolean {
+  const m = useMotion();
+  const [on, setOn] = useState(true);
+  useEffect(() => {
+    const id = setTimeout(() => setOn(false), INTRO_ROWS * INTRO_STEP + 400);
+    return () => clearTimeout(id);
+  }, []);
+  return on && !m.reduced;
+}
+
+function CardItemInner<T>({ item, renderRow, gap, dividerLeft, enterAt = -1 }: { item: Item<T>; renderRow: (row: T) => ReactElement; gap: number; dividerLeft: number; enterAt?: number }) {
+  // the opening rows rise and fade in one after another (28 ms apart), so a list arrives instead of popping
+  const entering = enterAt >= 0 ? INTRO[enterAt] : undefined;
+  return (
+    <Animated.View entering={entering}>
+      <CardSlice item={item} renderRow={renderRow} gap={gap} dividerLeft={dividerLeft} />
+    </Animated.View>
+  );
+}
+
+function CardSlice<T>({ item, renderRow, gap, dividerLeft }: { item: Item<T>; renderRow: (row: T) => ReactElement; gap: number; dividerLeft: number }) {
   const c = useColors();
   if (item.kind === 'title') return <View style={{ marginTop: item.top ? gap : 0, marginBottom: space.sm }}>{item.node}</View>;
   if (item.kind === 'label')

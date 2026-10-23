@@ -1,5 +1,5 @@
 import { Stack, useLocalSearchParams } from 'expo-router';
-import { ArrowDownToLine, ArrowUpFromLine, Building2, Calendar, Hammer, Trash2, User } from 'lucide-react-native';
+import { ArrowDownToLine, ArrowUpFromLine, Building2, Calendar, ClipboardCheck, Hammer, Trash2, User } from 'lucide-react-native';
 import { useMemo, useState } from 'react';
 
 import { PhotoStrip } from '@/components/PhotoStrip';
@@ -190,6 +190,9 @@ function Inner({ params }: { params: Params }) {
           <Field
             label={t('otherPersonName')}
             optional
+            icon={User}
+            placeholder={t('phOtherPerson')}
+            autoCapitalize="words"
             value={takenBy}
             onChangeText={(s) => {
               setTakenBy(s);
@@ -200,10 +203,10 @@ function Inner({ params }: { params: Params }) {
           />
         ) : null}
         <DateField label={t('date')} value={day} onChange={setDay} maxDay={today()} error={form.err('day')} />
-        <Field label={t('condition')} optional placeholder={t('conditionHint')} value={condition} onChangeText={setCondition} />
+        <Field label={t('condition')} optional icon={ClipboardCheck} placeholder={t('conditionHint')} value={condition} onChangeText={setCondition} />
         {/* PhotoStrip wraps capture in try/catch + showError (camera-off → settings / gallery). */}
         <PhotoStrip ownerTable="tool_movements" ownerId={form.id} label={t('photoProof')} />
-        <Field label={t('note')} optional placeholder={t('phToolMoveNote')} value={note} onChangeText={setNote} multiline />
+        <Field label={t('note')} optional placeholder={t(kind === 'return' ? 'phToolMoveNote' : 'phToolIssueNote')} value={note} onChangeText={setNote} multiline />
       </Screen>
     </>
   );

@@ -5,18 +5,21 @@ import { AlertTriangle, CheckCircle2, CloudUpload, History, KeyRound, LockKeyhol
 import { useEffect, useMemo, useState } from 'react';
 import { Alert, View } from 'react-native';
 
+import { BackupPlaces, driveErrorKey } from '@/components/BackupPlaces';
 import { Button, IconButton } from '@/components/ui/Button';
 import { toast } from '@/components/ui/feedback';
 import { BottomSheet, Field, SheetHeader } from '@/components/ui/form';
 import { ToggleRow } from '@/components/ui/kit';
 import { Card, ListCard, ListRow, Screen, SectionTitle } from '@/components/ui/layout';
 import { Txt } from '@/components/ui/Txt';
-import { setSetting, useFirst, useSetting } from '@/db';
+import { getSetting, setSetting, useFirst, useSetting } from '@/db';
 import { useT, type TKey } from '@/i18n';
 import { KEEP_DAYS, listAutoBackups, runAutoBackupIfDue } from '@/lib/autoBackup';
 import { BackupError, ENCRYPTED_EXT, makeBackup, markBackedUp, MIN_PASSWORD, restorePart } from '@/lib/backup';
 import { daysSince, formatDay, toDay, today } from '@/lib/dates';
+import { driveConnected, uploadToDrive } from '@/lib/drive';
 import { guard, reportError, showError } from '@/lib/errors';
+import { copyFileToPhoneFolder } from '@/lib/phoneFolder';
 import { space, useColors } from '@/theme';
 
 function timeOf(iso: string) {
@@ -95,11 +98,38 @@ export default function BackupScreen() {
     setProgress(making);
     await guard('backup.full', t, async () => {
       const files = await makeBackup((part, parts) => setProgress(parts > 1 ? `${making} ${part}/${parts}` : making), protect ? password : undefined);
+      // the owner's own places first: the phone folder, then Google Drive; each failure is said, none stops the rest
+      let kept = false;
+      if (getSetting('backup_folder_uri')) {
+        try {
+          for (const f of files) copyFileToPhoneFolder(new File(f.uri));
+          kept = true;
+          toast(t('folderSaved'));
+        } catch (e) {
+          reportError(e, 'backup.full.folder');
+          toast(t('phoneFolderFailed'), { tone: 'danger' });
+        }
+      }
+      if (driveConnected()) {
+        try {
+          for (const [i, f] of files.entries()) {
+            setProgress(`${t('googleDrive')} ${i + 1}/${files.length}`);
+            await uploadToDrive(new File(f.uri).name, new File(f.uri).bytesSync(), f.uri.endsWith(ENCRYPTED_EXT) ? 'application/octet-stream' : 'application/zip');
+          }
+          kept = true;
+          toast(t('driveUploaded'));
+        } catch (e) {
+          Alert.alert(t('googleDrive'), t(driveErrorKey(e)));
+        }
+      }
       setProgress(null);
-      toast(t('backupReady'));
-      for (const f of files) {
-        const locked = f.uri.endsWith(ENCRYPTED_EXT);
-        await Sharing.shareAsync(f.uri, { mimeType: locked ? 'application/octet-stream' : 'application/zip', dialogTitle: t('backup') });
+      if (!kept) {
+        // nowhere set up: hand the files to the share sheet (Drive app, WhatsApp, a computer…)
+        toast(t('backupReady'));
+        for (const f of files) {
+          const locked = f.uri.endsWith(ENCRYPTED_EXT);
+          await Sharing.shareAsync(f.uri, { mimeType: locked ? 'application/octet-stream' : 'application/zip', dialogTitle: t('backup') });
+        }
       }
       markBackedUp();
     });
@@ -219,6 +249,8 @@ export default function BackupScreen() {
           onChange={(v) => void guard('backup.toggle', t, () => setSetting('auto_backup', v ? 'on' : 'off'))}
         />
       </ListCard>
+
+      <BackupPlaces />
 
       {autos.length ? (
         <View style={{ gap: space.sm }}>

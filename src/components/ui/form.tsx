@@ -3,26 +3,27 @@ import * as Haptics from 'expo-haptics';
 import type { LucideIcon } from 'lucide-react-native';
 import { AlertCircle, Calendar, Check, ChevronDown, Search, X } from 'lucide-react-native';
 import { memo, useRef, useState, type ComponentRef, type ReactNode } from 'react';
-import { FlatList, Modal, Platform, Pressable, TextInput, View, type DimensionValue, type StyleProp, type TextInputProps, type ViewStyle } from 'react-native';
+import { FlatList, Keyboard, Modal, Platform, Pressable, TextInput, View, type DimensionValue, type StyleProp, type TextInputProps, type ViewStyle } from 'react-native';
 import Animated from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useT } from '@/i18n';
 import { addDays, formatDay, toDay, today } from '@/lib/dates';
 import { formatAmount, parseCents } from '@/lib/money';
-import { FONT_MAP, hairline, lineHeight, listTuning, radius, space, touch, touchMin, type, useColors, useFont, useLayout } from '@/theme';
+import { FONT_MAP, hairline, lineHeight, listTuning, motion, radius, space, touch, touchMin, type, useColors, useElevation, useFont, useLayout } from '@/theme';
 
 import { IconButton } from './Button';
+import { useFocusChain, useFocusReveal } from './focusChain';
 import { useKeyboardInset } from './layout';
 import { usePressScale } from './PressScale';
 import { isLatinText, Txt } from './Txt';
 
 // ---------------------------------------------------------------- shared bits
 
-/** Field label: caption 13/600 `text` (stays `text` on error), optional marker in textMuted 400. */
-export function Label({ text, optional }: { text: string; optional?: boolean; error?: string | null }) {
+/** Field label: caption 13/600 `text` (stays `text` on error), optional marker in textMuted 400. Tapping it focuses the field (`onPress`). */
+export function Label({ text, optional, onPress }: { text: string; optional?: boolean; error?: string | null; onPress?: () => void }) {
   const t = useT();
-  return (
+  const body = (
     <Txt variant="caption" weight="semibold" color="text">
       {text}
       {optional ? (
@@ -32,6 +33,13 @@ export function Label({ text, optional }: { text: string; optional?: boolean; er
       ) : null}
     </Txt>
   );
+  if (!onPress) return body;
+  // not a separate stop for screen readers: the field itself is labelled
+  return (
+    <Pressable onPress={onPress} accessible={false} hitSlop={{ top: 6, bottom: 6 }}>
+      {body}
+    </Pressable>
+  );
 }
 
 /** Error (danger + AlertCircle, live region) or hint (textMuted) under a field. */
@@ -40,7 +48,7 @@ export function HelperText({ error, hint, tone = 'textMuted' }: { error?: string
   if (error)
     return (
       <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: space.xs }} accessibilityLiveRegion="polite">
-        <AlertCircle size={14} color={c.danger} strokeWidth={2.4} style={{ marginTop: 2 }} />
+        <AlertCircle size={14} color={c.danger} strokeWidth={2.4} style={{ marginTop: 1 }} />
         <Txt variant="caption" color="danger" weight="semibold" style={{ flex: 1 }}>
           {error}
         </Txt>
@@ -55,13 +63,25 @@ export function HelperText({ error, hint, tone = 'textMuted' }: { error?: string
   return null;
 }
 
-/** 2 dp focus ring drawn outside the shape so the box itself never moves. */
+/** 2 dp focus ring drawn outside the shape so the box itself never moves; it fades in and out. */
 export function Ring({ focus, children, style }: { focus: boolean; children: ReactNode; style?: StyleProp<ViewStyle> }) {
   const c = useColors();
   return (
-    <View style={[{ padding: 2, margin: -2, borderRadius: radius.md + 2, borderWidth: 2, borderColor: focus ? c.focusRing : 'transparent' }, style]}>
+    <Animated.View
+      style={[
+        {
+          padding: 2,
+          margin: -2,
+          borderRadius: radius.md + 2,
+          borderWidth: 2,
+          borderColor: focus ? c.focusRing : 'transparent',
+          transitionProperty: 'borderColor',
+          transitionDuration: motion.base,
+        },
+        style,
+      ]}>
       {children}
-    </View>
+    </Animated.View>
   );
 }
 
@@ -69,9 +89,59 @@ function useBoxColors(opts: { focus: boolean; error?: string | null; disabled?: 
   const c = useColors();
   return {
     borderColor: opts.error ? c.danger : opts.focus ? c.primary : opts.disabled ? c.border : c.borderStrong,
-    backgroundColor: opts.disabled ? c.surface2 : c.card,
+    backgroundColor: opts.disabled ? c.surface2 : c.field,
     color: opts.disabled ? c.textMuted : c.text,
   };
+}
+
+/**
+ * The shared input box: the field fill with a soft lift (light scheme), a 1 dp edge that eases to primary on
+ * focus, and a tap anywhere on it (icon, prefix, padding) focuses the input inside.
+ */
+function InputBox({
+  onPress,
+  focus,
+  error,
+  disabled,
+  minHeight,
+  multiline,
+  children,
+}: {
+  onPress: () => void;
+  focus: boolean;
+  error?: string | null;
+  disabled?: boolean;
+  minHeight: number;
+  multiline?: boolean;
+  children: ReactNode;
+}) {
+  const box = useBoxColors({ focus, error, disabled });
+  const lift = useElevation('field');
+  return (
+    <Ring focus={focus && !disabled}>
+      <Pressable onPress={onPress} disabled={disabled} accessible={false}>
+        <Animated.View
+          style={[
+            {
+              flexDirection: 'row',
+              alignItems: multiline ? 'flex-start' : 'center',
+              gap: space.md,
+              minHeight,
+              paddingLeft: space.lg,
+              borderRadius: radius.md,
+              borderWidth: hairline,
+              borderColor: box.borderColor,
+              backgroundColor: box.backgroundColor,
+              transitionProperty: ['borderColor', 'backgroundColor'],
+              transitionDuration: motion.base,
+            },
+            disabled ? null : lift,
+          ]}>
+          {children}
+        </Animated.View>
+      </Pressable>
+    </Ring>
+  );
 }
 
 // ---------------------------------------------------------------- Field
@@ -91,65 +161,54 @@ export interface FieldProps extends TextInputProps {
 export function Field({ label, optional, error, hint, multiline, hideLabel, disabled, editable, style, icon: Icon, ...input }: FieldProps) {
   const c = useColors();
   const font = useFont();
+  const ref = useRef<ComponentRef<typeof TextInput>>(null);
   const [focus, setFocus] = useState(false);
   const off = disabled || editable === false;
   const box = useBoxColors({ focus, error, disabled: off });
-  const textInput = (
-    <TextInput
-      {...input}
-      editable={!off}
-      accessibilityLabel={label}
-      multiline={multiline}
-      placeholderTextColor={c.placeholder}
-      onFocus={(e) => {
-        setFocus(true);
-        input.onFocus?.(e);
-      }}
-      onBlur={(e) => {
-        setFocus(false);
-        input.onBlur?.(e);
-      }}
-      style={[
-        {
-          minHeight: multiline ? 112 : touch,
-          textAlignVertical: multiline ? 'top' : 'center',
-          paddingHorizontal: Icon ? 0 : space.lg,
-          paddingVertical: multiline ? space.md : 0,
-          color: box.color,
-          // The example text sits a step smaller than what is typed, so it never reads as a filled-in value.
-          fontSize: input.value ? type.bodyLg : type.body,
-          fontFamily: input.value && isLatinText(input.value) ? FONT_MAP.en.regular : font('regular'),
-        },
-        Icon
-          ? { flex: 1, minWidth: 0, paddingRight: space.lg }
-          : { borderRadius: radius.md, borderWidth: hairline, borderColor: box.borderColor, backgroundColor: box.backgroundColor },
-        style,
-      ]}
-    />
-  );
+  // Multi-line boxes keep Enter for new lines; every other field gets a Next key that moves down the form.
+  const chain = useFocusChain(ref, { enabled: !off, onSubmitEditing: multiline || input.onSubmitEditing, returnKeyType: input.returnKeyType });
+  const reveal = useFocusReveal();
+  const focusIt = () => ref.current?.focus();
   return (
     <View style={{ gap: 6 }}>
-      {hideLabel ? null : <Label text={label} optional={optional} error={error} />}
-      <Ring focus={focus && !off}>
-        {Icon ? (
-          <View
-            style={{
-              flexDirection: 'row',
-              alignItems: multiline ? 'flex-start' : 'center',
-              gap: space.md,
-              paddingLeft: space.lg,
-              borderRadius: radius.md,
-              borderWidth: hairline,
-              borderColor: box.borderColor,
-              backgroundColor: box.backgroundColor,
-            }}>
-            <Icon size={20} color={error ? c.danger : focus ? c.primary : c.textMuted} strokeWidth={2} style={multiline ? { marginTop: space.md + 1 } : undefined} />
-            {textInput}
-          </View>
-        ) : (
-          textInput
-        )}
-      </Ring>
+      {hideLabel ? null : <Label text={label} optional={optional} error={error} onPress={off ? undefined : focusIt} />}
+      <InputBox onPress={focusIt} focus={focus} error={error} disabled={off} minHeight={multiline ? 104 : touch} multiline={multiline}>
+        {Icon ? <Icon size={19} color={error ? c.danger : focus ? c.primary : c.textMuted} strokeWidth={2} style={multiline ? { marginTop: space.md + 1 } : undefined} /> : null}
+        <TextInput
+          ref={ref}
+          {...input}
+          {...chain}
+          editable={!off}
+          accessibilityLabel={label}
+          multiline={multiline}
+          placeholderTextColor={c.placeholder}
+          onFocus={(e) => {
+            setFocus(true);
+            reveal();
+            input.onFocus?.(e);
+          }}
+          onBlur={(e) => {
+            setFocus(false);
+            input.onBlur?.(e);
+          }}
+          style={[
+            {
+              flex: 1,
+              minWidth: 0,
+              minHeight: multiline ? 102 : touch - 2,
+              textAlignVertical: multiline ? 'top' : 'center',
+              paddingLeft: 0,
+              paddingRight: space.lg,
+              paddingVertical: multiline ? space.md : 0,
+              color: box.color,
+              // The example text sits a step smaller than what is typed, so it never reads as a filled-in value.
+              fontSize: input.value ? type.bodyLg : type.body,
+              fontFamily: input.value && isLatinText(input.value) ? FONT_MAP.en.regular : font('regular'),
+            },
+            style,
+          ]}
+        />
+      </InputBox>
       <HelperText error={error} hint={hint} />
     </View>
   );
@@ -175,72 +234,86 @@ export interface AmountFieldProps {
   onBlur?: () => void;
   onSubmitEditing?: () => void;
   returnKeyType?: TextInputProps['returnKeyType'];
-  /** Example amount shown while empty ("6,500"); "0" when not given. */
+  /** Example amount shown while empty ("6,500" shows as "e.g. 6,500"); "0" when not given. */
   placeholder?: string;
 }
 
-/** Large amount input with an Rs prefix and a number keypad. Re-formats with thousands separators on blur. */
+/**
+ * Digits as they are typed, with thousands separators ("2500000" → "2,500,000"). Decimals are kept as typed,
+ * so a third decimal is refused by the form with a message instead of being cut off without a word.
+ */
+export function groupTyped(s: string): string {
+  const clean = s.replace(/[^0-9.]/g, '');
+  const dot = clean.indexOf('.');
+  const int = (dot < 0 ? clean : clean.slice(0, dot)).replace(/^0+(?=\d)/, '');
+  // everything from the first dot on stays as typed ("1.2.3" is shown, and refused, as typed)
+  const dec = dot < 0 ? '' : clean.slice(dot);
+  return int.replace(/\B(?=(\d{3})+(?!\d))/g, ',') + dec;
+}
+
+/** Amount input with an Rs prefix and a number keypad, grouped with thousands separators as it is typed. */
 export function AmountField({ label, value, onChangeText, error, autoFocus, optional, hint, hintTone, compact, disabled, onBlur, onSubmitEditing, returnKeyType, placeholder = '0' }: AmountFieldProps) {
   const c = useColors();
   const t = useT();
+  const ref = useRef<ComponentRef<typeof TextInput>>(null);
   const [focus, setFocus] = useState(false);
   const box = useBoxColors({ focus, error, disabled });
+  const chain = useFocusChain(ref, { enabled: !disabled, onSubmitEditing, returnKeyType });
+  const reveal = useFocusReveal();
+  const focusIt = () => ref.current?.focus();
+  const example = placeholder === '0' ? placeholder : `${t('eg')} ${placeholder}`;
   return (
     <View style={{ gap: 6 }}>
-      {compact ? null : <Label text={label} optional={optional} error={error} />}
-      <Ring focus={focus && !disabled}>
-        <View
+      {compact ? null : <Label text={label} optional={optional} error={error} onPress={disabled ? undefined : focusIt} />}
+      <InputBox onPress={focusIt} focus={focus} error={error} disabled={disabled} minHeight={compact ? touchMin : touch}>
+        <Txt variant={compact ? 'body' : 'bodyLg'} weight="semibold" color="textMuted">
+          {t('rs')}
+        </Txt>
+        <TextInput
+          ref={ref}
+          accessibilityLabel={label}
+          // Shown with thousands separators while not being edited ("2,200", not "2200").
+          value={focus || !value ? value : (() => {
+            const cents = parseCents(value);
+            return cents === null ? value : formatAmount(cents);
+          })()}
+          editable={!disabled}
+          onChangeText={(s) => onChangeText(groupTyped(s))}
+          keyboardType="decimal-pad"
+          autoFocus={autoFocus}
+          placeholder={example}
+          placeholderTextColor={c.placeholder}
+          returnKeyType={chain ? chain.returnKeyType : returnKeyType}
+          submitBehavior={chain ? chain.submitBehavior : undefined}
+          onSubmitEditing={chain ? chain.onSubmitEditing : onSubmitEditing}
+          onFocus={() => {
+            setFocus(true);
+            reveal();
+          }}
+          onBlur={() => {
+            setFocus(false);
+            const cents = parseCents(value);
+            if (value && cents !== null) onChangeText(formatAmount(cents));
+            onBlur?.();
+          }}
+          maxFontSizeMultiplier={1.2}
           style={{
-            flexDirection: 'row',
-            alignItems: 'baseline',
-            borderRadius: radius.md,
-            borderWidth: hairline,
-            borderColor: box.borderColor,
-            backgroundColor: box.backgroundColor,
-            paddingHorizontal: space.lg,
-            minHeight: compact ? touchMin : 72,
-            gap: space.sm,
-          }}>
-          <Txt variant={compact ? 'body' : 'bodyLg'} weight="semibold" color="textMuted">
-            {t('rs')}
-          </Txt>
-          <TextInput
-            accessibilityLabel={label}
-            // Shown with thousands separators while not being edited ("2,200", not "2200").
-            value={focus || !value ? value : (() => {
-              const cents = parseCents(value);
-              return cents === null ? value : formatAmount(cents);
-            })()}
-            editable={!disabled}
-            onChangeText={(s) => onChangeText(s.replace(/[^0-9.,]/g, ''))}
-            keyboardType="decimal-pad"
-            autoFocus={autoFocus}
-            placeholder={placeholder}
-            placeholderTextColor={c.placeholder}
-            returnKeyType={returnKeyType}
-            onSubmitEditing={onSubmitEditing}
-            onFocus={() => setFocus(true)}
-            onBlur={() => {
-              setFocus(false);
-              const cents = parseCents(value);
-              if (value && cents !== null) onChangeText(formatAmount(cents));
-              onBlur?.();
-            }}
-            maxFontSizeMultiplier={1.2}
-            style={{
-              flex: 1,
-              // Empty, the example amount is a lighter, smaller line, so it cannot be mistaken for a typed amount.
-              fontSize: value ? (compact ? type.bodyLg : type.amount) : compact ? type.body : type.title,
-              // Android draws the placeholder off-centre when a lineHeight is set, so the empty "0" sat higher than "Rs".
-              lineHeight: value ? (compact ? lineHeight.bodyLg.latin : lineHeight.amount.latin) : undefined,
-              fontFamily: value ? FONT_MAP.en.bold : FONT_MAP.en.regular,
-              color: box.color,
-              paddingVertical: compact ? space.sm : space.md,
-              fontVariant: ['tabular-nums'],
-            }}
-          />
-        </View>
-      </Ring>
+            flex: 1,
+            minWidth: 0,
+            minHeight: (compact ? touchMin : touch) - 2,
+            // Empty, the example amount is a lighter, smaller line, so it cannot be mistaken for a typed amount.
+            fontSize: value ? (compact ? type.bodyLg : type.heading) : type.body,
+            // Android draws the placeholder off-centre when a lineHeight is set, so the empty state has none.
+            lineHeight: value ? (compact ? lineHeight.bodyLg.latin : lineHeight.heading.latin) : undefined,
+            fontFamily: value ? FONT_MAP.en.bold : FONT_MAP.en.regular,
+            color: box.color,
+            textAlignVertical: 'center',
+            paddingVertical: 0,
+            paddingRight: space.lg,
+            fontVariant: ['tabular-nums'],
+          }}
+        />
+      </InputBox>
       <HelperText error={error} hint={hint} tone={hintTone} />
     </View>
   );
@@ -527,7 +600,15 @@ export function DateField({
           value={custom ? null : value}
           onChange={onChange}
         />
-        <CalendarChip label={`${label}: ${formatDay(value)}`} custom={custom} value={value} onPress={() => setOpen(true)} />
+        <CalendarChip
+          label={`${label}: ${formatDay(value)}`}
+          custom={custom}
+          value={value}
+          onPress={() => {
+            Keyboard.dismiss();
+            setOpen(true);
+          }}
+        />
       </View>
       <HelperText error={error} />
       {open ? (
@@ -621,6 +702,7 @@ export function SelectField<T extends PickerItem>({
   const c = useColors();
   const [open, setOpen] = useState(false);
   const box = useBoxColors({ focus: open, error, disabled });
+  const lift = useElevation('field');
   const selected = items.find((i) => i.id === value);
   return (
     <View style={{ gap: 6 }}>
@@ -631,7 +713,10 @@ export function SelectField<T extends PickerItem>({
           accessibilityLabel={`${label}: ${selected?.title ?? placeholder ?? ''}`}
           accessibilityState={{ disabled: !!disabled, expanded: open }}
           disabled={disabled}
-          onPress={() => setOpen(true)}
+          onPress={() => {
+            Keyboard.dismiss();
+            setOpen(true);
+          }}
           style={({ pressed }) => ({
             minHeight: touch,
             paddingHorizontal: space.lg,
@@ -642,6 +727,7 @@ export function SelectField<T extends PickerItem>({
             flexDirection: 'row',
             alignItems: 'center',
             gap: space.sm,
+            ...(disabled ? null : lift),
           })}>
           <Txt variant="bodyLg" style={{ flex: 1 }} color={selected ? (disabled ? 'textMuted' : 'text') : 'placeholder'} numberOfLines={1}>
             {selected?.title ?? placeholder ?? label}
@@ -898,6 +984,7 @@ export function DatePickerField({
   const t = useT();
   const [open, setOpen] = useState(false);
   const box = useBoxColors({ focus: open, error });
+  const lift = useElevation('field');
   const toDate = (day: string) => {
     const [y, m, d] = day.split('-').map(Number);
     return new Date(y, (m || 1) - 1, d || 1);
@@ -908,12 +995,13 @@ export function DatePickerField({
     <View style={{ gap: 6 }}>
       <Label text={label} optional={optional} error={error} />
       <Ring focus={open}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', minHeight: touch, borderRadius: radius.md, borderWidth: hairline, borderColor: box.borderColor, backgroundColor: box.backgroundColor }}>
+        <View style={[{ flexDirection: 'row', alignItems: 'center', minHeight: touch, borderRadius: radius.md, borderWidth: hairline, borderColor: box.borderColor, backgroundColor: box.backgroundColor }, lift]}>
           <Pressable
             accessibilityRole="button"
             accessibilityLabel={`${label}: ${shown}`}
             onPress={() => {
               Haptics.selectionAsync().catch(() => {});
+              Keyboard.dismiss();
               setOpen(true);
             }}
             style={({ pressed }) => ({

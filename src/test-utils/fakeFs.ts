@@ -396,8 +396,13 @@ export class Directory {
     this.p = to;
   }
 
+  /** Fake-only: what the next pickDirectoryAsync returns (a folder the test made), or null for "cancelled". */
+  static nextPick: Directory | null = null;
   static async pickDirectoryAsync(): Promise<Directory> {
-    throw new Error('Directory.pickDirectoryAsync is not available in tests');
+    const d = Directory.nextPick;
+    Directory.nextPick = null;
+    if (!d) throw new Error('cancelled');
+    return d;
   }
 }
 

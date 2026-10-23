@@ -3,7 +3,7 @@
  * single write path (version + audit entry for every change), positions, the lock on accepted
  * estimates, status changes, duplicate, delete, and turning an estimate into a project.
  */
-import { COMPANY_DEFAULTS } from '@/lib/company';
+import { COMPANY_DEFAULTS, saveCompanyProfile } from '@/lib/company';
 import { all, first, getDb, getSetting, newId, save } from '@/db';
 import {
   applyStandardSchedule,
@@ -28,7 +28,6 @@ import type { Estimate, EstimateItem, EstimatePayment, EstimateStatus } from '@/
 import { en } from '@/i18n/en';
 import { si } from '@/i18n/si';
 import { ta } from '@/i18n/ta';
-import { saveCompanyProfile } from '@/lib/company';
 import { allocatePayments, MAX_LINE_CENTS, MAX_QTY_MILLI, MAX_RATE_CENTS } from '@/lib/estimate';
 import { resetDb, silenceConsoleError } from '@/test-utils';
 import { useClock } from '@/test-utils/dataKit';

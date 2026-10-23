@@ -9,12 +9,12 @@ import { NotoSansTamil_400Regular } from '@expo-google-fonts/noto-sans-tamil/400
 import { NotoSansTamil_600SemiBold } from '@expo-google-fonts/noto-sans-tamil/600SemiBold';
 import { NotoSansTamil_700Bold } from '@expo-google-fonts/noto-sans-tamil/700Bold';
 import { useFonts } from 'expo-font';
-import { DarkTheme, DefaultTheme, router, Stack, ThemeProvider, type ErrorBoundaryProps } from 'expo-router';
+import { DarkTheme, DefaultTheme, router, Stack, ThemeProvider, usePathname, type ErrorBoundaryProps } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
 import * as SystemUI from 'expo-system-ui';
 import { useEffect, useState } from 'react';
-import { Appearance, View } from 'react-native';
+import { Appearance, Keyboard, View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
@@ -29,10 +29,12 @@ import { TamaguiScope } from '@/components/ui/kit';
 import { getDb, getSetting } from '@/db';
 import { useT } from '@/i18n';
 import { installGlobalErrorHandlers, reportError, setFatalErrorListener } from '@/lib/errors';
+import { installKeyboardHygiene } from '@/lib/keyboard';
 import { motion, type, useColors, useFont, useScheme, useThemePref } from '@/theme';
 
 SplashScreen.preventAutoHideAsync().catch(() => {});
 installGlobalErrorHandlers();
+installKeyboardHygiene();
 
 /** Render errors anywhere in the tree land here (expo-router calls this with the error and a retry). */
 export function ErrorBoundary({ error, retry }: ErrorBoundaryProps) {
@@ -148,6 +150,12 @@ function AppStack() {
   const font = useFont();
   const t = useT();
   const base = scheme === 'dark' ? DarkTheme : DefaultTheme;
+  const pathname = usePathname();
+
+  useEffect(() => {
+    // A save that goes back, a tap that opens another screen: the keyboard never follows onto the next screen.
+    Keyboard.dismiss();
+  }, [pathname]);
 
   useEffect(() => {
     // Android navigation bar follows the tab bar; the status bar follows the scheme.
@@ -179,8 +187,9 @@ function AppStack() {
           headerTitleStyle: { fontFamily: font('semibold'), fontSize: type.bodyLg, color: c.onHeader },
           headerBackButtonDisplayMode: 'minimal',
           contentStyle: { backgroundColor: c.bg },
-          animation: 'slide_from_right',
-          animationDuration: motion.slow,
+          // the iOS-style push: the new screen slides in over the old one, which drifts left a little
+          animation: 'ios_from_right',
+          animationDuration: motion.slow + 60,
         }}>
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
         <Stack.Screen

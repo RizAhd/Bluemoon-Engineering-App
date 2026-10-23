@@ -1,6 +1,6 @@
 import * as Application from 'expo-application';
 import { router } from 'expo-router';
-import { Bug, Database, FileDown, FileText, Fingerprint, KeyRound, Landmark, LockKeyhole, NotebookPen, ShieldCheck } from 'lucide-react-native';
+import { Bug, Cloud, CloudOff, Database, FileDown, FileText, Fingerprint, KeyRound, Landmark, LockKeyhole, NotebookPen, ShieldCheck } from 'lucide-react-native';
 import { useEffect, useState } from 'react';
 import { Alert, View } from 'react-native';
 
@@ -60,6 +60,7 @@ export default function MoreScreen() {
   const t = useT();
   const lang = useLang();
   const theme = useThemePref();
+  const driveEmail = useSetting('drive_email');
   const autoAt = useSetting('auto_backup_at');
   const autoError = useSetting('auto_backup_error');
   // auto_backup_at is a UTC timestamp, today() a local day: compare local days, or a backup made before 05:30 in Sri Lanka is "yesterday".
@@ -82,6 +83,13 @@ export default function MoreScreen() {
         <ListRow icon={FileText} title={t('estimates')} subtitle={t('estimatesHint')} onPress={() => router.push('/estimate')} />
         <ListRow icon={Landmark} title={t('companyAndBank')} subtitle={t('companyAndBankHint')} onPress={() => router.push('/company')} />
         <ListRow icon={ShieldCheck} iconTone={backupTone} title={t('backup')} subtitle={backupSubtitle} onPress={() => router.push('/backup')} />
+        <ListRow
+          icon={driveEmail ? Cloud : CloudOff}
+          iconTone={driveEmail ? 'success' : undefined}
+          title={t('googleDrive')}
+          subtitle={driveEmail ?? t('driveNotConnected')}
+          onPress={() => router.push('/backup')}
+        />
         <ListRow icon={FileDown} title={t('importPdf')} subtitle={t('importPdfHint')} onPress={() => router.push('/import')} />
         <ListRow icon={NotebookPen} title={t('siteNotes')} onPress={() => router.push('/notes')} />
         <ListRow icon={Bug} title={t('reportProblem')} subtitle={t('errorLog')} onPress={() => router.push('/problem')} />

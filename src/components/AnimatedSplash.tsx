@@ -1,6 +1,6 @@
 import * as SplashScreen from 'expo-splash-screen';
 import { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, StyleSheet, useColorScheme, View } from 'react-native';
+import { ActivityIndicator, Image, StyleSheet, View } from 'react-native';
 import Animated, {
   cancelAnimation,
   Easing,
@@ -12,21 +12,27 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated';
 
-import { BrandMark, BrandWordmark } from '@/components/Brand';
 import { palette, space, useMotion } from '@/theme';
 
-/** Must match the expo-splash-screen backgrounds in app.json, or the hand-over flashes. */
-export const SPLASH_BG = { light: '#FFFFFF', dark: '#0B1120' } as const;
+const LOGO = require('../../assets/images/splash-logo-white.png') as number;
+
+/**
+ * One brand background in both schemes, the same as the native splash in app.json. The native splash is drawn
+ * before the app knows the user's Light / Dark choice, so a scheme-following splash would flash the wrong
+ * colour for half the users; a single navy splash fading into the app never does.
+ */
+export const SPLASH_BG = { light: '#0B1120', dark: '#0B1120' } as const;
 
 /** The splash sequence in ms. `minVisible` counts from the overlay's first frame. */
-export const SPLASH_TIMING = { enter: 400, wordmarkDelay: 120, minVisible: 900, exit: 250, reducedFade: 200, loaderSweep: 700 } as const;
+export const SPLASH_TIMING = { loaderDelay: 300, loaderIn: 300, minVisible: 900, exit: 280, reducedFade: 200, loaderSweep: 700 } as const;
 
-const MARK_HEIGHT = 72;
-const WORDMARK_WIDTH = 144;
+/** The native splash logo: app.json `imageWidth` 120 dp, the PNG's own 1000 × 1009 shape. */
+export const SPLASH_LOGO = { width: 120, height: 121 } as const;
 const TRACK = { width: 120, height: 3, bar: 40 } as const;
 
 const easeOut = Easing.bezier(0.23, 1, 0.32, 1);
 const onScreen = Easing.bezier(0.77, 0, 0.175, 1);
+const brand = palette.dark;
 
 export interface AnimatedSplashProps {
   /** Fonts and database are ready: the overlay may leave once it has been up for `minVisible`. */
@@ -36,15 +42,13 @@ export interface AnimatedSplashProps {
 }
 
 /**
- * The in-app continuation of the native splash: same background, the Bluemoon mark fading and
- * scaling in, the company name 120 ms later, and a slim sliding loader. It hides the native splash
- * on its own first layout (so there is no blank frame between the two), stays at least 900 ms,
- * then fades out in 250 ms without catching touches. Follows the system scheme, like the native
- * splash. Reduced motion: plain fades and a system spinner instead of the sliding bar.
+ * The in-app continuation of the native splash. Its first frame is the native splash exactly — the same navy,
+ * the same logo image at the same size in the same place — so hiding the native one on that frame shows no
+ * change at all: nothing blinks, jumps or fades in twice. Then a slim loader appears under the logo, and once
+ * the app is ready (at least 900 ms) the logo eases up a touch while the whole overlay fades into the app,
+ * without catching touches. Reduced motion: a system spinner and a plain fade.
  */
 export function AnimatedSplash({ ready, onDone }: AnimatedSplashProps) {
-  const scheme = useColorScheme() === 'dark' ? 'dark' : 'light';
-  const c = palette[scheme];
   // Reanimated's value is known on the first frame; the app's hook also follows later changes.
   const systemReduced = useReducedMotion();
   const appReduced = useMotion().reduced;
@@ -53,8 +57,7 @@ export function AnimatedSplash({ ready, onDone }: AnimatedSplashProps) {
   const [minDone, setMinDone] = useState(false);
   const leaving = ready && minDone;
 
-  const mark = useSharedValue(0);
-  const word = useSharedValue(0);
+  const loader = useSharedValue(0);
   const bar = useSharedValue(0);
   const fade = useSharedValue(1);
 
@@ -70,9 +73,7 @@ export function AnimatedSplash({ ready, onDone }: AnimatedSplashProps) {
     started.current = true;
     setShown(true);
     SplashScreen.hideAsync().catch(() => {});
-    const enter = reduced ? SPLASH_TIMING.reducedFade : SPLASH_TIMING.enter;
-    mark.set(withTiming(1, { duration: enter, easing: easeOut }));
-    word.set(withDelay(SPLASH_TIMING.wordmarkDelay, withTiming(1, { duration: enter, easing: easeOut })));
+    loader.set(withDelay(SPLASH_TIMING.loaderDelay, withTiming(1, { duration: reduced ? SPLASH_TIMING.reducedFade : SPLASH_TIMING.loaderIn, easing: easeOut })));
     if (!reduced) bar.set(withRepeat(withTiming(1, { duration: SPLASH_TIMING.loaderSweep, easing: onScreen }), -1, true));
   };
 
@@ -93,11 +94,9 @@ export function AnimatedSplash({ ready, onDone }: AnimatedSplashProps) {
   }, [leaving, fade, bar]);
 
   const overlayStyle = useAnimatedStyle(() => ({ opacity: fade.get() }));
-  const markStyle = useAnimatedStyle(() => ({
-    opacity: mark.get(),
-    transform: [{ scale: reduced ? 1 : 0.94 + 0.06 * mark.get() }],
-  }));
-  const wordStyle = useAnimatedStyle(() => ({ opacity: word.get() }));
+  // the logo rises 1.04× as the overlay fades: the app seems to come forward out of the brand
+  const logoStyle = useAnimatedStyle(() => ({ transform: [{ scale: reduced ? 1 : 1 + 0.04 * (1 - fade.get()) }] }));
+  const loaderStyle = useAnimatedStyle(() => ({ opacity: loader.get() }));
   const barStyle = useAnimatedStyle(() => ({ transform: [{ translateX: bar.get() * (TRACK.width - TRACK.bar) }] }));
 
   return (
@@ -109,21 +108,18 @@ export function AnimatedSplash({ ready, onDone }: AnimatedSplashProps) {
       accessibilityRole="progressbar"
       accessibilityLabel="Bluemoon Engineering"
       accessibilityState={{ busy: !leaving }}
-      style={[StyleSheet.absoluteFill, { backgroundColor: SPLASH_BG[scheme], alignItems: 'center', justifyContent: 'center' }, overlayStyle]}>
-      <Animated.View style={markStyle}>
-        <BrandMark size={MARK_HEIGHT} scheme={scheme} />
+      style={[StyleSheet.absoluteFill, { backgroundColor: SPLASH_BG.dark, alignItems: 'center', justifyContent: 'center' }, overlayStyle]}>
+      <Animated.View style={logoStyle}>
+        <Image source={LOGO} style={SPLASH_LOGO} resizeMode="contain" fadeDuration={0} accessibilityLabel="Bluemoon Engineering (Pvt) Ltd" />
       </Animated.View>
-      <Animated.View style={[{ marginTop: space.lg }, wordStyle]}>
-        <BrandWordmark width={WORDMARK_WIDTH} scheme={scheme} />
-      </Animated.View>
-      <Animated.View style={[{ marginTop: space.xl, height: 20, justifyContent: 'center' }, wordStyle]}>
+      {/* Under the logo without moving it: the logo stays exactly where the native splash put it. */}
+      <Animated.View
+        style={[{ position: 'absolute', top: '50%', marginTop: SPLASH_LOGO.height / 2 + space.xl, height: 20, justifyContent: 'center' }, loaderStyle]}>
         {reduced ? (
-          <ActivityIndicator testID="splash-spinner" size="small" color={c.primary} />
+          <ActivityIndicator testID="splash-spinner" size="small" color={brand.primary} />
         ) : (
-          <View
-            testID="splash-loader"
-            style={{ width: TRACK.width, height: TRACK.height, borderRadius: TRACK.height / 2, backgroundColor: c.primarySoft, overflow: 'hidden' }}>
-            <Animated.View style={[{ width: TRACK.bar, height: TRACK.height, borderRadius: TRACK.height / 2, backgroundColor: c.primary }, barStyle]} />
+          <View testID="splash-loader" style={{ width: TRACK.width, height: TRACK.height, borderRadius: TRACK.height / 2, backgroundColor: brand.primarySoft, overflow: 'hidden' }}>
+            <Animated.View style={[{ width: TRACK.bar, height: TRACK.height, borderRadius: TRACK.height / 2, backgroundColor: brand.primary }, barStyle]} />
           </View>
         )}
       </Animated.View>

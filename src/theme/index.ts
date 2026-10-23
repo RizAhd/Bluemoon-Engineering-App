@@ -4,7 +4,7 @@ import { AccessibilityInfo, useColorScheme, useWindowDimensions } from 'react-na
 import { useSetting } from '@/db';
 import { useLang, type Lang } from '@/i18n';
 
-import { gutter, motion, palette, windowClass, type Palette, type Weight } from './tokens';
+import { elevation, gutter, motion, palette, windowClass, type Palette, type Weight } from './tokens';
 
 export * from './tokens';
 
@@ -24,6 +24,11 @@ export function useScheme(): 'light' | 'dark' {
 
 export function useColors(): Palette {
   return palette[useScheme()];
+}
+
+/** The shadow for `level` in the light scheme; nothing in dark, where lighter surfaces carry the depth. */
+export function useElevation(level: keyof typeof elevation) {
+  return useScheme() === 'light' ? elevation[level] : null;
 }
 
 /** Fonts loaded in the root layout. One Noto family per script so all three languages match. */

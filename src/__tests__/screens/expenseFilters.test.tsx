@@ -80,7 +80,7 @@ describe('Expenses: defaults', () => {
     expect(screen.queryByTestId('list-applied')).toBeNull();
     const month = sql('e.day >= ? AND e.day < ?', range(thisMonth()));
     expect(hasLabel(`${E('thisMonth')} ${formatLKR(month.total)}`)).toBe(true);
-    expect(hasLabel(`${E('totalCost')} ${formatLKR(sql().total)} ${E('allProjects')}`)).toBe(true);
+    expect(hasLabel(`${E('allExpenses')} ${formatLKR(sql().total)} ${E('allProjects')}`)).toBe(true);
     expect(has(E('today'))).toBe(true); // a day group header
     // every expense, newest first
     expect(shownPayees()).toEqual(payeesBy('e.day DESC, e.created_at DESC, e.id'));
@@ -203,7 +203,7 @@ describe('Expenses: the Filter & sort sheet', () => {
     expect(visibleText()).toContain('5 Mar 2025 · ');
     expect(screen.getByTestId('list-applied').props.children).toBe(E(key));
     // sorting alone changes no total
-    expect(hasLabel(`${E('totalCost')} ${formatLKR(sql().total)} ${E('allProjects')}`)).toBe(true);
+    expect(hasLabel(`${E('allExpenses')} ${formatLKR(sql().total)} ${E('allProjects')}`)).toBe(true);
   });
 
   it('Oldest first keeps the day groups, oldest day at the top', async () => {
@@ -250,7 +250,7 @@ describe('Expenses: remembered and cleared', () => {
     for (const k of KEYS) expect([k, getSetting(k)]).toEqual([k, null]);
     expect(screen.queryByTestId('list-applied')).toBeNull();
     expect(hasLabel(E('filterSort'))).toBe(true);
-    expect(hasLabel(`${E('totalCost')} ${formatLKR(sql().total)} ${E('allProjects')}`)).toBe(true);
+    expect(hasLabel(`${E('allExpenses')} ${formatLKR(sql().total)} ${E('allProjects')}`)).toBe(true);
   });
 
   it('Reset in the sheet does the same', async () => {

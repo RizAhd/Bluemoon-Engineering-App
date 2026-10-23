@@ -89,7 +89,8 @@ export function ContractBar({ spent, contract }: { spent: number; contract: numb
       </View>
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: space.sm }}>
         <Txt variant="caption" color={over ? 'danger' : 'textMuted'} weight="semibold" numeric>
-          {pct} %
+          {/* something spent but under half a percent reads "<1 %", never a misleading "0 %" */}
+          {spent > 0 && pct === 0 ? '<1' : pct} %
         </Txt>
         {/* "කොන්ත්‍රාත්තුව Rs 9,999,999,999" is wider than a 320 phone leaves beside the %: it wraps on the right. */}
         <Txt variant="caption" color="textMuted" weight="semibold" numeric style={{ flexShrink: 1, textAlign: 'right' }}>

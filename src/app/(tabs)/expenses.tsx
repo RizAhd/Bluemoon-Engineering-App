@@ -202,7 +202,7 @@ export default function ExpensesScreen() {
                 ) : (
                   <Tiles>
                     <Stat label={t('thisMonth')} value={formatLKR(unfiltered.month)} style={{ flex: 1 }} />
-                    <Stat label={t('totalCost')} value={formatLKR(unfiltered.everything)} caption={pid ? undefined : t('allProjects')} style={{ flex: 1 }} />
+                    <Stat label={t('allExpenses')} value={formatLKR(unfiltered.everything)} caption={pid ? undefined : t('allProjects')} style={{ flex: 1 }} />
                   </Tiles>
                 )}
               </View>

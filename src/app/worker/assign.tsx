@@ -1,5 +1,5 @@
 import { router, Stack, useLocalSearchParams } from 'expo-router';
-import { Building2, HardHat, Phone, Trash2, UserRound } from 'lucide-react-native';
+import { Building2, HardHat, Phone, Trash2, UserRound, Wrench } from 'lucide-react-native';
 import { useState } from 'react';
 import { Alert } from 'react-native';
 
@@ -228,7 +228,7 @@ function Inner({ projectId, workerId }: { projectId: string; workerId?: string }
               autoCapitalize="words"
               returnKeyType="next"
             />
-            <Field label={t('trade')} optional placeholder={t('tradeHint')} value={trade} onChangeText={setTrade} returnKeyType="next" />
+            <Field label={t('trade')} optional icon={Wrench} placeholder={t('tradeHint')} value={trade} onChangeText={setTrade} autoCapitalize="words" />
             <Field label={t('phone')} optional icon={Phone} placeholder={t('phPhone')} value={phone} onChangeText={setPhone} keyboardType="phone-pad" />
           </>
         ) : null}

@@ -105,7 +105,7 @@ function LockScreen() {
   const message = waiting ? t('pinWait', { s: secondsLeft }) : checking ? t('pinChecking') : wrong ? t('pinWrong') : t('enterPin');
 
   return (
-    <Modal visible transparent={false} animationType="fade" statusBarTranslucent navigationBarTranslucent onRequestClose={() => undefined}>
+    <Modal visible transparent={false} animationType="none" statusBarTranslucent navigationBarTranslucent onRequestClose={() => undefined}>
       <View
         testID="app-lock"
         style={{

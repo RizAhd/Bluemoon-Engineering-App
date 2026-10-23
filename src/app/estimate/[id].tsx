@@ -488,15 +488,6 @@ export default function EstimateHub() {
                 </View>
               </Card>
 
-              {/* how the total is made up: subtotal, then discount and tax when there are any */}
-              <Card>
-                <MoneyLine label={t('subtotal')} value={formatLKR(total.subtotal_cents)} />
-                {total.discount_cents > 0 ? <MoneyLine label={t('discount')} value={`−${formatLKR(total.discount_cents)}`} /> : null}
-                {est.tax_bp > 0 ? <MoneyLine label={`${t('tax')} (${formatPercent(est.tax_bp)} %)`} value={formatLKR(total.tax_cents)} /> : null}
-                {/* the total itself is in the sticky bar at the bottom, always in view next to Share */}
-                {!locked ? <Button kind="ghost" compact icon={Percent} label={t('discountAndTax')} onPress={() => router.push(`/estimate/form?id=${est.id}&more=1`)} style={{ alignSelf: 'flex-start' }} /> : null}
-              </Card>
-
               {locked ? (
                 <Card tone="warningSoft">
                   <View style={{ flexDirection: 'row', gap: space.md, alignItems: 'center' }}>
@@ -516,6 +507,16 @@ export default function EstimateHub() {
           footer={
             <View style={{ gap: space.lg }}>
               {!locked && items.length ? <Button kind="secondary" compact icon={Plus} label={t('addItem')} onPress={() => openItem()} full /> : null}
+
+              {/* under the lines, the way a printed estimate reads: subtotal, then discount and tax when there are any */}
+              <Card>
+                <MoneyLine label={t('subtotal')} value={formatLKR(total.subtotal_cents)} />
+                {total.discount_cents > 0 ? <MoneyLine label={t('discount')} value={`−${formatLKR(total.discount_cents)}`} /> : null}
+                {est.tax_bp > 0 ? <MoneyLine label={`${t('tax')} (${formatPercent(est.tax_bp)} %)`} value={formatLKR(total.tax_cents)} /> : null}
+                {/* the total itself is in the sticky bar at the bottom, always in view next to Share */}
+                {!locked ? <Button kind="ghost" compact icon={Percent} label={t('discountAndTax')} onPress={() => router.push(`/estimate/form?id=${est.id}&more=1`)} style={{ alignSelf: 'flex-start' }} /> : null}
+              </Card>
+
 
               {/* payment schedule */}
               <SectionTitle title={t('paymentSchedule')} count={payments.length || undefined} />
