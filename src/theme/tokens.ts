@@ -23,6 +23,10 @@ export const palette = {
     primaryPressed: '#1E40AF',
     onPrimary: '#FFFFFF',
     primarySoft: '#E3ECFF',
+    /** Solid primary buttons and the FAB (light: the primary itself). */
+    fill: '#1D4ED8',
+    fillPressed: '#1E40AF',
+    onFill: '#FFFFFF',
     /** Ink: selected chip/segment/checkbox fill, toast bg, progress fill. */
     slate: '#344054',
     onSlate: '#FFFFFF',
@@ -64,6 +68,10 @@ export const palette = {
     primaryPressed: '#9DBAFF',
     onPrimary: '#0B1120',
     primarySoft: '#1B2A4D',
+    /** Dark: a deep, saturated blue with white text. The light `primary` above is for links and icons only (a pale fill reads as disabled). */
+    fill: '#2563EB',
+    fillPressed: '#1D4ED8',
+    onFill: '#FFFFFF',
     slate: '#E6EBF5',
     onSlate: '#0B1120',
     success: '#5BD08A',
@@ -121,24 +129,24 @@ export const windowClass = { mediumFrom: 600, expandedFrom: 840, shortBelow: 480
 export const listTuning = { initialNumToRender: 12, maxToRenderPerBatch: 8, windowSize: 9 } as const;
 
 export const type = {
-  caption: 13,
-  body: 15,
-  bodyLg: 17,
-  title: 18,
-  heading: 22,
-  amount: 28,
-  amountXl: 36,
+  caption: 14,
+  body: 16.5,
+  bodyLg: 18.5,
+  title: 20,
+  heading: 24,
+  amount: 31,
+  amountXl: 40,
 } as const;
 
 /** Line height per variant (even numbers, near the 4 pt grid): Latin, and +2 for Sinhala / Tamil so marks never clip. */
 export const lineHeight = {
-  caption: { latin: 18, complex: 20 },
-  body: { latin: 22, complex: 24 },
-  bodyLg: { latin: 24, complex: 26 },
-  title: { latin: 26, complex: 28 },
-  heading: { latin: 30, complex: 32 },
-  amount: { latin: 34, complex: 34 },
-  amountXl: { latin: 44, complex: 44 },
+  caption: { latin: 20, complex: 22 },
+  body: { latin: 24, complex: 26 },
+  bodyLg: { latin: 26, complex: 28 },
+  title: { latin: 28, complex: 30 },
+  heading: { latin: 32, complex: 34 },
+  amount: { latin: 38, complex: 38 },
+  amountXl: { latin: 48, complex: 48 },
 } as const satisfies Record<keyof typeof type, { latin: number; complex: number }>;
 
 /**
@@ -166,8 +174,8 @@ export const fontScaleMax = {
   amountXl: 1.2,
 } as const satisfies Record<keyof typeof type, number>;
 
-/** Tab-bar labels are the only text under 13 (the PDF's floor for menu labels is 12). */
-export const tabLabel = { size: 12, lineHeight: 16 } as const;
+/** Tab-bar labels are the smallest text in the app (the PDF's floor for menu labels is 12). */
+export const tabLabel = { size: 13, lineHeight: 17 } as const;
 
 export type Weight = 'regular' | 'semibold' | 'bold';
 

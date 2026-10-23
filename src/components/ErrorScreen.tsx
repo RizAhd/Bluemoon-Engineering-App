@@ -139,9 +139,9 @@ function BareText({ c, size, weight = 'regular', color, children }: { c: Palette
 }
 
 function BareButton({ c, label, onPress, kind, disabled }: { c: Palette; label: string; onPress: () => void; kind: 'primary' | 'secondary' | 'ghost'; disabled?: boolean }) {
-  const bg = kind === 'primary' ? c.primary : kind === 'secondary' ? c.card : 'transparent';
-  const pressedBg = kind === 'primary' ? c.primaryPressed : kind === 'secondary' ? c.muted : c.primarySoft;
-  const fg = kind === 'primary' ? c.onPrimary : kind === 'secondary' ? c.text : c.primary;
+  const bg = kind === 'primary' ? c.fill : kind === 'secondary' ? c.card : 'transparent';
+  const pressedBg = kind === 'primary' ? c.fillPressed : kind === 'secondary' ? c.muted : c.primarySoft;
+  const fg = kind === 'primary' ? c.onFill : kind === 'secondary' ? c.text : c.primary;
   return (
     <Pressable
       accessibilityRole="button"

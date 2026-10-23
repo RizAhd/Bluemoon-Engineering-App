@@ -1,11 +1,11 @@
 import { router, Stack, useLocalSearchParams } from 'expo-router';
 import { useState } from 'react';
 import { Alert, View } from 'react-native';
-import { MapPin, Trash2, UserRound } from 'lucide-react-native';
+import { Building2, MapPin, Trash2, UserRound } from 'lucide-react-native';
 
 import { Button, HeaderButton } from '@/components/ui/Button';
 import { toast } from '@/components/ui/feedback';
-import { AmountField, Field, Segmented } from '@/components/ui/form';
+import { AmountField, DatePickerField, Field, Segmented } from '@/components/ui/form';
 import { Screen } from '@/components/ui/layout';
 import { useFirst } from '@/db';
 import { deleteRecord, saveProject } from '@/db/repo';
@@ -36,6 +36,7 @@ function Inner({ existing }: { existing: Project | null }) {
   const [status, setStatus] = useState<ProjectStatus>(existing?.status ?? 'active');
   const [notes, setNotes] = useState(existing?.notes ?? '');
   const [contractError, setContractError] = useState<string | null>(null);
+  form.useLeaveGuard([name, client, location, contract, start, end, status, notes]);
 
   function onSave() {
     const cents = contract.trim() ? parseCents(contract) : null;
@@ -92,6 +93,9 @@ function Inner({ existing }: { existing: Project | null }) {
       <Screen footer={<Button label={t('save')} onPress={onSave} full />}>
         <Field
           label={t('projectName')}
+          icon={Building2}
+          placeholder={t('phProjectName')}
+          autoCapitalize="words"
           value={name}
           onChangeText={(s) => {
             setName(s);
@@ -101,7 +105,7 @@ function Inner({ existing }: { existing: Project | null }) {
           autoFocus={form.isNew}
           returnKeyType="next"
         />
-        <Field label={t('client')} optional icon={UserRound} placeholder={t('phClientName')} value={client} onChangeText={setClient} returnKeyType="next" />
+        <Field label={t('client')} optional autoCorrect={false} autoCapitalize="words" icon={UserRound} placeholder={t('phClientName')} value={client} onChangeText={setClient} returnKeyType="next" />
         <Field label={t('location')} optional icon={MapPin} placeholder={t('phLocation')} value={location} onChangeText={setLocation} returnKeyType="next" />
         <AmountField
           label={t('contractValue')}
@@ -114,31 +118,29 @@ function Inner({ existing }: { existing: Project | null }) {
           error={contractError}
         />
         <View style={{ flexDirection: 'row', gap: space.md }}>
-          <View style={{ flex: 1 }}>
-            <Field
+          <View style={{ flex: 1, minWidth: 0 }}>
+            <DatePickerField
               label={t('startDate')}
               optional
               value={start}
-              onChangeText={(s) => {
-                setStart(s);
+              onChange={(d) => {
+                setStart(d);
                 form.clearError('start_date');
               }}
-              placeholder="2026-10-21"
-              keyboardType="numbers-and-punctuation"
+              maxDay={end || undefined}
               error={form.err('start_date')}
             />
           </View>
-          <View style={{ flex: 1 }}>
-            <Field
+          <View style={{ flex: 1, minWidth: 0 }}>
+            <DatePickerField
               label={t('endDate')}
               optional
               value={end}
-              onChangeText={(s) => {
-                setEnd(s);
+              onChange={(d) => {
+                setEnd(d);
                 form.clearError('end_date');
               }}
-              placeholder="2027-03-31"
-              keyboardType="numbers-and-punctuation"
+              minDay={start || undefined}
               error={form.err('end_date')}
             />
           </View>

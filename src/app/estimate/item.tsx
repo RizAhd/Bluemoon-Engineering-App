@@ -53,6 +53,8 @@ function ItemForm({ estimateId, existing }: { estimateId: string; existing: Esti
   const [unit, setUnit] = useState(existing?.unit ?? '');
   const [qty, setQty] = useState(existing ? formatQty(existing.qty_milli) : '');
   const [rate, setRate] = useState(existing ? centsToInput(existing.rate_cents) : '');
+  // Back with typed values not saved asks before throwing them away.
+  form.useLeaveGuard([description, qty, rate]);
   // "Save and add another" starts the form again; a new key remounts the description field, which takes the focus back.
   const [round, setRound] = useState(0);
   const adding = useRef(false);

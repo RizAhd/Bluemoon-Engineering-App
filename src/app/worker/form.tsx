@@ -1,5 +1,5 @@
 import { Stack, useLocalSearchParams } from 'expo-router';
-import { Phone, Trash2 } from 'lucide-react-native';
+import { Phone, Trash2, UserRound } from 'lucide-react-native';
 import { useState } from 'react';
 
 import { Button, HeaderButton } from '@/components/ui/Button';
@@ -28,6 +28,8 @@ function Inner({ existing }: { existing: Worker | null }) {
   const [trade, setTrade] = useState(existing?.trade ?? '');
   const [phone, setPhone] = useState(existing?.phone ?? '');
   const [rate, setRate] = useState(existing?.daily_rate_cents ? centsToInput(existing.daily_rate_cents) : '');
+  // Back with typed values not saved asks before throwing them away.
+  form.useLeaveGuard([name, trade, phone, rate]);
   const [rateError, setRateError] = useState<string | null>(null);
 
   function onSave() {
@@ -58,6 +60,9 @@ function Inner({ existing }: { existing: Worker | null }) {
       <Screen footer={<Button label={t('save')} onPress={onSave} full />} gap={20}>
         <Field
           label={t('name')}
+          icon={UserRound}
+          placeholder={t('phWorkerName')}
+          autoCorrect={false}
           value={name}
           onChangeText={(s) => {
             setName(s);

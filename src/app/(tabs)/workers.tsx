@@ -60,7 +60,8 @@ const WorkerRow = memo(function WorkerRow({ r, showDays }: { r: WorkerListRow; s
       badge={
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: space.xs }}>
           {!r.active ? <Badge label={t('inactive')} /> : null}
-          {r.active || r.balance ? <BalanceBadge balance={r.balance} /> : null}
+          {/* "Settled" only says something once there was work to settle. */}
+          {(r.active && r.days > 0) || r.balance ? <BalanceBadge balance={r.balance} /> : null}
         </View>
       }
       onPress={() => router.push(`/worker/${r.id}`)}
@@ -239,7 +240,11 @@ export default function WorkersScreen() {
 
                     <Tiles>
                       <Stat label={t('weOwe')} value={formatLKR(weOwe)} tone={weOwe > 0 ? 'danger' : 'text'} />
-                      <Stat label={t('workerOwes')} value={formatLKR(workerOwes)} caption={`${active.length} ${t('workers')}`} />
+                      <Stat
+                        label={t('workerOwes')}
+                        value={formatLKR(workerOwes)}
+                        caption={list.counts.advance > 0 ? t('workersCount', { n: list.counts.advance }) : t('noAdvancesOver')}
+                      />
                     </Tiles>
 
                     {!pid ? (

@@ -40,6 +40,8 @@ function StageForm({ estimateId, existing }: { estimateId: string; existing: Est
   const stages = useEstimatePayments(estimateId);
   const [label, setLabel] = useState(existing?.label ?? '');
   const [percent, setPercent] = useState(existing ? formatPercent(existing.percent_bp) : '');
+  // Back with typed values not saved asks before throwing them away.
+  form.useLeaveGuard([label, percent]);
 
   // What the other stages already take, and so how much this one may still have.
   const others = stages.filter((s) => s.id !== form.id);

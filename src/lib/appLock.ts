@@ -14,7 +14,7 @@ import * as LocalAuthentication from 'expo-local-authentication';
 import * as SecureStore from 'expo-secure-store';
 import { useSyncExternalStore } from 'react';
 
-import { hashPin, pinLengthOf, verifyPin } from './crypto';
+import { hashPin, PIN_ITERATIONS, pinLengthOf, verifyPin } from './crypto';
 import { reportError } from './errors';
 
 const K_PIN = 'bm_lock_pin';
@@ -130,6 +130,11 @@ export function unlock() {
 
 export type PinResult = { ok: true } | { ok: false; waitUntil: number; failures: number };
 
+/** The round count stored in a "pbkdf2$<rounds>$..." hash (0 when it cannot be read). */
+function iterationsOf(hash: string): number {
+  return Number(hash.split('$')[1]) || 0;
+}
+
 /** Check a typed PIN. Wrong ones count towards the wait, right ones clear it. */
 export async function tryPin(pin: string, now = Date.now()): Promise<PinResult> {
   if (!pinHash) return { ok: true };
@@ -137,6 +142,15 @@ export async function tryPin(pin: string, now = Date.now()): Promise<PinResult> 
   if (await verifyPin(pin, pinHash)) {
     set({ failures: 0, waitUntil: 0 });
     await Promise.all([write(K_FAILS, null), write(K_UNTIL, null)]).catch((e) => reportError(e, 'lock.write'));
+    // A PIN saved with the old, slow round count is saved again with today's, so the next unlock is quick.
+    if (iterationsOf(pinHash) !== PIN_ITERATIONS) {
+      hashPin(pin)
+        .then(async (fresh) => {
+          await write(K_PIN, fresh);
+          pinHash = fresh;
+        })
+        .catch((e) => reportError(e, 'lock.rehash'));
+    }
     return { ok: true };
   }
   const failures = state.failures + 1;

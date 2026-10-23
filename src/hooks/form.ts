@@ -1,5 +1,5 @@
 import * as Haptics from 'expo-haptics';
-import { router } from 'expo-router';
+import { router, useNavigation } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
 import { Alert } from 'react-native';
 
@@ -107,5 +107,59 @@ export function useRecordForm(table: string, existingId?: string) {
     ]);
   }
 
-  return { id, isNew: !existingId, err, submit, submitAsync, confirmDelete, clearError: (f: string) => setErrors((e) => ({ ...e, [f]: undefined as never })) };
+  return {
+    id,
+    isNew: !existingId,
+    err,
+    submit,
+    submitAsync,
+    confirmDelete,
+    clearError: (f: string) => setErrors((e) => ({ ...e, [f]: undefined as never })),
+    /** Lets the screen go without the unsaved-changes question (a create that replaces the screen with the new record). */
+    allowLeave: () => {
+      saved.current = true;
+    },
+    /** Asks before Back (button, gesture, header arrow) throws away typed values. Pass every value the user can change. */
+    useLeaveGuard: (values: unknown[]) => useLeaveGuard(values, saved),
+  };
+}
+
+/**
+ * "Discard changes?" before a form is left with typed values not saved. `values` are compared with what the
+ * form started with; a saved or untouched form leaves without a question. Works for the Android back button,
+ * the back gesture and the header arrow alike (they all remove the screen).
+ */
+export function useLeaveGuard(values: unknown[], saved?: { current: boolean }) {
+  const t = useT();
+  // typed loosely: the root navigator's event map does not list 'beforeRemove', every stack screen has it
+  const navigation = useNavigation() as unknown as {
+    addListener?: (event: 'beforeRemove', cb: (e: { preventDefault: () => void; data: { action: unknown } }) => void) => () => void;
+    dispatch: (action: unknown) => void;
+  };
+  const now = JSON.stringify(values);
+  const [start] = useState(now);
+  const isDirty = now !== start;
+  const dirty = useRef(false);
+  useEffect(() => {
+    dirty.current = isDirty;
+  }, [isDirty]);
+
+  useEffect(() => {
+    if (!navigation?.addListener) return;
+    return navigation.addListener('beforeRemove', (e) => {
+      if (!dirty.current || saved?.current) return;
+      e.preventDefault();
+      Alert.alert(t('discardTitle'), t('discardBody'), [
+        { text: t('keepEditing'), style: 'cancel' },
+        {
+          text: t('discard'),
+          style: 'destructive',
+          onPress: () => {
+            dirty.current = false;
+            navigation.dispatch(e.data.action);
+          },
+        },
+      ]);
+    });
+  }, [navigation, saved, t]);
 }

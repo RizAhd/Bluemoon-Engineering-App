@@ -102,7 +102,6 @@ export default function WorkerDetail() {
   }
 
   const b = bal.balance_cents;
-  const tone = b > 0 ? 'dangerSoft' : b < 0 ? 'warningSoft' : 'successSoft';
   const toneText = b > 0 ? 'danger' : b < 0 ? 'warning' : 'success';
   const hasUnassigned = entries.some((e) => !e.project_id || !e.project_name);
   const showChips = historyProjects.length > 1 || (historyProjects.length >= 1 && hasUnassigned);
@@ -232,17 +231,18 @@ export default function WorkerDetail() {
           }
           header={
             <View style={{ gap: space.lg }}>
-              <Card tone={tone}>
-                <Txt eyebrow style={{ color: c[toneText] }}>
-                  {t('balanceAllProjects')}
-                </Txt>
+              {/* a plain card with a coloured edge: the colour marks the state without a heavy tinted block in dark mode */}
+              <Card style={{ borderLeftWidth: 4, borderLeftColor: c[toneText] }}>
+                <Txt eyebrow>{t('balanceAllProjects')}</Txt>
                 <Txt variant="amount" weight="bold" numeric color={toneText} adjustsFontSizeToFit minimumFontScale={0.7} numberOfLines={1}>
                   {formatLKR(Math.abs(b))}
                 </Txt>
-                <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: space.sm }}>
-                  <BalanceBadge balance={b} />
-                  {!worker.active ? <Badge label={t('inactive')} /> : null}
-                </View>
+                {b !== 0 || bal.earned_cents > 0 || bal.paid_cents > 0 || !worker.active ? (
+                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: space.sm }}>
+                    {b !== 0 || bal.earned_cents > 0 || bal.paid_cents > 0 ? <BalanceBadge balance={b} /> : null}
+                    {!worker.active ? <Badge label={t('inactive')} /> : null}
+                  </View>
+                ) : null}
                 {worker.trade || worker.daily_rate_cents ? (
                   <Txt variant="caption" color="textMuted">
                     {[worker.trade, worker.daily_rate_cents ? `${t('dailyRate')} ${formatLKR(worker.daily_rate_cents)}` : null].filter(Boolean).join(' · ')}

@@ -54,6 +54,7 @@ import { showError } from '@/lib/errors';
 import { allocatePayments, formatPercent, formatQty, lineAmount, validUntil } from '@/lib/estimate';
 import { exportEstimatePdf } from '@/lib/estimatePdf';
 import { formatLKR } from '@/lib/money';
+import { withoutTitle } from '@/lib/names';
 import { radius, space, touch, useColors } from '@/theme';
 
 // ---------------------------------------------------------------- small pieces
@@ -454,7 +455,7 @@ export default function EstimateHub() {
                   <EstimateStatusBadge status={est.status} />
                 </View>
                 <View style={{ flexDirection: 'row', gap: space.md, alignItems: 'flex-start' }}>
-                  <Initials name={est.client_name} size={48} />
+                  <Initials name={withoutTitle(est.client_name)} size={48} />
                   <View style={{ flex: 1, minWidth: 0, gap: space.xs }}>
                     <Txt variant="title" weight="semibold" numberOfLines={2}>
                       {est.client_name}
@@ -487,16 +488,12 @@ export default function EstimateHub() {
                 </View>
               </Card>
 
-              {/* the total is the centre of the screen */}
+              {/* how the total is made up: subtotal, then discount and tax when there are any */}
               <Card>
                 <MoneyLine label={t('subtotal')} value={formatLKR(total.subtotal_cents)} />
                 {total.discount_cents > 0 ? <MoneyLine label={t('discount')} value={`−${formatLKR(total.discount_cents)}`} /> : null}
                 {est.tax_bp > 0 ? <MoneyLine label={`${t('tax')} (${formatPercent(est.tax_bp)} %)`} value={formatLKR(total.tax_cents)} /> : null}
-                <Divider />
-                <Txt eyebrow>{t('total')}</Txt>
-                <Txt variant="amountXl" weight="bold" numeric adjustsFontSizeToFit minimumFontScale={0.7} numberOfLines={1}>
-                  {formatLKR(total.total_cents)}
-                </Txt>
+                {/* the total itself is in the sticky bar at the bottom, always in view next to Share */}
                 {!locked ? <Button kind="ghost" compact icon={Percent} label={t('discountAndTax')} onPress={() => router.push(`/estimate/form?id=${est.id}&more=1`)} style={{ alignSelf: 'flex-start' }} /> : null}
               </Card>
 

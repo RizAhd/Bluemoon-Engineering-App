@@ -2,7 +2,7 @@ import DateTimePicker from '@react-native-community/datetimepicker';
 import * as Haptics from 'expo-haptics';
 import type { LucideIcon } from 'lucide-react-native';
 import { AlertCircle, Calendar, Check, ChevronDown, Search, X } from 'lucide-react-native';
-import { memo, useState, type ReactNode } from 'react';
+import { memo, useRef, useState, type ComponentRef, type ReactNode } from 'react';
 import { FlatList, Modal, Platform, Pressable, TextInput, View, type DimensionValue, type StyleProp, type TextInputProps, type ViewStyle } from 'react-native';
 import Animated from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -13,8 +13,9 @@ import { formatAmount, parseCents } from '@/lib/money';
 import { FONT_MAP, hairline, lineHeight, listTuning, radius, space, touch, touchMin, type, useColors, useFont, useLayout } from '@/theme';
 
 import { IconButton } from './Button';
+import { useKeyboardInset } from './layout';
 import { usePressScale } from './PressScale';
-import { Txt } from './Txt';
+import { isLatinText, Txt } from './Txt';
 
 // ---------------------------------------------------------------- shared bits
 
@@ -115,8 +116,9 @@ export function Field({ label, optional, error, hint, multiline, hideLabel, disa
           paddingHorizontal: Icon ? 0 : space.lg,
           paddingVertical: multiline ? space.md : 0,
           color: box.color,
-          fontSize: type.bodyLg,
-          fontFamily: font('regular'),
+          // The example text sits a step smaller than what is typed, so it never reads as a filled-in value.
+          fontSize: input.value ? type.bodyLg : type.body,
+          fontFamily: input.value && isLatinText(input.value) ? FONT_MAP.en.regular : font('regular'),
         },
         Icon
           ? { flex: 1, minWidth: 0, paddingRight: space.lg }
@@ -227,10 +229,11 @@ export function AmountField({ label, value, onChangeText, error, autoFocus, opti
             maxFontSizeMultiplier={1.2}
             style={{
               flex: 1,
-              fontSize: compact ? type.bodyLg : type.amount,
+              // Empty, the example amount is a lighter, smaller line, so it cannot be mistaken for a typed amount.
+              fontSize: value ? (compact ? type.bodyLg : type.amount) : compact ? type.body : type.title,
               // Android draws the placeholder off-centre when a lineHeight is set, so the empty "0" sat higher than "Rs".
               lineHeight: value ? (compact ? lineHeight.bodyLg.latin : lineHeight.amount.latin) : undefined,
-              fontFamily: FONT_MAP.en.bold,
+              fontFamily: value ? FONT_MAP.en.bold : FONT_MAP.en.regular,
               color: box.color,
               paddingVertical: compact ? space.sm : space.md,
               fontVariant: ['tabular-nums'],
@@ -699,9 +702,12 @@ export function SheetPanel({ children, maxHeight = '85%', style }: { children: R
 export function BottomSheet({ visible, onClose, maxHeight, children }: { visible: boolean; onClose: () => void; maxHeight?: DimensionValue; children: ReactNode }) {
   const c = useColors();
   const t = useT();
+  // The sheet rides up with the keyboard so the field being typed in (filter amounts, search) stays in sight.
+  const backdrop = useRef<ComponentRef<typeof View>>(null);
+  const keyboard = useKeyboardInset(backdrop);
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose} statusBarTranslucent navigationBarTranslucent>
-      <View style={{ flex: 1, justifyContent: 'flex-end', backgroundColor: c.overlay }}>
+      <View ref={backdrop} collapsable={false} style={{ flex: 1, justifyContent: 'flex-end', backgroundColor: c.overlay, paddingBottom: keyboard }}>
         <Pressable style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0 }} onPress={onClose} accessibilityRole="button" accessibilityLabel={t('close')} />
         <SheetPanel maxHeight={maxHeight}>{children}</SheetPanel>
       </View>
@@ -759,7 +765,7 @@ export function PickerSheet<T extends PickerItem>({
   const t = useT();
   const [q, setQ] = useState('');
   const shown = q ? items.filter((i) => `${i.title} ${i.subtitle ?? ''}`.toLowerCase().includes(q.toLowerCase())) : items;
-  const rows = allowNone ? [{ id: '', title: '—' } as T, ...shown] : shown;
+  const rows = allowNone ? [{ id: '', title: t('notChosen') } as T, ...shown] : shown;
   const hasIcons = items.some((i) => i.icon);
   const separatorInset = hasIcons ? 68 : space.lg;
 
@@ -859,6 +865,91 @@ export function FormSection({ icon: Icon, title, caption, children, first }: { i
         </View>
       </View>
       {children}
+    </View>
+  );
+}
+
+// ---------------------------------------------------------------- DatePickerField
+
+/**
+ * A date that is picked, never typed: a field-sized box with a calendar icon that opens the phone's
+ * date picker. Optional dates show a clear (×) button once set. `value` is 'YYYY-MM-DD' or ''.
+ */
+export function DatePickerField({
+  label,
+  value,
+  onChange,
+  optional,
+  placeholder,
+  error,
+  minDay,
+  maxDay,
+}: {
+  label: string;
+  value: string;
+  onChange: (day: string) => void;
+  optional?: boolean;
+  placeholder?: string;
+  error?: string | null;
+  minDay?: string;
+  maxDay?: string;
+}) {
+  const c = useColors();
+  const t = useT();
+  const [open, setOpen] = useState(false);
+  const box = useBoxColors({ focus: open, error });
+  const toDate = (day: string) => {
+    const [y, m, d] = day.split('-').map(Number);
+    return new Date(y, (m || 1) - 1, d || 1);
+  };
+  const valid = /^\d{4}-\d{2}-\d{2}$/.test(value);
+  const shown = valid ? formatDay(value) : (placeholder ?? t('pickDate'));
+  return (
+    <View style={{ gap: 6 }}>
+      <Label text={label} optional={optional} error={error} />
+      <Ring focus={open}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', minHeight: touch, borderRadius: radius.md, borderWidth: hairline, borderColor: box.borderColor, backgroundColor: box.backgroundColor }}>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={`${label}: ${shown}`}
+            onPress={() => {
+              Haptics.selectionAsync().catch(() => {});
+              setOpen(true);
+            }}
+            style={({ pressed }) => ({
+              flex: 1,
+              minWidth: 0,
+              minHeight: touch,
+              flexDirection: 'row',
+              alignItems: 'center',
+              gap: space.md,
+              paddingLeft: space.lg,
+              paddingRight: valid && optional ? 0 : space.lg,
+              borderRadius: radius.md,
+              backgroundColor: pressed ? c.muted : 'transparent',
+            })}>
+            <Calendar size={20} color={error ? c.danger : valid ? c.primary : c.textMuted} strokeWidth={2} />
+            <Txt variant={valid ? 'bodyLg' : 'body'} numeric={valid} color={valid ? 'text' : 'placeholder'} numberOfLines={1} style={{ flex: 1 }}>
+              {shown}
+            </Txt>
+          </Pressable>
+          {valid && optional ? <IconButton icon={X} label={`${t('clear')}: ${label}`} size={44} tone="textMuted" onPress={() => onChange('')} /> : null}
+        </View>
+      </Ring>
+      <HelperText error={error} />
+      {open ? (
+        <DateTimePicker
+          value={valid ? toDate(value) : minDay ? toDate(minDay) : new Date()}
+          mode="date"
+          minimumDate={minDay ? toDate(minDay) : undefined}
+          maximumDate={maxDay ? toDate(maxDay) : new Date(2100, 0, 1)}
+          onValueChange={(_e, date) => {
+            setOpen(false);
+            onChange(toDay(date));
+          }}
+          onDismiss={() => setOpen(false)}
+        />
+      ) : null}
     </View>
   );
 }

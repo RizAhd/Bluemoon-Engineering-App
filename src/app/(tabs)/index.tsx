@@ -189,7 +189,7 @@ export default function TodayScreen() {
             <Txt eyebrow style={{ flexShrink: 1 }}>
               {t('totalCost')}
             </Txt>
-            {toolsOut > 0 ? <Badge icon={Hammer} tone="warning" label={`${toolsOut} ${t('toolsOut')}`} /> : null}
+            {toolsOut > 0 ? <Badge icon={Hammer} tone="warning" label={t('toolsOutCount', { n: toolsOut })} /> : null}
           </View>
           <Txt variant="amount" weight="bold" numeric adjustsFontSizeToFit minimumFontScale={0.7} numberOfLines={1}>
             {formatLKR(totals.spent)}
@@ -210,6 +210,8 @@ export default function TodayScreen() {
               compact
               label={pid ? t('costSummary') : t('projects')}
               onPress={() => router.push(pid ? `/project/${pid}` : '/(tabs)/projects')}
+              // the 48 dp touch target stays; it just does not add a band of empty card under the link
+              style={{ marginTop: -space.xs, marginBottom: -space.md }}
             />
           </View>
         </Card>

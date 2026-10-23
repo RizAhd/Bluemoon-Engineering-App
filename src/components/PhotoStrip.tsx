@@ -57,6 +57,9 @@ export function PhotoStrip({
     }
   }
 
+  // Read-only and empty: no heading over nothing.
+  if (!editable && !items.length) return null;
+
   return (
     <View style={{ gap: space.sm }}>
       <Txt variant="caption" weight="semibold">

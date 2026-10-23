@@ -3,6 +3,7 @@
  * single write path (version + audit entry for every change), positions, the lock on accepted
  * estimates, status changes, duplicate, delete, and turning an estimate into a project.
  */
+import { COMPANY_DEFAULTS } from '@/lib/company';
 import { all, first, getDb, getSetting, newId, save } from '@/db';
 import {
   applyStandardSchedule,
@@ -137,7 +138,7 @@ describe('loadEstimate', () => {
 });
 
 describe('saveEstimate: create', () => {
-  it('fills in the number, today, 30 days, no terms and draft', () => {
+  it('fills in the number, today, 30 days, the standard terms and draft', () => {
     const id = mk();
     expect(est(id)).toMatchObject({
       number: 'EST-2026-001',
@@ -148,7 +149,7 @@ describe('saveEstimate: create', () => {
       discount_cents: 0,
       tax_bp: 0,
       status: 'draft',
-      terms: null,
+      terms: COMPANY_DEFAULTS.default_terms,
       notes: null,
       project_id: null,
       client_phone: null,

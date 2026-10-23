@@ -1,7 +1,7 @@
 import * as Haptics from 'expo-haptics';
 import { Fingerprint, Lock } from 'lucide-react-native';
 import { useEffect, useRef, useState } from 'react';
-import { Alert, AppState, Modal, Pressable, View } from 'react-native';
+import { ActivityIndicator, Alert, AppState, Modal, Pressable, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { BrandMark } from '@/components/Brand';
@@ -102,7 +102,7 @@ function LockScreen() {
     }
   }
 
-  const message = waiting ? t('pinWait', { s: secondsLeft }) : wrong ? t('pinWrong') : t('enterPin');
+  const message = waiting ? t('pinWait', { s: secondsLeft }) : checking ? t('pinChecking') : wrong ? t('pinWrong') : t('enterPin');
 
   return (
     <Modal visible transparent={false} animationType="fade" statusBarTranslucent navigationBarTranslucent onRequestClose={() => undefined}>
@@ -128,8 +128,8 @@ function LockScreen() {
           <Txt color={wrong || waiting ? 'danger' : 'textMuted'} weight={wrong || waiting ? 'semibold' : 'regular'} center accessibilityLiveRegion="polite" numeric={waiting}>
             {message}
           </Txt>
-          <View style={{ paddingVertical: space.md }}>
-            <PinDots count={pin.length} slots={lock.pinLength} shake={shake} error={wrong} />
+          <View style={{ paddingVertical: space.md, minHeight: 44, justifyContent: 'center' }}>
+            {checking ? <ActivityIndicator color={c.primary} /> : <PinDots count={pin.length} slots={lock.pinLength} shake={shake} error={wrong} />}
           </View>
         </View>
 

@@ -1,5 +1,5 @@
 import { router, Stack, useLocalSearchParams } from 'expo-router';
-import { ArrowDownToLine, ArrowUpFromLine, Camera, CheckCircle2, Hammer, Pencil } from 'lucide-react-native';
+import { ArrowDownToLine, ArrowUpFromLine, Camera, CheckCircle2, Hammer, History, Pencil } from 'lucide-react-native';
 import { memo } from 'react';
 import { Alert, View } from 'react-native';
 
@@ -95,9 +95,9 @@ export default function ToolDetail() {
           inset
           gap={space.lg}
           empty={
-            <Txt variant="caption" color="textMuted">
-              {t('issueTool')}
-            </Txt>
+            <Card>
+              <EmptyState compact icon={History} title={t('noToolHistory')} hint={t('noToolHistoryHint')} />
+            </Card>
           }
           header={
             <View style={{ gap: space.lg }}>
@@ -119,7 +119,8 @@ export default function ToolDetail() {
                       </Txt>
                     ) : null}
                   </View>
-                  <Badge tone={out ? 'warning' : 'success'} label={out ? t('out') : t('inStore')} />
+                  {/* in store, the line itself says so; out, the badge adds the word next to who has it */}
+                  {out ? <Badge tone="warning" label={t('out')} /> : null}
                 </View>
               </Card>
 

@@ -30,7 +30,14 @@ describe('getCompanyProfile', () => {
   });
 
   it('has the bank details empty by default, to be filled in once', () => {
-    expect(getCompanyProfile()).toMatchObject({ bank_name: '', account_no: '', branch: '', default_terms: '', default_valid_days: 30 });
+    expect(getCompanyProfile()).toMatchObject({ bank_name: '', account_no: '', branch: '', default_valid_days: 30 });
+  });
+
+  it('starts with standard quotation terms, so a new estimate is never sent without any', () => {
+    const terms = getCompanyProfile().default_terms;
+    for (const part of ['valid until', 'materials, labour and transport', 'agreed in writing', 'Not included', 'within 7 days of receiving the advance', 'within 7 days of the stage invoice']) {
+      expect(terms).toContain(part);
+    }
   });
 });
 

@@ -28,6 +28,8 @@ export default function CompanyScreen() {
   const [branch, setBranch] = useState(profile.branch);
   const [validDays, setValidDays] = useState(String(profile.default_valid_days));
   const [terms, setTerms] = useState(profile.default_terms);
+  // Back with typed values not saved asks before throwing them away.
+  form.useLeaveGuard([name, regNo, address, phone, email, bank, accountName, accountNo, branch, validDays, terms]);
 
   function onSave() {
     form.submit(() =>

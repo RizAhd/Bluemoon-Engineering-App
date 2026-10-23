@@ -1,5 +1,5 @@
 import { Stack, useLocalSearchParams } from 'expo-router';
-import { Building2, Trash2 } from 'lucide-react-native';
+import { Building2, Store, Trash2 } from 'lucide-react-native';
 import { useMemo, useState } from 'react';
 
 import { PhotoStrip } from '@/components/PhotoStrip';
@@ -47,6 +47,8 @@ function ExpenseFormInner({ existing }: { existing: Expense | null }) {
   const [paidTo, setPaidTo] = useState(existing?.paid_to ?? '');
   const [method, setMethod] = useState<PayMethod>(existing?.method ?? 'cash');
   const [note, setNote] = useState(existing?.note ?? '');
+  // Back with typed values not saved asks before throwing them away.
+  form.useLeaveGuard([projectId, amount, category, day, paidTo, method, note]);
 
   function onSave() {
     form.submit(() =>
@@ -112,7 +114,7 @@ function ExpenseFormInner({ existing }: { existing: Expense | null }) {
           error={form.err('project_id')}
           placeholder={t('chooseProject')}
         />
-        <Field label={t('paidTo')} optional hint={t('paidToHint')} value={paidTo} onChangeText={setPaidTo} />
+        <Field label={t('paidTo')} optional icon={Store} placeholder={t('phPaidTo')} hint={t('paidToHint')} value={paidTo} onChangeText={setPaidTo} />
         <Chips
           label={t('method')}
           value={method}

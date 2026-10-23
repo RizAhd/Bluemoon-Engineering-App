@@ -23,8 +23,11 @@ function resolve(value: string | null): Lang {
   return value === 'si' || value === 'ta' || value === 'en' ? value : deviceLang();
 }
 
+/** With `{ n: 1 }` a `<key>_one` string wins when the dictionary has one ("1 day", not "1 days"). */
 function translate(lang: Lang, key: TKey, vars?: Record<string, string | number>): string {
-  let s: string = dicts[lang][key] ?? en[key] ?? key;
+  const one = vars?.n === 1 ? (`${key}_one` as TKey) : null;
+  const d = dicts[lang] as Record<string, string | undefined>;
+  let s: string = (one ? (d[one] ?? (en as Record<string, string | undefined>)[one]) : undefined) ?? dicts[lang][key] ?? en[key] ?? key;
   if (vars) for (const [k, v] of Object.entries(vars)) s = s.replace(`{${k}}`, String(v));
   return s;
 }

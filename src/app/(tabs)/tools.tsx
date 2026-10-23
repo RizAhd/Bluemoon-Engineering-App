@@ -95,10 +95,13 @@ export default function ToolsScreen() {
         title={t('tools')}
         allowAll
         right={
-          <>
-            <ShareHeaderButton onPress={share.open} />
-            <HeaderAction icon={Plus} label={t('newTool')} onPress={goNew} />
-          </>
+          // With no tools the empty state has the one "New tool" button; nothing to share yet either.
+          rows.length ? (
+            <>
+              <ShareHeaderButton onPress={share.open} />
+              <HeaderAction icon={Plus} label={t('newTool')} onPress={goNew} />
+            </>
+          ) : undefined
         }
       />
       <Screen hairlineTop={false} scroll={false}>

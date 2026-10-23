@@ -111,7 +111,7 @@ export default function TabLayout() {
             minWidth: sizes.fab,
             paddingHorizontal: narrow ? 0 : 20,
             borderRadius: radius.xl,
-            backgroundColor: pressed ? c.primaryPressed : c.primary,
+            backgroundColor: pressed ? c.fillPressed : c.fill,
             alignItems: 'center',
             justifyContent: 'center',
             flexDirection: 'row',
@@ -125,9 +125,9 @@ export default function TabLayout() {
             shadowRadius: 8,
             shadowOffset: { width: 0, height: 4 },
           })}>
-          <Plus size={22} color={c.onPrimary} strokeWidth={2.5} />
+          <Plus size={22} color={c.onFill} strokeWidth={2.5} />
           {narrow ? null : (
-            <Txt weight="semibold" style={{ color: c.onPrimary }} numberOfLines={1} maxFontSizeMultiplier={1.3}>
+            <Txt weight="semibold" style={{ color: c.onFill }} numberOfLines={1} maxFontSizeMultiplier={1.3}>
               {fabLabel}
             </Txt>
           )}

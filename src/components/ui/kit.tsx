@@ -40,7 +40,6 @@ function Ensure({ children }: { children: ReactNode }) {
 
 const TRACK_W = 52;
 const TRACK_H = 32;
-const THUMB = 24;
 
 export interface ToggleProps {
   value: boolean;
@@ -50,7 +49,7 @@ export interface ToggleProps {
   disabled?: boolean;
 }
 
-/** 52 × 32 switch. On = primary track, thumb slides right in 180 ms; off = border track. */
+/** 52 × 32 switch: grey track when off, primary when on, a white thumb that slides across. */
 export function Toggle({ value, onChange, label, disabled }: ToggleProps) {
   return (
     <Ensure>
@@ -65,23 +64,23 @@ export function Toggle({ value, onChange, label, disabled }: ToggleProps) {
         accessibilityLabel={label}
         accessibilityState={{ checked: value, disabled: !!disabled }}
         hitSlop={8}
+        // No padding or border on the track: Tamagui moves the thumb by (track width - thumb width), so anything
+        // inside the track would push the thumb past its end. The 4 dp ring of the thumb is drawn in the track colour instead.
         width={TRACK_W}
         height={TRACK_H}
         borderRadius={TRACK_H / 2}
-        padding={3}
-        borderWidth={1}
-        borderColor={disabled ? 'border' : value ? 'primary' : 'borderStrong'}
-        backgroundColor={disabled ? 'surface2' : value ? 'primary' : 'surface2'}
-        justifyContent="center">
+        padding={0}
+        borderWidth={0}
+        backgroundColor={disabled ? 'border' : value ? 'primary' : 'borderStrong'}>
         <Switch.Thumb
           transition="quick"
-          width={THUMB}
-          height={THUMB}
-          borderRadius={THUMB / 2}
-          backgroundColor={disabled ? 'border' : value ? 'onPrimary' : 'card'}
-          borderWidth={value ? 0 : 1}
-          borderColor="borderStrong"
-          x={value ? TRACK_W - THUMB - 8 : 0}
+          width={TRACK_H}
+          height={TRACK_H}
+          borderRadius={TRACK_H / 2}
+          borderWidth={4}
+          borderColor={disabled ? 'border' : value ? 'primary' : 'borderStrong'}
+          // white in both schemes: it reads on the grey (off) and the blue (on) track alike
+          backgroundColor={(disabled ? '#E4E7EC' : '#FFFFFF') as never}
         />
       </Switch>
     </Ensure>

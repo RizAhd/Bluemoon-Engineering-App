@@ -29,10 +29,18 @@ export const MAGIC = 'BMENC1';
 const KDF_PBKDF2_SHA256 = 1;
 const HEADER = 39;
 const TAG = 16;
-/** One-off work when a backup is made or opened: a few seconds on a slow phone is fine. */
-export const BACKUP_ITERATIONS = 100_000;
-/** Typed every time the app opens, and the hash is kept in the phone's keystore-backed secure storage. */
-export const PIN_ITERATIONS = 20_000;
+/**
+ * One-off work when a backup is made or opened. PBKDF2 runs in JavaScript here (Hermes has no JIT): about
+ * 2,000 rounds a second on a mid-range phone, so 10,000 is a few seconds behind a busy state. Files made with
+ * more rounds still open: the count is read from the file.
+ */
+export const BACKUP_ITERATIONS = 10_000;
+/**
+ * Typed every time the app opens, so it must answer in well under a second. The hash never leaves the phone's
+ * keystore-backed secure storage and wrong PINs are rate-limited, which is what protects a 4-6 digit PIN;
+ * more rounds would only make every unlock slow. Older, slower hashes are replaced after the next right PIN.
+ */
+export const PIN_ITERATIONS = 1_000;
 /** Refuse files that would make the phone work for minutes. */
 const MAX_ITERATIONS = 5_000_000;
 
@@ -43,7 +51,7 @@ export class WrongPasswordError extends Error {
 }
 
 function deriveKey(secret: string, salt: Uint8Array, iterations: number): Promise<Uint8Array> {
-  return pbkdf2Async(sha256, encodeUtf8(secret), salt, { c: iterations, dkLen: 32, asyncTick: 20 });
+  return pbkdf2Async(sha256, encodeUtf8(secret), salt, { c: iterations, dkLen: 32, asyncTick: 50 });
 }
 
 /** True when the bytes start with the envelope's magic. */

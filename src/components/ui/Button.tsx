@@ -40,7 +40,7 @@ export function Button({ label, onPress, kind = 'primary', icon: Icon, loading, 
   const off = !!disabled || !!loading;
 
   const spec = {
-    primary: { bg: c.primary, pressed: c.primaryPressed, fg: c.onPrimary, border: 'transparent', offBg: c.surface2, offBorder: 'transparent' },
+    primary: { bg: c.fill, pressed: c.fillPressed, fg: c.onFill, border: 'transparent', offBg: c.surface2, offBorder: 'transparent' },
     secondary: { bg: c.card, pressed: c.muted, fg: c.text, border: c.borderStrong, offBg: c.card, offBorder: c.border },
     ghost: { bg: 'transparent', pressed: c.primarySoft, fg: c.primary, border: 'transparent', offBg: 'transparent', offBorder: 'transparent' },
     danger: { bg: c.card, pressed: c.dangerSoft, fg: c.danger, border: c.danger, offBg: c.card, offBorder: c.border },

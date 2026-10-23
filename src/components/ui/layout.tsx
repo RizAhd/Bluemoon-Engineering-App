@@ -1,11 +1,12 @@
 import type { LucideIcon } from 'lucide-react-native';
 import { Check, ChevronDown, ChevronRight, ChevronUp } from 'lucide-react-native';
-import type { ReactNode } from 'react';
+import { useEffect, useRef, useState, type ComponentRef, type ReactNode, type RefObject } from 'react';
 import {
-  KeyboardAvoidingView,
+  Keyboard,
   Platform,
   Pressable,
   ScrollView,
+  TextInput,
   View,
   type ScrollViewProps,
   type StyleProp,
@@ -49,10 +50,14 @@ export function Screen({ children, scroll = true, footer, padTop = true, hairlin
   const c = useColors();
   const insets = useSafeAreaInsets();
   const { gutter, column, short } = useLayout();
+  const box = useRef<ComponentRef<typeof View>>(null);
+  const scroller = useRef<ComponentRef<typeof ScrollView>>(null);
+  const keyboard = useKeyboardInset(box, scroll ? scroller : undefined);
   const inlineFooter = !!footer && scroll && short;
   const bottom = paddingBottom ?? (footer ? space.xl : sizes.tabScrollBottom);
   const body = scroll ? (
     <ScrollView
+      ref={scroller}
       keyboardShouldPersistTaps="handled"
       keyboardDismissMode="on-drag"
       {...scrollProps}
@@ -68,16 +73,63 @@ export function Screen({ children, scroll = true, footer, padTop = true, hairlin
     <View style={{ flex: 1 }}>{children}</View>
   );
   return (
-    <KeyboardAvoidingView style={{ flex: 1, backgroundColor: c.bg }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+    <View ref={box} collapsable={false} style={{ flex: 1, backgroundColor: c.bg, paddingBottom: keyboard }}>
       {hairlineTop ? <View style={{ height: hairline, backgroundColor: c.border }} /> : null}
       {body}
-      {footer && !inlineFooter ? <StickyFooter>{footer}</StickyFooter> : null}
-    </KeyboardAvoidingView>
+      {footer && !inlineFooter ? <StickyFooter keyboardOpen={keyboard > 0}>{footer}</StickyFooter> : null}
+    </View>
   );
 }
 
+/**
+ * How far the on-screen keyboard covers `box`, in dp (0 while it is closed). Edge-to-edge Android no longer
+ * resizes the window for the keyboard, so screens lift their own content: the box is measured on the
+ * display and only the part the keyboard really covers is given back as padding (a header above, a tab
+ * bar below or a sheet all come out right). With `scroller`, the focused field is then scrolled into view.
+ */
+export function useKeyboardInset(box: RefObject<ComponentRef<typeof View> | null>, scroller?: RefObject<ComponentRef<typeof ScrollView> | null>): number {
+  const [inset, setInset] = useState(0);
+  useEffect(() => {
+    const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+    const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+    const show = Keyboard.addListener(showEvent, (e) => {
+      const top = e.endCoordinates.screenY;
+      const node = box.current;
+      if (!node?.measureInWindow) return;
+      node.measureInWindow((_x, y, _w, h) => {
+        // measured without the padding this hook already added
+        const covered = Math.max(0, Math.round(y + h - top));
+        setInset((was) => (Math.abs(covered - was) < 1 ? was : covered));
+        if (scroller) requestAnimationFrame(() => revealFocused(scroller.current));
+      });
+    });
+    const hide = Keyboard.addListener(hideEvent, () => setInset(0));
+    return () => {
+      show.remove();
+      hide.remove();
+    };
+  }, [box, scroller]);
+  return inset;
+}
+
+/** Scroll so the focused text field sits in the visible part of `scroller`, with some room under it for its hint. */
+function revealFocused(scroller: ComponentRef<typeof ScrollView> | null) {
+  const field = TextInput.State.currentlyFocusedInput?.() as unknown as ComponentRef<typeof View> | null;
+  const inner = scroller?.getInnerViewNode?.();
+  if (!scroller || !field?.measureLayout || !inner) return;
+  try {
+    field.measureLayout(
+      inner,
+      (_x, y) => scroller.scrollTo({ y: Math.max(0, y - space.xxxl * 2), animated: true }),
+      () => {},
+    );
+  } catch {
+    // a field that is not inside this scroll view: nothing to do
+  }
+}
+
 /** The sticky footer box of a Screen: card bg, 1 dp top border, padding 16, bottom max(insets.bottom, 16), content in the centred column. */
-export function StickyFooter({ children }: { children: ReactNode }) {
+export function StickyFooter({ children, keyboardOpen }: { children: ReactNode; keyboardOpen?: boolean }) {
   const c = useColors();
   const insets = useSafeAreaInsets();
   const { gutter, column } = useLayout();
@@ -85,8 +137,9 @@ export function StickyFooter({ children }: { children: ReactNode }) {
     <View
       style={{
         paddingHorizontal: gutter,
-        paddingTop: space.lg,
-        paddingBottom: Math.max(insets.bottom, space.lg),
+        paddingTop: keyboardOpen ? space.sm : space.lg,
+        // above the keyboard the gesture area is not under the footer, so no safe-area padding there
+        paddingBottom: keyboardOpen ? space.sm : Math.max(insets.bottom, space.lg),
         borderTopWidth: hairline,
         borderTopColor: c.border,
         backgroundColor: c.card,

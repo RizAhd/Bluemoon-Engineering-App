@@ -14,7 +14,7 @@ import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
 import * as SystemUI from 'expo-system-ui';
 import { useEffect, useState } from 'react';
-import { View } from 'react-native';
+import { Appearance, View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
@@ -29,7 +29,7 @@ import { TamaguiScope } from '@/components/ui/kit';
 import { getDb, getSetting } from '@/db';
 import { useT } from '@/i18n';
 import { installGlobalErrorHandlers, reportError, setFatalErrorListener } from '@/lib/errors';
-import { motion, type, useColors, useFont, useScheme } from '@/theme';
+import { motion, type, useColors, useFont, useScheme, useThemePref } from '@/theme';
 
 SplashScreen.preventAutoHideAsync().catch(() => {});
 installGlobalErrorHandlers();
@@ -143,6 +143,7 @@ export default function RootLayout() {
 
 function AppStack() {
   const scheme = useScheme();
+  const pref = useThemePref();
   const c = useColors();
   const font = useFont();
   const t = useT();
@@ -152,6 +153,15 @@ function AppStack() {
     // Android navigation bar follows the tab bar; the status bar follows the scheme.
     SystemUI.setBackgroundColorAsync(c.tabBar).catch(() => {});
   }, [c.tabBar]);
+
+  useEffect(() => {
+    // Native dialogs, pickers and the keyboard follow the app's own Light / Dark choice, not only the phone's.
+    try {
+      Appearance.setColorScheme?.(pref === 'system' ? 'unspecified' : pref);
+    } catch {
+      // older runtimes: they keep following the phone
+    }
+  }, [pref]);
 
   return (
     <ThemeProvider

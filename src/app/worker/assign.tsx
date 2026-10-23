@@ -1,5 +1,5 @@
 import { router, Stack, useLocalSearchParams } from 'expo-router';
-import { Building2, HardHat, Trash2 } from 'lucide-react-native';
+import { Building2, HardHat, Phone, Trash2, UserRound } from 'lucide-react-native';
 import { useState } from 'react';
 import { Alert } from 'react-native';
 
@@ -83,6 +83,8 @@ function Inner({ projectId, workerId }: { projectId: string; workerId?: string }
   const [trade, setTrade] = useState('');
   const [phone, setPhone] = useState('');
   const [rate, setRate] = useState(edit?.rate_cents ? centsToInput(edit.rate_cents) : '');
+  // Back with typed values not saved asks before throwing them away.
+  form.useLeaveGuard([picked, name, trade, phone, rate]);
   const [rateError, setRateError] = useState<string | null>(null);
 
   const editing = !!workerId;
@@ -213,6 +215,9 @@ function Inner({ projectId, workerId }: { projectId: string; workerId?: string }
             ) : null}
             <Field
               label={t('name')}
+              icon={UserRound}
+              placeholder={t('phWorkerName')}
+              autoCorrect={false}
               value={name}
               onChangeText={(s) => {
                 setName(s);
@@ -224,7 +229,7 @@ function Inner({ projectId, workerId }: { projectId: string; workerId?: string }
               returnKeyType="next"
             />
             <Field label={t('trade')} optional placeholder={t('tradeHint')} value={trade} onChangeText={setTrade} returnKeyType="next" />
-            <Field label={t('phone')} optional value={phone} onChangeText={setPhone} keyboardType="phone-pad" />
+            <Field label={t('phone')} optional icon={Phone} placeholder={t('phPhone')} value={phone} onChangeText={setPhone} keyboardType="phone-pad" />
           </>
         ) : null}
 
@@ -237,7 +242,7 @@ function Inner({ projectId, workerId }: { projectId: string; workerId?: string }
             form.clearError('rate');
           }}
           error={rateError ?? form.err('rate')}
-          hint={t('perProject')}
+          hint={t('perProjectRateHint')}
         />
 
         {editing ? <Button kind="danger" icon={Trash2} label={t('removeFromProject')} onPress={onRemove} full /> : null}

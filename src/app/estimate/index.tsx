@@ -16,6 +16,7 @@ import { ESTIMATE_SORTS, useEstimateList, type EstimateSort } from '@/hooks/data
 import { useT } from '@/i18n';
 import { formatDay } from '@/lib/dates';
 import { formatLKR } from '@/lib/money';
+import { withoutTitle } from '@/lib/names';
 import { space } from '@/theme';
 
 type Filter = 'all' | EstimateStatus;
@@ -123,7 +124,7 @@ const EstimateRow = memo(function EstimateRow({ e }: { e: EstimateListRow }) {
   const t = useT();
   return (
     <ListRow
-      avatar={e.client_name}
+      avatar={withoutTitle(e.client_name)}
       title={e.client_name}
       subtitle={e.title}
       value={formatLKR(e.total_cents)}

@@ -54,7 +54,7 @@ smokeScreen('Today tab (demo data)', () => <TodayScreen />, {
         SCHOOL,
         CULVERT,
         tr('noProjectSelected'),
-        `2 ${tr('toolsOut')}`,
+        tr('toolsOutCount', { n: 2 }),
       ],
     },
     {

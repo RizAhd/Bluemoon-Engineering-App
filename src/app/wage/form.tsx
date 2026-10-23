@@ -47,6 +47,8 @@ function Inner({ existing, params }: { existing: WageEntry | null; params: { wor
     existing ? centsToInput(existing.amount_cents) : params.amount ? centsToInput(Number(params.amount)) : '',
   );
   const [note, setNote] = useState(existing?.note ?? '');
+  // Back with typed values not saved asks before throwing them away.
+  form.useLeaveGuard([workerId, projectId, day, days, amount, note]);
 
   // Completed projects are not offered for new work, but the one this form opened on always is,
   // so the field shows what will be saved.
@@ -181,9 +183,11 @@ function Inner({ existing, params }: { existing: WageEntry | null; params: { wor
           }}
           hint={kind === 'work' && rate > 0 && nDays > 0 ? `${days} × ${formatLKR(rate)}` : undefined}
           error={form.err('amount')}
+          // an advance or a payment is just an amount: the keypad opens at once (work starts from days × rate)
+          autoFocus={form.isNew && kind !== 'work'}
         />
         <DateField label={t('date')} value={day} onChange={setDay} maxDay={today()} error={form.err('day')} />
-        <Field label={t('note')} optional value={note} onChangeText={setNote} />
+        <Field label={t('note')} optional placeholder={t('phWageNote')} value={note} onChangeText={setNote} />
       </Screen>
     </>
   );

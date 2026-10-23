@@ -1,5 +1,5 @@
 import { router, Stack, useLocalSearchParams } from 'expo-router';
-import { Hash, Trash2 } from 'lucide-react-native';
+import { Hammer, Hash, Trash2 } from 'lucide-react-native';
 import { useState } from 'react';
 import { Alert } from 'react-native';
 
@@ -29,6 +29,8 @@ function Inner({ existing }: { existing: Tool | null }) {
   const [name, setName] = useState(existing?.name ?? '');
   const [code, setCode] = useState(existing?.code ?? '');
   const [notes, setNotes] = useState(existing?.notes ?? '');
+  // Back with typed values not saved asks before throwing them away.
+  form.useLeaveGuard([name, code, notes]);
 
   const save = () => form.submit(() => saveTool({ id: form.id, name, code, notes }));
 
@@ -68,6 +70,8 @@ function Inner({ existing }: { existing: Tool | null }) {
       <Screen footer={<Button label={t('save')} onPress={save} full />} gap={20}>
         <Field
           label={t('toolName')}
+          icon={Hammer}
+          placeholder={t('phToolName')}
           value={name}
           onChangeText={(s) => {
             setName(s);

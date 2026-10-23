@@ -1,6 +1,6 @@
 import * as Sharing from 'expo-sharing';
 import { router, Stack, useLocalSearchParams } from 'expo-router';
-import { FileOutput, FileText, Hammer, HardHat, NotebookPen, Pencil, Star, UserPlus } from 'lucide-react-native';
+import { CalendarRange, FileOutput, FileText, Hammer, HardHat, NotebookPen, Pencil, Star, UserPlus } from 'lucide-react-native';
 import { useState } from 'react';
 import { Pressable, View } from 'react-native';
 
@@ -66,6 +66,7 @@ function LinkedEstimate({ estimate }: { estimate: Estimate }) {
 export default function ProjectDetail() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const t = useT();
+  const c = useColors();
   const project = useProject(id);
   const current = useCurrentProjectId();
   const cost = useFirst<ProjectCost>('SELECT * FROM v_project_cost WHERE project_id = ?', [id ?? '']);
@@ -164,6 +165,14 @@ export default function ProjectDetail() {
               {[pr.client, pr.location].filter(Boolean).join(' · ')}
             </Txt>
           ) : null}
+          {pr.start_date || pr.end_date ? (
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.xs }}>
+              <CalendarRange size={14} color={c.textMuted} strokeWidth={2} />
+              <Txt variant="caption" color="textMuted" numeric>
+                {[pr.start_date ? formatDay(pr.start_date) : '…', pr.end_date ? formatDay(pr.end_date) : '…'].join(' – ')}
+              </Txt>
+            </View>
+          ) : null}
           {current !== pr.id ? (
             <Button
               kind="ghost"
@@ -196,12 +205,15 @@ export default function ProjectDetail() {
           ) : null}
         </Card>
 
+        {/* two even tiles; what was paid of the labour sits under it, not alone on a third row */}
         <Tiles>
           <Stat label={t('materialsAndOther')} value={formatLKR(cost.expense_cents)} onPress={() => work('/(tabs)/expenses')} />
-          <Stat label={t('labour')} value={formatLKR(cost.labour_cents)} onPress={() => work('/(tabs)/workers')} />
-        </Tiles>
-        <Tiles>
-          <Stat label={t('labourPaid')} value={formatLKR(cost.labour_paid_cents)} />
+          <Stat
+            label={t('labour')}
+            value={formatLKR(cost.labour_cents)}
+            caption={`${t('labourPaid')} ${formatLKR(cost.labour_paid_cents)}`}
+            onPress={() => work('/(tabs)/workers')}
+          />
         </Tiles>
 
         {estimates.length ? (
@@ -231,9 +243,9 @@ export default function ProjectDetail() {
                     <Badge tone="danger" label={t('weOwe')} />
                   ) : w.balance_cents < 0 ? (
                     <Badge tone="warning" label={t('workerOwes')} />
-                  ) : (
+                  ) : w.earned_cents > 0 || w.paid_cents > 0 ? (
                     <Badge tone="success" label={t('settled')} />
-                  )
+                  ) : undefined
                 }
                 onPress={() => router.push(`/worker/${w.worker_id}`)}
               />

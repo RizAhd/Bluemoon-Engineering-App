@@ -51,6 +51,8 @@ function EstimateFormInner({ existing, openMore }: { existing: Estimate | null; 
   const [notes, setNotes] = useState(existing?.notes ?? '');
   // New estimates start with the standard terms from Company and bank details.
   const [terms, setTerms] = useState(existing ? (existing.terms ?? '') : company.default_terms);
+  // Back with typed values not saved asks before throwing them away.
+  form.useLeaveGuard([client, title, day, validDays, number, phone, address, location, discount, tax, notes, terms]);
 
   // Creating leaves by replacing this screen with the new estimate, which the shared form plumbing cannot do: it always goes back.
   const creating = useRef(false);
@@ -105,6 +107,7 @@ function EstimateFormInner({ existing, openMore }: { existing: Estimate | null; 
     }
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
     toast(t('savedOnPhone'));
+    form.allowLeave();
     router.replace(`/estimate/${id}`);
   }
 
@@ -129,6 +132,7 @@ function EstimateFormInner({ existing, openMore }: { existing: Estimate | null; 
             error={form.err('client_name')}
             autoFocus={form.isNew}
             autoCapitalize="words"
+            autoCorrect={false}
             returnKeyType="next"
           />
           <Field

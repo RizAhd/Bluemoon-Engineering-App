@@ -15,7 +15,15 @@ export const COMPANY_DEFAULTS: CompanyProfile = {
   account_name: 'Bluemoon Engineering (Pvt) Ltd',
   account_no: '',
   branch: '',
-  default_terms: '',
+  // Standard terms of a Sri Lankan building quotation; copied into each new estimate and editable there.
+  default_terms: [
+    '1. This estimate is valid until the date shown above.',
+    '2. Rates include materials, labour and transport unless stated otherwise.',
+    '3. Any change to the work is charged at the rates above, or as agreed in writing before it is done.',
+    '4. Not included: authority approvals, water and electricity connections, and any work not listed above.',
+    '5. Work starts within 7 days of receiving the advance payment.',
+    '6. Each stage payment is due within 7 days of the stage invoice.',
+  ].join('\n'),
   default_valid_days: 30,
 };
 

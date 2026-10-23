@@ -79,6 +79,7 @@ jest.mock('expo-router', () => {
     setParams: jest.fn(),
     canGoBack: jest.fn(() => true),
   };
+  const navigation = { addListener: jest.fn(() => () => {}), dispatch: jest.fn(), goBack: jest.fn() };
 
   /** The real Stack.Screen only sets header options; here the header is drawn so tests can see and press it. */
   function StackScreen({ name, options }: { name?: string; options?: { title?: string; headerRight?: () => React.ReactNode } }) {
@@ -101,6 +102,8 @@ jest.mock('expo-router', () => {
     __esModule: true,
     router,
     useRouter: () => router,
+    // Screens listen for "beforeRemove" (the unsaved-changes question); nothing leaves in a test, so nothing fires.
+    useNavigation: () => navigation,
     useLocalSearchParams: () => params(),
     useGlobalSearchParams: () => params(),
     usePathname: () => state()?.pathname ?? '/',

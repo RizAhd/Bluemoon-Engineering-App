@@ -417,14 +417,19 @@ export default function TodaysWorkScreen() {
                   <SummaryCell label={t('wages')} value={formatLKR(totalWages)} />
                 </View>
                 <View style={{ flexDirection: 'row', gap: space.lg }}>
-                  <SummaryCell label={t('wagesPaidToday')} value={formatLKR(totalPaid)} tone="success" />
+                  <SummaryCell label={t('wagesPaidToday')} value={formatLKR(totalPaid)} tone={totalPaid > 0 ? 'success' : 'text'} />
                   <SummaryCell label={t('toPayToday')} value={formatLKR(totalToPay)} tone={totalToPay > 0 ? 'danger' : 'text'} />
                 </View>
               </View>
             )}
             {payAllTotal > 0 && !kbOpen ? (
               <>
-                <Button label={`${t('payAll')} · ${formatLKR(payAllTotal)}`} onPress={onPayAll} loading={busy} />
+                {/* "Pay all" only when this pays everything still owed; a typed part payment says just what it pays */}
+                <Button
+                  label={payAllTotal >= totalToPay ? `${t('payAll')} · ${formatLKR(payAllTotal)}` : t('payAmount', { amount: formatLKR(payAllTotal) })}
+                  onPress={onPayAll}
+                  loading={busy}
+                />
                 <Button compact kind="ghost" label={t('saveSheet')} onPress={onSave} disabled={busy} />
               </>
             ) : (

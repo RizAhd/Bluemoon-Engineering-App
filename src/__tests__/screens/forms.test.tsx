@@ -17,7 +17,7 @@ import AssignWorkerScreen from '@/app/worker/assign';
 import WorkerForm from '@/app/worker/form';
 import { setSetting } from '@/db';
 import { assignWorker, saveProject, saveTool } from '@/db/repo';
-import { addDays, today } from '@/lib/dates';
+import { addDays, formatDay, today } from '@/lib/dates';
 import { resetDb } from '@/test-utils';
 import {
   CULVERT,
@@ -48,7 +48,8 @@ smokeScreen('project/form', () => <ProjectForm />, {
         tr('contractValue'),
         tr('startDate'),
         tr('endDate'),
-        '2026-10-21',
+        tr('pickDate'),
+        tr('phProjectName'),
         tr('status'),
         tr('status_active'),
         tr('status_on_hold'),
@@ -69,7 +70,7 @@ smokeScreen('project/form', () => <ProjectForm />, {
         'Zonal Education Office, Welimada',
         'Welimada',
         /^18,500,000$/m, // the contract value box, shown with separators
-        addDays(today(), -60),
+        formatDay(addDays(today(), -60)), // the start date, picked and shown as a day
         tr('save'),
       ],
       check: (tr) => expect(screen.getAllByLabelText(tr('delete'))).toHaveLength(1),
@@ -77,7 +78,7 @@ smokeScreen('project/form', () => <ProjectForm />, {
     {
       name: 'edit a completed project',
       prepare: () => setRouteParams({ id: projectId(DRAIN) }),
-      expect: (tr) => [DRAIN, /^2,750,000$/m, addDays(today(), -40), tr('status_completed')],
+      expect: (tr) => [DRAIN, /^2,750,000$/m, formatDay(addDays(today(), -40)), tr('status_completed')],
     },
     {
       name: 'an id that does not exist renders nothing',
@@ -188,7 +189,7 @@ smokeScreen('worker/assign', () => <AssignWorkerScreen />, {
     {
       name: 'pick an existing worker for a project',
       prepare: () => setRouteParams({ projectId: projectId(SCHOOL) }),
-      expect: (tr) => [tr('addWorkerToProject'), `${tr('project')}: ${SCHOOL}`, tr('existingWorker'), tr('newWorker'), tr('worker'), tr('rateOnThisProject'), tr('perProject'), tr('save')],
+      expect: (tr) => [tr('addWorkerToProject'), `${tr('project')}: ${SCHOOL}`, tr('existingWorker'), tr('newWorker'), tr('worker'), tr('rateOnThisProject'), tr('perProjectRateHint'), tr('save')],
     },
     {
       name: 'uses the current project when none is passed',
@@ -310,7 +311,7 @@ smokeScreen('tool/move', () => <ToolMove />, {
         setCurrent(projectId(SCHOOL));
         setRouteParams({ toolId: toolId('Vibrator poker'), kind: 'issue' });
       },
-      expect: (tr) => [tr('issueTool'), 'Vibrator poker · BM-T-003', SCHOOL, tr('takenBy'), tr('someoneElse'), tr('date'), tr('condition'), tr('conditionHint'), tr('photoProof'), tr('note'), tr('save')],
+      expect: (tr) => [tr('issueTool'), 'Vibrator poker · BM-T-003', SCHOOL, tr('takenBy'), tr('otherPersonName'), tr('otherPersonHint'), tr('date'), tr('condition'), tr('conditionHint'), tr('photoProof'), tr('note'), tr('save')],
     },
     {
       name: 'issue with nothing chosen',
@@ -321,12 +322,14 @@ smokeScreen('tool/move', () => <ToolMove />, {
       name: 'return a tool that is out: it follows the tool to its worker and project',
       prepare: () => setRouteParams({ toolId: toolId('Hilti drill'), kind: 'return' }),
       expect: (tr) => [tr('returnTool'), 'Hilti drill · BM-T-001', 'Sunil Fernando', SCHOOL, tr('optional')],
-      absent: (tr) => [tr('someoneElse')],
+      absent: (tr) => [tr('otherPersonName')],
     },
     {
       name: 'a past movement is shown read-only with its photos',
       prepare: () => setRouteParams({ id: movementId('Hilti drill') }),
-      expect: (tr) => [tr('issue'), 'Hilti drill · BM-T-001', 'Sunil Fernando', SCHOOL, 'Good', tr('takenBy'), tr('condition'), tr('photoProof')],
+      expect: (tr) => [tr('issue'), 'Hilti drill · BM-T-001', 'Sunil Fernando', SCHOOL, 'Good', tr('takenBy'), tr('condition')],
+      // read-only with no photos taken: no empty "Photo proof" heading
+      absent: (tr) => [tr('photoProof')],
       check: (tr) => expect(screen.getAllByLabelText(tr('delete'))).toHaveLength(1),
     },
     {

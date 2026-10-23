@@ -47,6 +47,8 @@ function Inner({ existing, projectParam }: { existing: SiteNote | null; projectP
   const [day, setDay] = useState(existing?.day ?? today());
   const [body, setBody] = useState(existing?.body ?? '');
   const [weather, setWeather] = useState<Weather | null>((existing?.weather as Weather) ?? null);
+  // Back with typed values not saved asks before throwing them away.
+  form.useLeaveGuard([projectId, day, body, weather]);
 
   // A saved note is shared as it is saved (its own message: project, day, weather, the whole text).
   const share = useShareSheet({ kind: 'note', id: existing?.id ?? null });

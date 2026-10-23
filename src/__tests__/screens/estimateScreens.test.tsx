@@ -261,11 +261,12 @@ smokeScreen('estimate/[id] (hub, empty estimate)', () => <EstimateHub />, {
         tr('useStandardSchedule'),
         tr('addStage'),
         'Rs 0',
-        tr('noTerms'),
+        tr('terms'),
+        '1. This estimate is valid until the date shown above.', // a new estimate starts with the standard terms
         tr('accountName'), // only the filled bank line (the account name is pre-filled) and a way to add the rest
         tr('addBankDetails'),
       ],
-      absent: (tr) => [tr('estimateLockedCaption'), tr('bankName'), tr('accountNo')],
+      absent: (tr) => [tr('estimateLockedCaption'), tr('bankName'), tr('accountNo'), tr('noTerms')],
     },
   ],
 });

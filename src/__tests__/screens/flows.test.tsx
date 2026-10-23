@@ -18,7 +18,7 @@ import AssignWorkerScreen from '@/app/worker/assign';
 import WorkerForm from '@/app/worker/form';
 import { getSetting, setSetting } from '@/db';
 import { assignWorker, saveProject, saveTool, saveWorker } from '@/db/repo';
-import { today } from '@/lib/dates';
+import { formatDay, today } from '@/lib/dates';
 import { mockAlert, queuePhotos, resetDb, seedDemo, setCameraPermission } from '@/test-utils';
 import {
   CULVERT,
@@ -165,12 +165,15 @@ describe('project form', () => {
     expect(rows('SELECT 1 FROM projects')).toHaveLength(0);
 
     await typeInto(E('contractValue'), '2,500,000');
-    await typeInto(E('startDate'), '2026-13-45');
-    await pressLabel(E('save'));
-    expect(visibleText()).toContain(E('errDate'));
-    expect(rows('SELECT 1 FROM projects')).toHaveLength(0);
-
-    await typeInto(E('startDate'), '2026-10-01');
+    // dates are picked, never typed: the start date opens the phone's calendar, and the end date may not be before it
+    await pressLabel(`${E('startDate')}: ${E('pickDate')}`);
+    const picker = screen.container.queryAll((n) => n.type === 'DateTimePicker')[0];
+    await act(async () => picker.props.onValueChange({}, new Date(2026, 9, 1)));
+    expect(hasLabel(`${E('startDate')}: ${formatDay('2026-10-01')}`)).toBe(true);
+    await pressLabel(`${E('endDate')}: ${E('pickDate')}`);
+    const endPicker = screen.container.queryAll((n) => n.type === 'DateTimePicker')[0];
+    expect(endPicker.props.minimumDate).toEqual(new Date(2026, 9, 1));
+    await act(async () => endPicker.props.onDismiss());
     await typeInto(E('client'), 'RDA Matale');
     await pressLabel(E('status_on_hold'));
     await pressLabel(E('save'));
@@ -480,7 +483,7 @@ describe('tool form and issue / return', () => {
     setCurrent(project);
     setRouteParams({ toolId: tool, kind: 'issue' });
     await renderScreen(<ToolMove />);
-    await typeInto(E('someoneElse'), 'Neighbour Nimal');
+    await typeInto(E('otherPersonName'), 'Neighbour Nimal');
     await pressLabel(E('save'));
     expect(rows('SELECT taken_by, worker_id FROM tool_movements')).toEqual([{ taken_by: 'Neighbour Nimal', worker_id: null }]);
   });

@@ -1,7 +1,8 @@
 import * as Haptics from 'expo-haptics';
 import { router, Stack, useLocalSearchParams } from 'expo-router';
 import { useState } from 'react';
-import { Alert, View } from 'react-native';
+import { LockKeyhole } from 'lucide-react-native';
+import { ActivityIndicator, Alert, View } from 'react-native';
 
 import { PinDots, PinPad } from '@/components/PinPad';
 import { Button } from '@/components/ui/Button';
@@ -11,7 +12,7 @@ import { Txt } from '@/components/ui/Txt';
 import { useT, type TKey } from '@/i18n';
 import { biometricAvailable, clearPin, setBiometric, setPin, tryPin, useLockState } from '@/lib/appLock';
 import { showError } from '@/lib/errors';
-import { space } from '@/theme';
+import { radius, space, useColors } from '@/theme';
 
 type Mode = 'set' | 'change' | 'off';
 type Step = 'current' | 'new' | 'confirm';
@@ -24,6 +25,7 @@ type Step = 'current' | 'new' | 'confirm';
  */
 export default function PinScreen() {
   const t = useT();
+  const c = useColors();
   const params = useLocalSearchParams<{ mode?: string }>();
   const mode: Mode = params.mode === 'change' || params.mode === 'off' ? params.mode : 'set';
   const lock = useLockState();
@@ -120,19 +122,26 @@ export default function PinScreen() {
     <>
       <Stack.Screen options={{ title: t(mode === 'off' ? 'appLockTurnOff' : mode === 'change' ? 'changePin' : 'appLock') }} />
       <Screen
+        contentStyle={{ flexGrow: 1 }}
         footer={
           step === 'new' ? <Button label={t('next')} onPress={next} disabled={value.length < 4 || busy} full /> : undefined
         }>
-        <View style={{ alignItems: 'center', gap: space.md, paddingTop: space.lg }}>
+        {/* what to do at the top, the keys low in the thumb zone */}
+        <View style={{ alignItems: 'center', gap: space.md, paddingTop: space.xl }}>
+          <View style={{ width: 56, height: 56, borderRadius: radius.lg, backgroundColor: c.primarySoft, alignItems: 'center', justifyContent: 'center' }}>
+            <LockKeyhole size={28} color={c.primary} strokeWidth={2} />
+          </View>
           <Txt variant="title" weight="semibold" center>
             {t(title)}
           </Txt>
           <Txt color={error ? 'danger' : 'textMuted'} weight={error ? 'semibold' : 'regular'} center accessibilityLiveRegion="polite">
-            {error ? t(error) : step === 'new' ? t('pinRule') : ' '}
+            {busy ? t('pinChecking') : error ? t(error) : step === 'new' ? t('pinRule') : ' '}
           </Txt>
-          <View style={{ paddingVertical: space.md }}>
-            <PinDots count={value.length} slots={slots} shake={shake} error={!!error} />
+          <View style={{ paddingVertical: space.md, minHeight: 44, justifyContent: 'center' }}>
+            {busy ? <ActivityIndicator color={c.primary} /> : <PinDots count={value.length} slots={slots} shake={shake} error={!!error} />}
           </View>
+        </View>
+        <View style={{ marginTop: 'auto', paddingTop: space.xl, paddingBottom: space.lg }}>
           <PinPad value={value} onChange={onChange} maxLength={slots ?? 6} disabled={busy} />
         </View>
       </Screen>

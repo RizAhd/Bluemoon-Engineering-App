@@ -19,6 +19,24 @@ export interface TxtProps extends TextProps {
   eyebrow?: boolean;
 }
 
+/** Sinhala (U+0D80–0DFF) or Tamil (U+0B80–0BFF) letters. */
+const COMPLEX = /[඀-෿஀-௿]/;
+
+/**
+ * Text with no Sinhala or Tamil letters in it (a name, "Lanka Hardware", "23 Oct 2026") is drawn in the Latin font
+ * even in the Sinhala / Tamil UI: the Sinhala font's Latin letters have far wider word spaces.
+ */
+export function isLatinText(text: string): boolean {
+  return !COMPLEX.test(text);
+}
+
+function latinOnly(children: TextProps['children']): boolean {
+  if (typeof children === 'string') return !COMPLEX.test(children);
+  if (typeof children === 'number') return true;
+  if (Array.isArray(children)) return children.every((ch) => typeof ch === 'number' || (typeof ch === 'string' && !COMPLEX.test(ch)));
+  return false;
+}
+
 export function Txt({ variant, weight, color, numeric, center, eyebrow, style, maxFontSizeMultiplier, ...rest }: TxtProps) {
   const c = useColors();
   const font = useFont();
@@ -27,7 +45,8 @@ export function Txt({ variant, weight, color, numeric, center, eyebrow, style, m
   const w: Weight = weight ?? (eyebrow ? 'semibold' : 'regular');
   const col: keyof Palette = color ?? (eyebrow ? 'textMuted' : 'text');
   const size = type[v];
-  const latin = numeric || lang === 'en';
+  const latinRun = !numeric && lang !== 'en' && latinOnly(rest.children);
+  const latin = numeric || lang === 'en' || latinRun;
   const lh = lineHeight[v][latin ? 'latin' : 'complex'];
   const upper = eyebrow && lang === 'en';
   return (
@@ -39,7 +58,7 @@ export function Txt({ variant, weight, color, numeric, center, eyebrow, style, m
           color: c[col],
           fontSize: size,
           lineHeight: lh,
-          fontFamily: numeric ? FONT_MAP.en[w] : font(w),
+          fontFamily: numeric || latinRun ? FONT_MAP.en[w] : font(w),
           fontVariant: numeric ? ['tabular-nums'] : undefined,
           textAlign: center ? 'center' : undefined,
           textTransform: upper ? 'uppercase' : undefined,

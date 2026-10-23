@@ -89,6 +89,8 @@ function Inner({ params }: { params: Params }) {
   const [day, setDay] = useState(today());
   const [condition, setCondition] = useState('');
   const [note, setNote] = useState('');
+  // Back with typed values not saved asks before throwing them away.
+  form.useLeaveGuard([toolId, projectId, workerId, takenBy, day, condition, note]);
 
   // Returning: when the tool changes, follow where it actually is (the list already carries its status).
   function pickTool(id: string | null) {
@@ -186,7 +188,7 @@ function Inner({ params }: { params: Params }) {
         />
         {!workerId ? (
           <Field
-            label={t('someoneElse')}
+            label={t('otherPersonName')}
             optional
             value={takenBy}
             onChangeText={(s) => {
@@ -194,14 +196,14 @@ function Inner({ params }: { params: Params }) {
               form.clearError('taken_by');
             }}
             error={form.err('taken_by')}
-            hint={t('takenBy')}
+            hint={t('otherPersonHint')}
           />
         ) : null}
         <DateField label={t('date')} value={day} onChange={setDay} maxDay={today()} error={form.err('day')} />
         <Field label={t('condition')} optional placeholder={t('conditionHint')} value={condition} onChangeText={setCondition} />
         {/* PhotoStrip wraps capture in try/catch + showError (camera-off → settings / gallery). */}
         <PhotoStrip ownerTable="tool_movements" ownerId={form.id} label={t('photoProof')} />
-        <Field label={t('note')} optional value={note} onChangeText={setNote} multiline />
+        <Field label={t('note')} optional placeholder={t('phToolMoveNote')} value={note} onChangeText={setNote} multiline />
       </Screen>
     </>
   );

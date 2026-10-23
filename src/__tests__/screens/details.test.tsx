@@ -215,12 +215,15 @@ smokeScreen('worker/[id]', () => <WorkerDetail />, {
     {
       name: 'inactive worker with no work',
       prepare: () => setRouteParams({ id: workerId('Dormant Dan') }),
-      expect: (tr) => ['Dormant Dan', tr('inactive'), tr('settled'), tr('markActive'), `${tr('recordWork')} · ${tr('giveAdvance')} · ${tr('payWages')}`],
+      expect: (tr) => ['Dormant Dan', tr('inactive'), tr('markActive'), `${tr('recordWork')} · ${tr('giveAdvance')} · ${tr('payWages')}`],
+      // nothing was ever earned or paid, so there is nothing to call "settled"
+      absent: (tr) => [tr('settled')],
     },
     {
       name: 'new worker without a rate, trade or phone',
       prepare: () => setRouteParams({ id: workerId('Fresh Face') }),
-      expect: (tr) => ['Fresh Face', tr('settled'), 'Rs 0'],
+      expect: (tr) => ['Fresh Face', 'Rs 0'],
+      absent: (tr) => [tr('settled')],
     },
     {
       name: 'an id that does not exist shows a way out',
@@ -283,12 +286,12 @@ smokeScreen('tool/[id]', () => <ToolDetail />, {
         SCHOOL,
         tr('out'),
         tr('returnTool'),
-        tr('photoProof'),
         tr('history'),
         `${tr('issue')} · `,
         'Sunil Fernando · ' + SCHOOL + ' · Good',
       ],
-      absent: (tr) => [tr('issueTool')],
+      // the tool itself has no photos, so no empty "Photo proof" heading
+      absent: (tr) => [tr('issueTool'), tr('photoProof'), tr('inStore')],
     },
     {
       name: 'tool back in the store with a return in its history',
