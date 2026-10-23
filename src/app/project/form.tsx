@@ -1,7 +1,7 @@
 import { router, Stack, useLocalSearchParams } from 'expo-router';
 import { useState } from 'react';
 import { Alert, View } from 'react-native';
-import { Trash2 } from 'lucide-react-native';
+import { MapPin, Trash2, UserRound } from 'lucide-react-native';
 
 import { Button, HeaderButton } from '@/components/ui/Button';
 import { toast } from '@/components/ui/feedback';
@@ -101,8 +101,8 @@ function Inner({ existing }: { existing: Project | null }) {
           autoFocus={form.isNew}
           returnKeyType="next"
         />
-        <Field label={t('client')} optional value={client} onChangeText={setClient} returnKeyType="next" />
-        <Field label={t('location')} optional value={location} onChangeText={setLocation} returnKeyType="next" />
+        <Field label={t('client')} optional icon={UserRound} placeholder={t('phClientName')} value={client} onChangeText={setClient} returnKeyType="next" />
+        <Field label={t('location')} optional icon={MapPin} placeholder={t('phLocation')} value={location} onChangeText={setLocation} returnKeyType="next" />
         <AmountField
           label={t('contractValue')}
           optional
@@ -149,7 +149,7 @@ function Inner({ existing }: { existing: Project | null }) {
           onChange={setStatus}
           options={(['active', 'on_hold', 'completed'] as const).map((s) => ({ value: s, label: t(`status_${s}`) }))}
         />
-        <Field label={t('notes')} optional value={notes} onChangeText={setNotes} multiline />
+        <Field label={t('notes')} optional placeholder={t('phProjectNotes')} value={notes} onChangeText={setNotes} multiline />
       </Screen>
     </>
   );

@@ -1,6 +1,6 @@
 import * as Haptics from 'expo-haptics';
 import { router, Stack, useLocalSearchParams } from 'expo-router';
-import { Trash2 } from 'lucide-react-native';
+import { Calculator, Ruler, Trash2 } from 'lucide-react-native';
 import { useRef, useState } from 'react';
 import { Alert, View } from 'react-native';
 
@@ -18,10 +18,13 @@ import { useT } from '@/i18n';
 import { formatQty, lineAmount, MAX_QTY_MILLI, MAX_RATE_CENTS, parseQty } from '@/lib/estimate';
 import { showError } from '@/lib/errors';
 import { centsToInput, formatLKR, parseCents } from '@/lib/money';
-import { space } from '@/theme';
+import { space, useColors } from '@/theme';
 
-/** The usual units of a bill of quantities. They are printed as typed, so they stay the same in every app language. */
-const UNITS = ['m²', 'm³', 'm', 'nos', 'kg', 'ls', 'day'];
+/**
+ * The units of a Sri Lankan bill of quantities, most used first (cube = 100 cu.ft, L.S. = lump sum).
+ * They are printed as typed, so they stay the same in every app language.
+ */
+const UNITS = ['sq.m', 'cu.m', 'sq.ft', 'cube', 'lin.m', 'rft', 'nos', 'kg', 'L.S.', 'perch', 'day'];
 
 type Params = { estimateId?: string; id?: string };
 
@@ -44,6 +47,7 @@ function discountAfter(estimateId: string, change: () => void): number | null {
 
 function ItemForm({ estimateId, existing }: { estimateId: string; existing: EstimateItem | null }) {
   const t = useT();
+  const c = useColors();
   const form = useRecordForm('estimate_items', existing?.id);
   const [description, setDescription] = useState(existing?.description ?? '');
   const [unit, setUnit] = useState(existing?.unit ?? '');
@@ -140,7 +144,9 @@ function ItemForm({ estimateId, existing }: { estimateId: string; existing: Esti
         <Field
           key={`description-${round}`}
           label={t('description')}
+          placeholder={t('phDescription')}
           hint={t('descriptionHint')}
+          multiline
           value={description}
           onChangeText={(s) => {
             setDescription(s);
@@ -157,6 +163,8 @@ function ItemForm({ estimateId, existing }: { estimateId: string; existing: Esti
           value={unit}
           onChangeText={setUnit}
           numeric
+          placeholder="sq.m"
+          hint={t('unitHint')}
           returnKeyType="next"
         />
         <Field
@@ -167,11 +175,16 @@ function ItemForm({ estimateId, existing }: { estimateId: string; existing: Esti
             form.clearError('qty');
           }}
           error={form.err('qty')}
+          icon={Ruler}
+          placeholder={t('phQty')}
+          hint={t('qtyHint')}
           keyboardType="decimal-pad"
           returnKeyType="next"
         />
         <AmountField
           label={t('rate')}
+          placeholder={t('phRate')}
+          hint={unit.trim() ? t('rateHintUnit', { unit: unit.trim() }) : undefined}
           value={rate}
           onChangeText={(s) => {
             setRate(s);
@@ -181,10 +194,19 @@ function ItemForm({ estimateId, existing }: { estimateId: string; existing: Esti
           returnKeyType="done"
           onSubmitEditing={onSave}
         />
-        <Card>
-          <View style={{ flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between', gap: space.md }}>
-            <Txt eyebrow>{t('amount')}</Txt>
-            <Txt variant="title" weight="bold" numeric adjustsFontSizeToFit minimumFontScale={0.7} numberOfLines={1} style={{ flexShrink: 1 }}>
+        {/* the line as it will print: the working, then the amount */}
+        <Card tone={amount == null ? undefined : 'primarySoft'}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.md }}>
+            <Calculator size={22} color={amount == null ? c.textMuted : c.primary} strokeWidth={2} />
+            <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
+              <Txt eyebrow>{t('amount')}</Txt>
+              {amount != null && qtyMilli != null && rateCents != null ? (
+                <Txt variant="caption" color="textMuted" numeric numberOfLines={1}>
+                  {`${[formatQty(qtyMilli), unit.trim()].filter(Boolean).join(' ')} × ${formatLKR(rateCents)}`}
+                </Txt>
+              ) : null}
+            </View>
+            <Txt variant="title" weight="bold" numeric adjustsFontSizeToFit minimumFontScale={0.7} numberOfLines={1} style={{ flexShrink: 1, color: amount == null ? c.textMuted : c.primary }}>
               {amount == null ? '—' : formatLKR(amount)}
             </Txt>
           </View>

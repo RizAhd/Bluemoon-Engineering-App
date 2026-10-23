@@ -123,7 +123,7 @@ const EstimateRow = memo(function EstimateRow({ e }: { e: EstimateListRow }) {
   const t = useT();
   return (
     <ListRow
-      icon={FileText}
+      avatar={e.client_name}
       title={e.client_name}
       subtitle={e.title}
       value={formatLKR(e.total_cents)}

@@ -48,7 +48,9 @@ describe('estimate (quotation) strings', () => {
   });
 
   it.each(['si', 'ta'] as const)('%s has its own words for every one of them (none is an English copy)', (lang) => {
-    for (const key of estimateKeys) expect([key, dicts[lang][key] !== dicts.en[key]]).toEqual([key, true]);
+    // A bare example number ("25,000" in an amount box) reads the same in every language.
+    const words = estimateKeys.filter((key) => !/^[\d.,\s]+$/.test(dicts.en[key]));
+    for (const key of words) expect([key, dicts[lang][key] !== dicts.en[key]]).toEqual([key, true]);
   });
 
   it.each(['si', 'ta'] as const)('%s writes the stage names the standard schedule makes in English, as the screen shows them', (lang) => {

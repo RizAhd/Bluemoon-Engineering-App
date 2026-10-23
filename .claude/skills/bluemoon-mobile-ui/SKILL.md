@@ -79,3 +79,12 @@ Full detail in [motion.md](motion.md). The short version:
 - [ ] Targets ≥ 48; labels for screen readers on icon-only buttons.
 - [ ] Nothing animates that the user triggers dozens of times a day, beyond the press scale.
 - [ ] `npm run check` and `npm test` pass.
+
+## Tamagui (hybrid)
+
+Tamagui 3 is installed for behaviour, not for a second look. Its themes are our palette (`src/theme/tamagui.config.ts`), so inside a Tamagui prop write the palette key without `$` (`backgroundColor="primary"`); everywhere else keep using `useColors()` and the tokens.
+
+- Use the wrappers in `src/components/ui/kit.tsx`: `Toggle` / `ToggleRow` (on/off settings, never a tick box for a setting), `ProgressBar` (how much of something is done), `Initials` (people and clients; neutral by default). `ListRow avatar={name}` already uses `Initials`.
+- Add a new Tamagui component the same way: wrap it in kit.tsx with our tokens, 48 dp hit area, a screen-reader label, and `Ensure` so it renders without the root provider (tests).
+- Animations run on the React Native driver (`@tamagui/config/animations-rn`); Jest mocks it away (`src/test-utils/setup.ts`).
+- Long forms are split with `FormSection` (icon, title, caption). Every text field gets a concrete example as its `placeholder` ("e.g. 077 123 4567") and, where it helps, a one-line hint; a field's `icon` names what goes in it.

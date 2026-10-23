@@ -1,21 +1,58 @@
 import * as Application from 'expo-application';
 import { router } from 'expo-router';
-import { Bug, Database, FileDown, FileText, Landmark, NotebookPen, ShieldCheck } from 'lucide-react-native';
+import { Bug, Database, FileDown, FileText, Fingerprint, KeyRound, Landmark, LockKeyhole, NotebookPen, ShieldCheck } from 'lucide-react-native';
+import { useEffect, useState } from 'react';
 import { Alert, View } from 'react-native';
 
 import { BrandLogo } from '@/components/Brand';
 import { Chips } from '@/components/ui/form';
+import { ToggleRow } from '@/components/ui/kit';
 import { ListCard, ListRow, Screen, SectionTitle } from '@/components/ui/layout';
 import { Txt } from '@/components/ui/Txt';
 import { deviceId, setSetting, useSetting } from '@/db';
 import { LANG_NAMES, useLang, useT, type Lang } from '@/i18n';
 import { daysSince, formatDay, toDay, today } from '@/lib/dates';
 import { seedDemoData } from '@/lib/demoData';
+import { biometricAvailable, loadLock, setBiometric, useLockState } from '@/lib/appLock';
 import { guard } from '@/lib/errors';
 import { space, useThemePref, type ThemePref } from '@/theme';
 
 function timeOf(iso: string) {
   return new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+}
+
+/** App lock: the switch opens the PIN screen (to set one, or to confirm turning it off). */
+function SecuritySection() {
+  const t = useT();
+  const lock = useLockState();
+  const [bioHere, setBioHere] = useState(false);
+  useEffect(() => {
+    let alive = true;
+    void loadLock(false);
+    void biometricAvailable().then((v) => alive && setBioHere(v));
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  return (
+    <>
+      <SectionTitle title={t('security')} />
+      <ListCard inset>
+        <ToggleRow
+          icon={LockKeyhole}
+          title={t('appLock')}
+          hint={t(lock.enabled ? 'appLockOnHint' : 'appLockOffHint')}
+          value={lock.enabled}
+          onChange={(v) => router.push(`/pin?mode=${v ? 'set' : 'off'}`)}
+        />
+        {lock.enabled && bioHere ? (
+          <ToggleRow icon={Fingerprint} title={t('useFingerprint')} value={lock.bio} onChange={(v) => void guard('lock.bio', t, () => setBiometric(v))} />
+        ) : null}
+        {lock.enabled ? <ListRow icon={KeyRound} title={t('changePin')} onPress={() => router.push('/pin?mode=change')} /> : null}
+      </ListCard>
+    </>
+  );
 }
 
 /** Settings & more (stack screen, opened from the menu button in every tab header). */
@@ -62,6 +99,8 @@ export default function MoreScreen() {
           />
         ) : null}
       </ListCard>
+
+      <SecuritySection />
 
       <SectionTitle title={t('language')} />
       <Chips<Lang>

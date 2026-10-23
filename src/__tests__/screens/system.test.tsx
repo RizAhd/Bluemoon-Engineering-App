@@ -266,10 +266,13 @@ describe('backup: actions', () => {
 
   it('the automatic backup switch is saved', async () => {
     await renderScreen(<BackupScreen />);
-    const toggle = screen.getByLabelText(E('autoBackup'));
-    await fireEvent(toggle, 'valueChange', false);
+    // The whole row is the switch (ToggleRow): its name starts with the title.
+    const toggle = () => screen.getByRole('switch', { name: new RegExp(`^${E('autoBackup')}`) });
+    expect(toggle().props.accessibilityState).toMatchObject({ checked: true });
+    await fireEvent.press(toggle());
     expect(getSetting('auto_backup')).toBe('off');
-    await fireEvent(toggle, 'valueChange', true);
+    expect(toggle().props.accessibilityState).toMatchObject({ checked: false });
+    await fireEvent.press(toggle());
     expect(getSetting('auto_backup')).toBe('on');
   });
 

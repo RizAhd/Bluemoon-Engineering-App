@@ -1,11 +1,12 @@
 import * as Haptics from 'expo-haptics';
 import { router, Stack, useLocalSearchParams } from 'expo-router';
+import { CalendarClock, FileText, HardHat, Hash, Home, MapPin, Percent, Phone, ScrollText, SlidersHorizontal, StickyNote, UserRound } from 'lucide-react-native';
 import { useRef, useState } from 'react';
 
 import { PresetField } from '@/components/EstimateBits';
 import { Button } from '@/components/ui/Button';
 import { toast } from '@/components/ui/feedback';
-import { AmountField, DateField, Field } from '@/components/ui/form';
+import { AmountField, DateField, Field, FormSection } from '@/components/ui/form';
 import { ListCard, ListRow, Screen } from '@/components/ui/layout';
 import { saveEstimate, suggestEstimateNumber, type EstimateInput } from '@/db/estimates';
 import type { Estimate } from '@/db/types';
@@ -13,8 +14,8 @@ import { useEstimate } from '@/hooks/data';
 import { useRecordForm } from '@/hooks/form';
 import { useT } from '@/i18n';
 import { useCompanyProfile } from '@/lib/company';
-import { today } from '@/lib/dates';
-import { formatPercent, parsePercent } from '@/lib/estimate';
+import { formatDay, today } from '@/lib/dates';
+import { formatPercent, parsePercent, validUntil } from '@/lib/estimate';
 import { centsToInput, parseCents } from '@/lib/money';
 
 /** How long a quote usually stands, as one-tap choices. The text field takes any number of days from 1 to 365. */
@@ -107,61 +108,102 @@ function EstimateFormInner({ existing, openMore }: { existing: Estimate | null; 
     router.replace(`/estimate/${id}`);
   }
 
+  // The date the prices stop standing, shown under the validity while it is typed.
+  const daysNow = /^\d+$/.test(validDays.trim()) ? Number(validDays.trim()) : null;
+  const untilHint = daysNow && daysNow >= 1 && daysNow <= 365 ? t('validUntilOn', { date: formatDay(validUntil(day, daysNow)) }) : undefined;
+
   return (
     <>
       <Stack.Screen options={{ title: t(form.isNew ? 'newEstimate' : 'editEstimate') }} />
       <Screen footer={<Button label={t('save')} onPress={onSave} full />}>
-        <Field
-          label={t('clientName')}
-          value={client}
-          onChangeText={(s) => {
-            setClient(s);
-            form.clearError('client_name');
-          }}
-          error={form.err('client_name')}
-          autoFocus={form.isNew}
-          returnKeyType="next"
-        />
-        <Field
-          label={t('estimateTitle')}
-          hint={t('estimateTitleHint')}
-          value={title}
-          onChangeText={(s) => {
-            setTitle(s);
-            form.clearError('title');
-          }}
-          error={form.err('title')}
-          returnKeyType="next"
-        />
-        <DateField
-          label={t('date')}
-          value={day}
-          onChange={(d) => {
-            setDay(d);
-            form.clearError('issue_day');
-          }}
-          error={form.err('issue_day')}
-        />
-        <PresetField
-          label={t('validFor')}
-          fieldLabel={t('numberOfDays')}
-          presets={VALID_PRESETS.map((n) => ({ value: String(n), label: t('daysCount', { n }) }))}
-          value={validDays}
-          onChangeText={(s) => {
-            setValidDays(s);
-            form.clearError('valid_days');
-          }}
-          error={form.err('valid_days')}
-          keyboardType="number-pad"
-        />
+        <FormSection first icon={UserRound} title={t('secClient')} caption={t('secClientCaption')}>
+          <Field
+            label={t('clientName')}
+            icon={UserRound}
+            placeholder={t('phClientName')}
+            value={client}
+            onChangeText={(s) => {
+              setClient(s);
+              form.clearError('client_name');
+            }}
+            error={form.err('client_name')}
+            autoFocus={form.isNew}
+            autoCapitalize="words"
+            returnKeyType="next"
+          />
+          <Field
+            label={t('phone')}
+            optional
+            icon={Phone}
+            placeholder={t('phPhone')}
+            hint={t('phoneWhatsAppHint')}
+            value={phone}
+            onChangeText={setPhone}
+            keyboardType="phone-pad"
+            returnKeyType="next"
+          />
+          <Field label={t('address')} optional icon={Home} placeholder={t('phAddress')} value={address} onChangeText={setAddress} multiline />
+        </FormSection>
+
+        <FormSection icon={HardHat} title={t('secJob')} caption={t('secJobCaption')}>
+          <Field
+            label={t('estimateTitle')}
+            icon={FileText}
+            placeholder={t('phEstimateTitle')}
+            hint={t('estimateTitleHint')}
+            value={title}
+            onChangeText={(s) => {
+              setTitle(s);
+              form.clearError('title');
+            }}
+            error={form.err('title')}
+            returnKeyType="next"
+          />
+          <Field
+            label={t('location')}
+            optional
+            icon={MapPin}
+            placeholder={t('phLocation')}
+            hint={t('locationHint')}
+            value={location}
+            onChangeText={setLocation}
+            returnKeyType="next"
+          />
+        </FormSection>
+
+        <FormSection icon={CalendarClock} title={t('secDates')} caption={t('secDatesCaption')}>
+          <DateField
+            label={t('date')}
+            value={day}
+            onChange={(d) => {
+              setDay(d);
+              form.clearError('issue_day');
+            }}
+            error={form.err('issue_day')}
+          />
+          <PresetField
+            label={t('validFor')}
+            fieldLabel={t('numberOfDays')}
+            presets={VALID_PRESETS.map((n) => ({ value: String(n), label: t('daysCount', { n }) }))}
+            value={validDays}
+            onChangeText={(s) => {
+              setValidDays(s);
+              form.clearError('valid_days');
+            }}
+            error={form.err('valid_days')}
+            hint={untilHint}
+            keyboardType="number-pad"
+          />
+        </FormSection>
 
         <ListCard>
-          <ListRow title={t('moreDetails')} expanded={moreOpen} onPress={() => setMore(!moreOpen)} />
+          <ListRow icon={SlidersHorizontal} title={t('moreDetails')} subtitle={t('moreDetailsSummary')} expanded={moreOpen} onPress={() => setMore(!moreOpen)} />
         </ListCard>
         {moreOpen ? (
           <>
             <Field
               label={t('estimateNumber')}
+              icon={Hash}
               value={number}
               onChangeText={(s) => {
                 setNumber(s);
@@ -171,12 +213,10 @@ function EstimateFormInner({ existing, openMore }: { existing: Estimate | null; 
               autoCapitalize="characters"
               returnKeyType="next"
             />
-            <Field label={t('phone')} optional value={phone} onChangeText={setPhone} keyboardType="phone-pad" returnKeyType="next" />
-            <Field label={t('address')} optional value={address} onChangeText={setAddress} multiline />
-            <Field label={t('location')} optional value={location} onChangeText={setLocation} returnKeyType="next" />
             <AmountField
               label={t('discount')}
               optional
+              placeholder={t('phDiscount')}
               value={discount}
               onChangeText={(s) => {
                 setDiscount(s);
@@ -189,6 +229,8 @@ function EstimateFormInner({ existing, openMore }: { existing: Estimate | null; 
             <Field
               label={t('taxPercent')}
               optional
+              icon={Percent}
+              placeholder={t('phTax')}
               value={tax}
               onChangeText={(s) => {
                 setTax(s);
@@ -199,8 +241,8 @@ function EstimateFormInner({ existing, openMore }: { existing: Estimate | null; 
               keyboardType="decimal-pad"
               disabled={locked}
             />
-            <Field label={t('notes')} optional value={notes} onChangeText={setNotes} multiline />
-            <Field label={t('terms')} optional value={terms} onChangeText={setTerms} multiline />
+            <Field label={t('notes')} optional icon={StickyNote} placeholder={t('phNotes')} hint={t('notesHint')} value={notes} onChangeText={setNotes} multiline />
+            <Field label={t('terms')} optional icon={ScrollText} value={terms} onChangeText={setTerms} multiline />
           </>
         ) : null}
       </Screen>

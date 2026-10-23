@@ -83,49 +83,70 @@ export interface FieldProps extends TextInputProps {
   /** Renders without the label (for inline use). */
   hideLabel?: boolean;
   disabled?: boolean;
+  /** A leading icon inside the box (phone, map pin…); it turns primary while the field has focus. */
+  icon?: LucideIcon;
 }
 
-export function Field({ label, optional, error, hint, multiline, hideLabel, disabled, editable, style, ...input }: FieldProps) {
+export function Field({ label, optional, error, hint, multiline, hideLabel, disabled, editable, style, icon: Icon, ...input }: FieldProps) {
   const c = useColors();
   const font = useFont();
   const [focus, setFocus] = useState(false);
   const off = disabled || editable === false;
   const box = useBoxColors({ focus, error, disabled: off });
+  const textInput = (
+    <TextInput
+      {...input}
+      editable={!off}
+      accessibilityLabel={label}
+      multiline={multiline}
+      placeholderTextColor={c.placeholder}
+      onFocus={(e) => {
+        setFocus(true);
+        input.onFocus?.(e);
+      }}
+      onBlur={(e) => {
+        setFocus(false);
+        input.onBlur?.(e);
+      }}
+      style={[
+        {
+          minHeight: multiline ? 112 : touch,
+          textAlignVertical: multiline ? 'top' : 'center',
+          paddingHorizontal: Icon ? 0 : space.lg,
+          paddingVertical: multiline ? space.md : 0,
+          color: box.color,
+          fontSize: type.bodyLg,
+          fontFamily: font('regular'),
+        },
+        Icon
+          ? { flex: 1, minWidth: 0, paddingRight: space.lg }
+          : { borderRadius: radius.md, borderWidth: hairline, borderColor: box.borderColor, backgroundColor: box.backgroundColor },
+        style,
+      ]}
+    />
+  );
   return (
     <View style={{ gap: 6 }}>
       {hideLabel ? null : <Label text={label} optional={optional} error={error} />}
       <Ring focus={focus && !off}>
-        <TextInput
-          {...input}
-          editable={!off}
-          accessibilityLabel={label}
-          multiline={multiline}
-          placeholderTextColor={c.placeholder}
-          onFocus={(e) => {
-            setFocus(true);
-            input.onFocus?.(e);
-          }}
-          onBlur={(e) => {
-            setFocus(false);
-            input.onBlur?.(e);
-          }}
-          style={[
-            {
-              minHeight: multiline ? 112 : touch,
-              textAlignVertical: multiline ? 'top' : 'center',
-              paddingHorizontal: space.lg,
-              paddingVertical: multiline ? space.md : 0,
+        {Icon ? (
+          <View
+            style={{
+              flexDirection: 'row',
+              alignItems: multiline ? 'flex-start' : 'center',
+              gap: space.md,
+              paddingLeft: space.lg,
               borderRadius: radius.md,
               borderWidth: hairline,
               borderColor: box.borderColor,
               backgroundColor: box.backgroundColor,
-              color: box.color,
-              fontSize: type.bodyLg,
-              fontFamily: font('regular'),
-            },
-            style,
-          ]}
-        />
+            }}>
+            <Icon size={20} color={error ? c.danger : focus ? c.primary : c.textMuted} strokeWidth={2} style={multiline ? { marginTop: space.md + 1 } : undefined} />
+            {textInput}
+          </View>
+        ) : (
+          textInput
+        )}
       </Ring>
       <HelperText error={error} hint={hint} />
     </View>
@@ -152,10 +173,12 @@ export interface AmountFieldProps {
   onBlur?: () => void;
   onSubmitEditing?: () => void;
   returnKeyType?: TextInputProps['returnKeyType'];
+  /** Example amount shown while empty ("6,500"); "0" when not given. */
+  placeholder?: string;
 }
 
 /** Large amount input with an Rs prefix and a number keypad. Re-formats with thousands separators on blur. */
-export function AmountField({ label, value, onChangeText, error, autoFocus, optional, hint, hintTone, compact, disabled, onBlur, onSubmitEditing, returnKeyType }: AmountFieldProps) {
+export function AmountField({ label, value, onChangeText, error, autoFocus, optional, hint, hintTone, compact, disabled, onBlur, onSubmitEditing, returnKeyType, placeholder = '0' }: AmountFieldProps) {
   const c = useColors();
   const t = useT();
   const [focus, setFocus] = useState(false);
@@ -190,7 +213,7 @@ export function AmountField({ label, value, onChangeText, error, autoFocus, opti
             onChangeText={(s) => onChangeText(s.replace(/[^0-9.,]/g, ''))}
             keyboardType="decimal-pad"
             autoFocus={autoFocus}
-            placeholder="0"
+            placeholder={placeholder}
             placeholderTextColor={c.placeholder}
             returnKeyType={returnKeyType}
             onSubmitEditing={onSubmitEditing}
@@ -809,3 +832,33 @@ const PickerRow = memo(function PickerRow({ item, on, onPick }: { item: PickerIt
     </Pressable>
   );
 });
+
+// ---------------------------------------------------------------- FormSection
+
+/**
+ * A titled block of a long form ("Client", "Job and site"): a 36 dp icon tile, the title as a header,
+ * a one-line caption, then the fields 16 dp apart. Sections sit 24 dp apart inside the Screen.
+ */
+export function FormSection({ icon: Icon, title, caption, children, first }: { icon: LucideIcon; title: string; caption?: string; children: ReactNode; first?: boolean }) {
+  const c = useColors();
+  return (
+    <View style={{ gap: space.lg, marginTop: first ? 0 : space.sm }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.md }}>
+        <View style={{ width: 36, height: 36, borderRadius: radius.md, backgroundColor: c.primarySoft, alignItems: 'center', justifyContent: 'center' }}>
+          <Icon size={18} color={c.primary} strokeWidth={2.2} />
+        </View>
+        <View style={{ flex: 1, minWidth: 0 }}>
+          <Txt variant="bodyLg" weight="semibold" accessibilityRole="header" numberOfLines={2}>
+            {title}
+          </Txt>
+          {caption ? (
+            <Txt variant="caption" color="textMuted" numberOfLines={2}>
+              {caption}
+            </Txt>
+          ) : null}
+        </View>
+      </View>
+      {children}
+    </View>
+  );
+}

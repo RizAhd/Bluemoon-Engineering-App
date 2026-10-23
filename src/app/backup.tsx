@@ -1,21 +1,23 @@
 import { File } from 'expo-file-system';
 import { useLocalSearchParams } from 'expo-router';
 import * as Sharing from 'expo-sharing';
-import { AlertTriangle, CheckCircle2, CloudUpload, History, RotateCcw, Share2, ShieldCheck } from 'lucide-react-native';
+import { AlertTriangle, CheckCircle2, CloudUpload, History, KeyRound, LockKeyhole, RotateCcw, Share2, ShieldCheck } from 'lucide-react-native';
 import { useEffect, useMemo, useState } from 'react';
-import { Alert, Switch, View } from 'react-native';
+import { Alert, View } from 'react-native';
 
 import { Button, IconButton } from '@/components/ui/Button';
 import { toast } from '@/components/ui/feedback';
+import { BottomSheet, Field, SheetHeader } from '@/components/ui/form';
+import { ToggleRow } from '@/components/ui/kit';
 import { Card, ListCard, ListRow, Screen, SectionTitle } from '@/components/ui/layout';
 import { Txt } from '@/components/ui/Txt';
 import { setSetting, useFirst, useSetting } from '@/db';
 import { useT, type TKey } from '@/i18n';
 import { KEEP_DAYS, listAutoBackups, runAutoBackupIfDue } from '@/lib/autoBackup';
-import { BackupError, makeBackup, markBackedUp, restorePart } from '@/lib/backup';
+import { BackupError, ENCRYPTED_EXT, makeBackup, markBackedUp, MIN_PASSWORD, restorePart } from '@/lib/backup';
 import { daysSince, formatDay, toDay, today } from '@/lib/dates';
 import { guard, reportError, showError } from '@/lib/errors';
-import { space, touchMin, useColors } from '@/theme';
+import { space, useColors } from '@/theme';
 
 function timeOf(iso: string) {
   return new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
@@ -26,6 +28,22 @@ function kb(bytes: number) {
 }
 
 type Busy = 'auto' | 'full' | 'restore' | null;
+
+/** The message for a backup file that could not be read or restored. */
+function backupErrorKey(e: BackupError): TKey {
+  switch (e.message) {
+    case 'newer':
+      return 'pdfNewer';
+    case 'damaged':
+      return 'pdfDamaged';
+    case 'wrong-password':
+      return 'wrongPassword';
+    case 'password-short':
+      return 'passwordTooShort';
+    default:
+      return 'backupInvalid';
+  }
+}
 
 export default function BackupScreen() {
   const t = useT();
@@ -51,21 +69,37 @@ export default function BackupScreen() {
   const [busy, setBusy] = useState<Busy>(null);
   const [progress, setProgress] = useState<string | null>(null);
   const [result, setResult] = useState<string | null>(null);
+  // Optional password for the full backup.
+  const [protect, setProtect] = useState(false);
+  const [password, setPassword] = useState('');
+  const [password2, setPassword2] = useState('');
+  const [pwError, setPwError] = useState<TKey | null>(null);
+  // An encrypted backup being restored waits here for its password.
+  const [unlocking, setUnlocking] = useState<string[] | null>(null);
+  const [restorePw, setRestorePw] = useState('');
+  const [restorePwError, setRestorePwError] = useState<TKey | null>(null);
   // The file list is not in the database; re-read it whenever a backup finishes.
   // eslint-disable-next-line react-hooks/exhaustive-deps -- autoAt changes when a new backup file is written
   const autos = useMemo(() => listAutoBackups(), [autoAt]);
 
   async function fullBackup() {
     if (busy) return;
+    if (protect) {
+      if (password.length < MIN_PASSWORD) return setPwError('passwordTooShort');
+      if (password !== password2) return setPwError('passwordMismatch');
+    }
+    setPwError(null);
     setResult(null);
     setBusy('full');
-    setProgress(t('backupMaking'));
+    const making = t(protect ? 'backupMakingLocked' : 'backupMaking');
+    setProgress(making);
     await guard('backup.full', t, async () => {
-      const files = await makeBackup((part, parts) => setProgress(parts > 1 ? `${t('backupMaking')} ${part}/${parts}` : t('backupMaking')));
+      const files = await makeBackup((part, parts) => setProgress(parts > 1 ? `${making} ${part}/${parts}` : making), protect ? password : undefined);
       setProgress(null);
       toast(t('backupReady'));
       for (const f of files) {
-        await Sharing.shareAsync(f.uri, { mimeType: 'application/zip', dialogTitle: t('backup') });
+        const locked = f.uri.endsWith(ENCRYPTED_EXT);
+        await Sharing.shareAsync(f.uri, { mimeType: locked ? 'application/octet-stream' : 'application/zip', dialogTitle: t('backup') });
       }
       markBackedUp();
     });
@@ -101,7 +135,7 @@ export default function BackupScreen() {
     ]);
   }
 
-  async function restore(uris: string[]) {
+  async function restore(uris: string[], pw?: string) {
     setBusy('restore');
     setResult(null);
     let added = 0;
@@ -109,20 +143,28 @@ export default function BackupScreen() {
     let photos = 0;
     try {
       for (const uri of uris) {
-        const r = await restorePart(uri);
+        const r = await restorePart(uri, pw);
         added += r.plan.counts.inserted;
         updated += r.plan.counts.updated;
         photos += r.photos;
       }
+      setUnlocking(null);
+      setRestorePw('');
       setResult(`${t('restoreDone')}: +${added} ${t('newRecords')} · ${updated} ${t('updatedRecords')} · ${photos} ${t('receiptPhotos')}`);
       toast(t('restoreDone'));
     } catch (e) {
-      if (e instanceof BackupError) {
+      if (e instanceof BackupError && (e.message === 'needs-password' || e.message === 'wrong-password')) {
+        // Ask for the password and start again from the first file: a restore only merges, so nothing is counted twice.
+        setRestorePw('');
+        setRestorePwError(e.message === 'wrong-password' ? 'wrongPassword' : null);
+        setUnlocking(uris);
+      } else if (e instanceof BackupError) {
         // The file itself is the problem: say which way, in the user's words.
-        const key: TKey = e.message === 'newer' ? 'pdfNewer' : e.message === 'damaged' ? 'pdfDamaged' : 'backupInvalid';
         reportError(e, 'backup.restore', { uris: uris.length });
-        Alert.alert(t('errorTitle'), t(key));
+        setUnlocking(null);
+        Alert.alert(t('errorTitle'), t(backupErrorKey(e)));
       } else {
+        setUnlocking(null);
         showError(e, 'backup.restore', t, { uris: uris.length });
       }
     } finally {
@@ -168,23 +210,15 @@ export default function BackupScreen() {
         <Button kind="secondary" compact icon={ShieldCheck} label={t('runNow')} onPress={() => void runNow()} loading={busy === 'auto'} disabled={!!busy && busy !== 'auto'} />
       </Card>
 
-      <Card>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.md, minHeight: touchMin }}>
-          <Txt weight="semibold" style={{ flex: 1 }}>
-            {t('autoBackup')}
-          </Txt>
-          <Switch
-            value={autoOn}
-            onValueChange={(v) => void guard('backup.toggle', t, () => setSetting('auto_backup', v ? 'on' : 'off'))}
-            accessibilityLabel={t('autoBackup')}
-            trackColor={{ true: c.primary, false: c.borderStrong }}
-            thumbColor={c.card}
-          />
-        </View>
-        <Txt variant="caption" color="textMuted">
-          {t('autoBackupHint', { days: KEEP_DAYS })}
-        </Txt>
-      </Card>
+      <ListCard>
+        <ToggleRow
+          icon={History}
+          title={t('autoBackup')}
+          hint={t('autoBackupHint', { days: KEEP_DAYS })}
+          value={autoOn}
+          onChange={(v) => void guard('backup.toggle', t, () => setSetting('auto_backup', v ? 'on' : 'off'))}
+        />
+      </ListCard>
 
       {autos.length ? (
         <View style={{ gap: space.sm }}>
@@ -227,6 +261,57 @@ export default function BackupScreen() {
         </Txt>
       </Card>
 
+      <ListCard>
+        <ToggleRow
+          icon={LockKeyhole}
+          title={t('protectWithPassword')}
+          hint={protect ? undefined : t('protectWithPasswordHint')}
+          value={protect}
+          onChange={(v) => {
+            setProtect(v);
+            setPwError(null);
+          }}
+        />
+      </ListCard>
+      {protect ? (
+        <Card>
+          <Field
+            label={t('password')}
+            value={password}
+            onChangeText={(s) => {
+              setPassword(s);
+              setPwError(null);
+            }}
+            placeholder={t('passwordPlaceholder')}
+            secureTextEntry
+            autoCapitalize="none"
+            autoCorrect={false}
+            textContentType="newPassword"
+            error={pwError === 'passwordTooShort' ? t(pwError) : null}
+            returnKeyType="next"
+          />
+          <Field
+            label={t('passwordAgain')}
+            value={password2}
+            onChangeText={(s) => {
+              setPassword2(s);
+              setPwError(null);
+            }}
+            secureTextEntry
+            autoCapitalize="none"
+            autoCorrect={false}
+            textContentType="newPassword"
+            error={pwError === 'passwordMismatch' ? t(pwError) : null}
+          />
+          <View style={{ flexDirection: 'row', gap: space.sm, alignItems: 'flex-start' }}>
+            <AlertTriangle size={16} color={c.warning} strokeWidth={2.4} style={{ marginTop: 2 }} />
+            <Txt variant="caption" color="warning" weight="semibold" style={{ flex: 1 }}>
+              {t('passwordForgetWarning')}
+            </Txt>
+          </View>
+        </Card>
+      ) : null}
+
       {/* Restore */}
       <SectionTitle title={t('restore')} />
       <Txt variant="caption" color="textMuted">
@@ -243,6 +328,38 @@ export default function BackupScreen() {
           </View>
         </Card>
       ) : null}
+      <BottomSheet visible={!!unlocking} onClose={() => (busy ? undefined : setUnlocking(null))}>
+        <SheetHeader title={t('backupLockedTitle')} caption={t('backupLockedBody')} onClose={() => (busy ? undefined : setUnlocking(null))} />
+        <View style={{ paddingHorizontal: space.lg, gap: space.lg, paddingBottom: space.lg }}>
+          <Field
+            label={t('password')}
+            value={restorePw}
+            onChangeText={(s) => {
+              setRestorePw(s);
+              setRestorePwError(null);
+            }}
+            secureTextEntry
+            autoCapitalize="none"
+            autoCorrect={false}
+            autoFocus
+            error={restorePwError ? t(restorePwError) : null}
+            returnKeyType="done"
+            onSubmitEditing={() => {
+              if (unlocking && restorePw) void restore(unlocking, restorePw);
+            }}
+          />
+          <Button
+            icon={KeyRound}
+            label={busy === 'restore' ? t('reading') : t('openAndRestore')}
+            loading={busy === 'restore'}
+            disabled={!restorePw}
+            onPress={() => {
+              if (unlocking) void restore(unlocking, restorePw);
+            }}
+            full
+          />
+        </View>
+      </BottomSheet>
     </Screen>
   );
 }

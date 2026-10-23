@@ -119,7 +119,7 @@ function ExpenseFormInner({ existing }: { existing: Expense | null }) {
           onChange={setMethod}
           options={PAY_METHODS.map((m) => ({ value: m, label: t(`method_${m}`) }))}
         />
-        <Field label={t('note')} optional value={note} onChangeText={setNote} multiline />
+        <Field label={t('note')} optional placeholder={t('phExpenseNote')} value={note} onChangeText={setNote} multiline />
       </Screen>
     </>
   );

@@ -15,6 +15,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { hairline, radius, sizes, space, touch, useColors, useLayout, type Palette } from '@/theme';
 
+import { Initials, initialsOf } from './kit';
 import { Txt } from './Txt';
 
 // ---------------------------------------------------------------- Screen
@@ -208,16 +209,8 @@ function slotColors(c: Palette, tone: keyof Palette | undefined) {
   }
 }
 
-/** Initials for an avatar circle: first letters of the first two words. */
-export function initials(name: string): string {
-  return name
-    .trim()
-    .split(/\s+/)
-    .slice(0, 2)
-    .map((w) => w[0] ?? '')
-    .join('')
-    .toUpperCase();
-}
+/** Initials for an avatar circle: first letters of the first two words (a Sinhala / Tamil letter stays whole). */
+export const initials = initialsOf;
 
 export interface ListRowProps {
   icon?: LucideIcon;
@@ -306,11 +299,7 @@ export function ListRow({
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.md }}>
         {leading}
         {avatar != null ? (
-          <View style={{ width: sizes.iconSlot, height: sizes.iconSlot, borderRadius: sizes.iconSlot / 2, backgroundColor: c.surface2, alignItems: 'center', justifyContent: 'center' }}>
-            <Txt variant="caption" weight="semibold" color="textMuted" numeric>
-              {initials(avatar)}
-            </Txt>
-          </View>
+          <Initials name={avatar} size={sizes.iconSlot} />
         ) : Icon ? (
           <View style={{ width: sizes.iconSlot, height: sizes.iconSlot, borderRadius: radius.md, backgroundColor: slot.bg, alignItems: 'center', justifyContent: 'center' }}>
             <Icon size={20} color={slot.fg} strokeWidth={2} />

@@ -1,5 +1,5 @@
 import { router, Stack, useLocalSearchParams } from 'expo-router';
-import { Trash2 } from 'lucide-react-native';
+import { Hash, Trash2 } from 'lucide-react-native';
 import { useState } from 'react';
 import { Alert } from 'react-native';
 
@@ -77,10 +77,10 @@ function Inner({ existing }: { existing: Tool | null }) {
           autoFocus={form.isNew}
           returnKeyType="next"
         />
-        <Field label={t('toolCode')} optional value={code} onChangeText={setCode} autoCapitalize="characters" autoCorrect={false} />
+        <Field label={t('toolCode')} optional icon={Hash} placeholder={t('phToolCode')} value={code} onChangeText={setCode} autoCapitalize="characters" autoCorrect={false} />
         {/* PhotoStrip already wraps capture in try/catch + showError (camera-off → settings / gallery). */}
         <PhotoStrip ownerTable="tools" ownerId={form.id} label={t('photoProof')} />
-        <Field label={t('notes')} optional value={notes} onChangeText={setNotes} multiline style={{ marginTop: space.xs }} />
+        <Field label={t('notes')} optional placeholder={t('phToolNotes')} value={notes} onChangeText={setNotes} multiline style={{ marginTop: space.xs }} />
       </Screen>
     </>
   );

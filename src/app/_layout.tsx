@@ -19,11 +19,13 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { AnimatedSplash } from '@/components/AnimatedSplash';
+import { AppLock } from '@/components/AppLock';
 import { AutoBackupRunner } from '@/components/AutoBackupRunner';
 import { ErrorScreen } from '@/components/ErrorScreen';
 import { RecoveryPrompt } from '@/components/RecoveryPrompt';
 import { ShareReceiver } from '@/components/ShareReceiver';
 import { ToastHost } from '@/components/ui/feedback';
+import { TamaguiScope } from '@/components/ui/kit';
 import { getDb, getSetting } from '@/db';
 import { useT } from '@/i18n';
 import { installGlobalErrorHandlers, reportError, setFatalErrorListener } from '@/lib/errors';
@@ -122,7 +124,10 @@ export default function RootLayout() {
     content = (
       <GestureHandlerRootView style={{ flex: 1 }}>
         <SafeAreaProvider>
-          <AppStack />
+          {/* Tamagui follows the app's own light / dark choice (Settings → Theme), not only the system's. */}
+          <TamaguiScope>
+            <AppStack />
+          </TamaguiScope>
         </SafeAreaProvider>
       </GestureHandlerRootView>
     );
@@ -200,6 +205,7 @@ function AppStack() {
       <ShareReceiver />
       <AutoBackupRunner />
       <RecoveryPrompt />
+      <AppLock />
     </ThemeProvider>
   );
 }

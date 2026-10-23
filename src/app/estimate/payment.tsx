@@ -1,5 +1,5 @@
 import { Stack, useLocalSearchParams } from 'expo-router';
-import { Trash2 } from 'lucide-react-native';
+import { Calculator, Percent, Trash2 } from 'lucide-react-native';
 import { useState } from 'react';
 import { View } from 'react-native';
 
@@ -16,7 +16,7 @@ import { useRecordForm } from '@/hooks/form';
 import { useT } from '@/i18n';
 import { allocatePayments, formatPercent, parsePercent, STANDARD_SCHEDULE } from '@/lib/estimate';
 import { formatLKR } from '@/lib/money';
-import { space } from '@/theme';
+import { space, useColors } from '@/theme';
 
 /** The usual stages. The first three are the ones "Use standard schedule" makes, so they are printed in English like those. */
 const STAGES = [...STANDARD_SCHEDULE.map((s) => s.label), 'Retention'];
@@ -34,6 +34,7 @@ export default function EstimatePaymentScreen() {
 
 function StageForm({ estimateId, existing }: { estimateId: string; existing: EstimatePayment | null }) {
   const t = useT();
+  const c = useColors();
   const form = useRecordForm('estimate_payments', existing?.id);
   const total = useEstimateTotal(estimateId);
   const stages = useEstimatePayments(estimateId);
@@ -90,6 +91,7 @@ function StageForm({ estimateId, existing }: { estimateId: string; existing: Est
             form.clearError('label');
           }}
           numeric
+          placeholder={t('phStage')}
           error={form.err('label')}
           returnKeyType="next"
         />
@@ -101,14 +103,19 @@ function StageForm({ estimateId, existing }: { estimateId: string; existing: Est
             form.clearError('percent');
           }}
           error={form.err('percent')}
+          icon={Percent}
+          placeholder={t('phPercent')}
           hint={t('percentAvailable', { pct: formatPercent(free) })}
           keyboardType="decimal-pad"
           autoFocus={!form.isNew}
         />
-        <Card>
-          <View style={{ flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between', gap: space.md }}>
-            <Txt eyebrow>{t('amount')}</Txt>
-            <Txt variant="title" weight="bold" numeric adjustsFontSizeToFit minimumFontScale={0.7} numberOfLines={1} style={{ flexShrink: 1 }}>
+        <Card tone={amount == null ? undefined : 'primarySoft'}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.md }}>
+            <Calculator size={22} color={amount == null ? c.textMuted : c.primary} strokeWidth={2} />
+            <Txt eyebrow style={{ flex: 1 }}>
+              {t('amount')}
+            </Txt>
+            <Txt variant="title" weight="bold" numeric adjustsFontSizeToFit minimumFontScale={0.7} numberOfLines={1} style={{ flexShrink: 1, color: amount == null ? c.textMuted : c.primary }}>
               {amount == null ? '—' : formatLKR(amount)}
             </Txt>
           </View>

@@ -11,6 +11,7 @@
  *   expo-asset             -> the letterhead picture, copied into the phone cache
  *   expo-haptics, expo-sharing, expo-application, expo-localization (en),
  *   expo-background-task, expo-task-manager -> no-ops you can assert on
+ *   expo-secure-store      -> in memory; expo-local-authentication -> no sensor
  *
  * Every factory is lazy, so test files that never import these modules (the
  * money / dates / utf8 tests) pay nothing. The helpers are in '@/test-utils'
@@ -33,6 +34,10 @@ jest.mock('expo-application', () => require('./mocks').applicationMock());
 jest.mock('expo-sharing', () => require('./mocks').sharingMock());
 jest.mock('expo-background-task', () => require('./mocks').backgroundTaskMock());
 jest.mock('expo-task-manager', () => require('./mocks').taskManagerMock());
+jest.mock('expo-secure-store', () => require('./mocks').secureStoreMock());
+jest.mock('expo-local-authentication', () => require('./mocks').localAuthMock());
+// Tamagui without its animation driver: switches and bars jump to their end state, so no Animated update lands outside act().
+jest.mock('@tamagui/config/animations-rn', () => ({ animationsReactNative: undefined }));
 
 afterAll(() => {
   require('./world').disposeAll();

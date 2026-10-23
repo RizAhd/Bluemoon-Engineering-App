@@ -292,3 +292,35 @@ export function backgroundTaskMock() {
     triggerTaskWorkerForTestingAsync: jest.fn(async () => true),
   };
 }
+
+// ---------------------------------------------------------------- expo-secure-store, expo-local-authentication
+
+/** Secure storage in memory. `__store` lets a test look inside or start from a set PIN. */
+export function secureStoreMock() {
+  const store = new Map<string, string>();
+  return {
+    __esModule: true,
+    __store: store,
+    getItemAsync: jest.fn(async (key: string) => store.get(key) ?? null),
+    setItemAsync: jest.fn(async (key: string, value: string) => {
+      store.set(key, value);
+    }),
+    deleteItemAsync: jest.fn(async (key: string) => {
+      store.delete(key);
+    }),
+    isAvailableAsync: jest.fn(async () => true),
+  };
+}
+
+/** No fingerprint sensor unless a test says so (mockResolvedValue on hasHardwareAsync / isEnrolledAsync / authenticateAsync). */
+export function localAuthMock() {
+  return {
+    __esModule: true,
+    AuthenticationType: { FINGERPRINT: 1, FACIAL_RECOGNITION: 2, IRIS: 3 },
+    hasHardwareAsync: jest.fn(async () => false),
+    isEnrolledAsync: jest.fn(async () => false),
+    supportedAuthenticationTypesAsync: jest.fn(async () => []),
+    authenticateAsync: jest.fn(async (_options?: unknown) => ({ success: false, error: 'not_available' })),
+    cancelAuthenticate: jest.fn(async () => undefined),
+  };
+}

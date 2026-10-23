@@ -1,3 +1,4 @@
+import { BadgeCheck, Building2, Hash, Home, Landmark, Mail, MapPin, Phone, UserRound } from 'lucide-react-native';
 import { useState } from 'react';
 
 import { Button } from '@/components/ui/Button';
@@ -52,17 +53,17 @@ export default function CompanyScreen() {
       <Txt color="textMuted">{t('companyHint')}</Txt>
 
       <SectionTitle title={t('companyDetails')} first />
-      <Field label={t('companyName')} value={name} onChangeText={setName} returnKeyType="next" />
-      <Field label={t('registrationNo')} optional value={regNo} onChangeText={setRegNo} returnKeyType="next" />
-      <Field label={t('address')} optional value={address} onChangeText={setAddress} multiline />
-      <Field label={t('phone')} optional value={phone} onChangeText={setPhone} keyboardType="phone-pad" returnKeyType="next" />
-      <Field label={t('email')} optional value={email} onChangeText={setEmail} keyboardType="email-address" autoCapitalize="none" autoCorrect={false} returnKeyType="next" />
+      <Field label={t('companyName')} icon={Building2} placeholder={t('phCompanyName')} value={name} onChangeText={setName} returnKeyType="next" />
+      <Field label={t('registrationNo')} optional icon={BadgeCheck} placeholder={t('phRegNo')} value={regNo} onChangeText={setRegNo} returnKeyType="next" />
+      <Field label={t('address')} optional icon={Home} placeholder={t('phAddress')} value={address} onChangeText={setAddress} multiline />
+      <Field label={t('phone')} optional icon={Phone} placeholder={t('phCompanyPhone')} value={phone} onChangeText={setPhone} keyboardType="phone-pad" returnKeyType="next" />
+      <Field label={t('email')} optional icon={Mail} placeholder={t('phEmail')} value={email} onChangeText={setEmail} keyboardType="email-address" autoCapitalize="none" autoCorrect={false} returnKeyType="next" />
 
       <SectionTitle title={t('bankDetails')} />
-      <Field label={t('bankName')} optional value={bank} onChangeText={setBank} returnKeyType="next" />
-      <Field label={t('accountName')} optional value={accountName} onChangeText={setAccountName} returnKeyType="next" />
-      <Field label={t('accountNo')} optional value={accountNo} onChangeText={setAccountNo} keyboardType="numbers-and-punctuation" returnKeyType="next" />
-      <Field label={t('branch')} optional value={branch} onChangeText={setBranch} returnKeyType="next" />
+      <Field label={t('bankName')} optional icon={Landmark} placeholder={t('phBank')} value={bank} onChangeText={setBank} returnKeyType="next" />
+      <Field label={t('accountName')} optional icon={UserRound} placeholder={t('phAccountName')} value={accountName} onChangeText={setAccountName} returnKeyType="next" />
+      <Field label={t('accountNo')} optional icon={Hash} placeholder={t('phAccountNo')} value={accountNo} onChangeText={setAccountNo} keyboardType="numbers-and-punctuation" returnKeyType="next" />
+      <Field label={t('branch')} optional icon={MapPin} placeholder={t('phBranch')} value={branch} onChangeText={setBranch} returnKeyType="next" />
 
       <SectionTitle title={t('estimates')} />
       <Field

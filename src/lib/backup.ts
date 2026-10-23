@@ -6,6 +6,11 @@
  * MB) with its SHA-256, plus a slice of the photos. Parts are capped at ~40 MB
  * so a phone never has to hold a huge file in memory.
  *
+ * Optionally password-protected: each part is then encrypted whole and saved as
+ * `.bmbackup` (format in crypto.ts). The daily automatic snapshots stay plain:
+ * they never leave the app's private folder except through Google's own
+ * encrypted backup.
+ *
  * Restore MERGES (newer version wins, nothing is deleted), so restoring is
  * always safe: on a new phone it brings everything back, on an old phone it
  * only fills in what is missing. Parts can be restored in any order.
@@ -19,6 +24,7 @@ import { nowIso } from '@/lib/dates';
 import { reportError } from '@/lib/errors';
 
 import { applyBundle, BUNDLE_FORMAT, BUNDLE_VERSION, collectAll, filesOf, readFileBytes, sha256Hex, type Bundle, type ImportPlan } from './bundle';
+import { decryptBytes, encryptBytes, isEncrypted, WrongPasswordError } from './crypto';
 import { fileFor, sha256 } from './files';
 import { decodeUtf8, encodeUtf8 } from './utf8';
 
@@ -35,7 +41,16 @@ interface Manifest {
   data_sha256: string;
 }
 
-export async function makeBackup(onProgress?: (part: number, parts: number) => void): Promise<File[]> {
+/** A full backup locked with a password: the zip, sealed in the crypto.ts envelope. */
+export const ENCRYPTED_EXT = '.bmbackup';
+export const MIN_PASSWORD = 6;
+
+/**
+ * With `password`, each part is encrypted (AES-256-GCM, key from PBKDF2) and saved as
+ * `.bmbackup` instead of `.zip`; without it the parts stay plain zips, as before.
+ */
+export async function makeBackup(onProgress?: (part: number, parts: number) => void, password?: string): Promise<File[]> {
+  if (password != null && password.length < MIN_PASSWORD) throw new BackupError('password-short');
   const tables = collectAll();
   const bundle: Bundle = {
     format: BUNDLE_FORMAT,
@@ -84,9 +99,10 @@ export async function makeBackup(onProgress?: (part: number, parts: number) => v
     zip.file('data.json', data);
     for (const att of groups[i]) zip.file(`attachments/${att.file_name}`, readFileBytes(att));
 
-    const bytes = await zip.generateAsync({ type: 'uint8array', compression: 'STORE' });
+    const zipped = await zip.generateAsync({ type: 'uint8array', compression: 'STORE' });
+    const bytes = password != null ? await encryptBytes(zipped, password) : zipped;
     const suffix = groups.length > 1 ? `-part${i + 1}of${groups.length}` : '';
-    const file = new File(Paths.cache, `Bluemoon-backup-${stamp}${suffix}.zip`);
+    const file = new File(Paths.cache, `Bluemoon-backup-${stamp}${suffix}${password != null ? ENCRYPTED_EXT : '.zip'}`);
     if (file.exists) file.delete();
     file.create();
     file.writeSync(bytes);
@@ -140,13 +156,41 @@ export function markBackedUp() {
   setSetting('last_backup_at', nowIso());
 }
 
+/**
+ * A backup file that cannot be restored. `message` says why: not-zip, not-backup, newer, damaged,
+ * needs-password (encrypted, none given), wrong-password, password-short.
+ */
 export class BackupError extends Error {}
 
-/** Restore one backup part. Returns what changed. */
-export async function restorePart(uri: string): Promise<{ plan: ImportPlan; photos: number; part: number; parts: number }> {
+/** True when the file is a password-protected backup (so the screen asks for the password first). */
+export async function isEncryptedBackup(uri: string): Promise<boolean> {
+  try {
+    return isEncrypted(await new File(uri).bytes());
+  } catch {
+    return false;
+  }
+}
+
+/** Restore one backup part (plain .zip, or .bmbackup with its password). Returns what changed. */
+export async function restorePart(uri: string, password?: string): Promise<{ plan: ImportPlan; photos: number; part: number; parts: number }> {
+  let bytes: Uint8Array;
+  try {
+    bytes = await new File(uri).bytes();
+  } catch {
+    throw new BackupError('not-zip');
+  }
+  if (isEncrypted(bytes)) {
+    if (!password) throw new BackupError('needs-password');
+    try {
+      bytes = await decryptBytes(bytes, password);
+    } catch (e) {
+      if (e instanceof WrongPasswordError) throw new BackupError('wrong-password');
+      throw e;
+    }
+  }
   let zip: JSZip;
   try {
-    zip = await JSZip.loadAsync(await new File(uri).bytes());
+    zip = await JSZip.loadAsync(bytes);
   } catch {
     throw new BackupError('not-zip');
   }

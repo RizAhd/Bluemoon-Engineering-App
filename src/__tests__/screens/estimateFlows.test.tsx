@@ -125,7 +125,7 @@ describe('from a new estimate to a project and back to a draft', () => {
     setRouteParams({ estimateId: id });
     await renderScreen(shown(<EstimateItemScreen />));
     await typeInto(E('description'), 'Excavation');
-    await pressLabel('m³');
+    await pressLabel('cu.m');
     await typeInto(E('quantity'), '12.5');
     await typeInto(E('rate'), '1,800');
     expect(visibleText()).toContain('Rs 22,500'); // the live amount
@@ -134,11 +134,11 @@ describe('from a new estimate to a project and back to a draft', () => {
     expect(inputValue(E('description'))).toBe('');
     expect(inputValue(E('quantity'))).toBe('');
     expect(inputValue(E('rate'))).toBe('');
-    expect(inputValue(E('otherUnit'))).toBe('m³');
+    expect(inputValue(E('otherUnit'))).toBe('cu.m');
     expect(router.back).not.toHaveBeenCalled();
 
     await typeInto(E('description'), 'Brick masonry wall');
-    await pressLabel('m²');
+    await pressLabel('sq.m');
     await typeInto(E('quantity'), '48,25'); // a comma is a decimal point too
     await typeInto(E('rate'), '4800');
     await pressLabel(E('saveAndAddAnother'));
@@ -149,8 +149,8 @@ describe('from a new estimate to a project and back to a draft', () => {
     await pressLabel(E('save'));
     expect(router.back).toHaveBeenCalledTimes(1);
     expect(loadEstimate(id)?.items.map((i) => [i.position, i.description, i.unit, i.qty_milli, i.rate_cents])).toEqual([
-      [1, 'Excavation', 'm³', 12_500, 180_000],
-      [2, 'Brick masonry wall', 'm²', 48_250, 480_000],
+      [1, 'Excavation', 'cu.m', 12_500, 180_000],
+      [2, 'Brick masonry wall', 'sq.m', 48_250, 480_000],
       [3, 'Steel gate', 'nos', 1000, 18_500_000],
     ]);
     await screen.unmount();

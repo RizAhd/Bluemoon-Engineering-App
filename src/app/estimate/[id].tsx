@@ -8,12 +8,15 @@ import {
   ExternalLink,
   FileText,
   FolderPlus,
+  Home,
   Landmark,
   ListChecks,
   ListPlus,
   Lock,
+  MapPin,
   Pencil,
   Percent,
+  Phone,
   Plus,
   RotateCcw,
   Send,
@@ -30,6 +33,7 @@ import { Button, HeaderButton } from '@/components/ui/Button';
 import { CardList } from '@/components/ui/CardList';
 import { EmptyState, toast } from '@/components/ui/feedback';
 import { BottomSheet, Checkbox, Chips, SheetHeader } from '@/components/ui/form';
+import { Initials, ProgressBar } from '@/components/ui/kit';
 import { Card, Divider, ListCard, ListRow, Screen, SectionTitle } from '@/components/ui/layout';
 import { Txt } from '@/components/ui/Txt';
 import { setSetting, useFirst, useSetting } from '@/db';
@@ -414,6 +418,20 @@ export default function EstimateHub() {
           keyOf={itemKey}
           renderRow={(it) => <ItemRow it={it} onOpen={locked ? undefined : openItem} />}
           gap={space.lg}
+          // The total stays in view while the lines scroll, with the one thing to do with it.
+          stickyFooter={
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.md }}>
+              <View style={{ flex: 1, minWidth: 0 }}>
+                <Txt variant="caption" color="textMuted">
+                  {t('total')}
+                </Txt>
+                <Txt variant="title" weight="bold" numeric numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>
+                  {formatLKR(total.total_cents)}
+                </Txt>
+              </View>
+              <Button icon={Share2} label={t('shareNow')} accessibilityLabel={t('shareEstimatePdf')} onPress={() => setSheetOpen(true)} />
+            </View>
+          }
           empty={
             <Card>
               <EmptyState
@@ -435,18 +453,32 @@ export default function EstimateHub() {
                   </Txt>
                   <EstimateStatusBadge status={est.status} />
                 </View>
-                <View style={{ gap: space.xs }}>
-                  <Txt variant="title" weight="semibold" numberOfLines={2}>
-                    {est.client_name}
-                  </Txt>
-                  <Txt color="textMuted" numberOfLines={2}>
-                    {est.title}
-                  </Txt>
-                  {[est.client_phone, est.client_address, est.location].filter(Boolean).map((line) => (
-                    <Txt key={line} variant="caption" color="textMuted" numberOfLines={2}>
-                      {line}
+                <View style={{ flexDirection: 'row', gap: space.md, alignItems: 'flex-start' }}>
+                  <Initials name={est.client_name} size={48} />
+                  <View style={{ flex: 1, minWidth: 0, gap: space.xs }}>
+                    <Txt variant="title" weight="semibold" numberOfLines={2}>
+                      {est.client_name}
                     </Txt>
-                  ))}
+                    <Txt color="textMuted" numberOfLines={2}>
+                      {est.title}
+                    </Txt>
+                    {(
+                      [
+                        [Phone, est.client_phone],
+                        [Home, est.client_address],
+                        [MapPin, est.location],
+                      ] as const
+                    )
+                      .filter(([, line]) => !!line)
+                      .map(([Icon, line]) => (
+                        <View key={`${line}`} style={{ flexDirection: 'row', alignItems: 'flex-start', gap: space.xs }}>
+                          <Icon size={14} color={c.textMuted} strokeWidth={2} style={{ marginTop: 2 }} />
+                          <Txt variant="caption" color="textMuted" numberOfLines={2} style={{ flex: 1 }}>
+                            {line}
+                          </Txt>
+                        </View>
+                      ))}
+                  </View>
                 </View>
                 <Divider />
                 <View style={{ flexDirection: 'row', gap: space.md }}>
@@ -490,6 +522,18 @@ export default function EstimateHub() {
 
               {/* payment schedule */}
               <SectionTitle title={t('paymentSchedule')} count={payments.length || undefined} />
+              {payments.length ? (
+                <View style={{ gap: space.xs }}>
+                  <ProgressBar
+                    value={total.scheduled_bp / 100}
+                    tone={unscheduled > 0 ? 'warning' : 'success'}
+                    label={`${t('paymentSchedule')}: ${formatPercent(Math.min(10000, total.scheduled_bp))} %`}
+                  />
+                  <Txt variant="caption" color="textMuted" numeric>
+                    {`${formatPercent(Math.min(10000, total.scheduled_bp))} % / 100 %`}
+                  </Txt>
+                </View>
+              ) : null}
               {payments.length ? (
                 <ListCard>
                   {payments.map((p, i) => (
@@ -583,7 +627,6 @@ export default function EstimateHub() {
 
               {/* actions */}
               <View style={{ gap: space.md, marginTop: space.md }}>
-                <Button icon={Share2} label={t('shareEstimatePdf')} onPress={() => setSheetOpen(true)} full />
                 {projectElsewhere ? (
                   <Txt variant="caption" color="textMuted">
                     {t('projectOnOtherPhone')}
