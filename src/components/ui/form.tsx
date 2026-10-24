@@ -288,7 +288,11 @@ export function AmountField({ label, value, onChangeText, error, autoFocus, opti
             return cents === null ? value : formatAmount(cents);
           })()}
           editable={!disabled}
-          onChangeText={(s) => onChangeText(groupTyped(s))}
+          onChangeText={(s) => {
+            // Android echoes back the grouped text it was given ("2500000" → "2,500,000"): only commas differ, nothing was typed
+            if (s.replace(/,/g, '') === (value ?? '').replace(/,/g, '')) return;
+            onChangeText(groupTyped(s));
+          }}
           keyboardType="decimal-pad"
           autoFocus={autoFocus}
           placeholder={example}
@@ -303,7 +307,9 @@ export function AmountField({ label, value, onChangeText, error, autoFocus, opti
           onBlur={() => {
             setFocus(false);
             const cents = parseCents(value);
-            if (value && cents !== null) onChangeText(formatAmount(cents));
+            const tidy = cents === null ? null : formatAmount(cents);
+            // tidy "1250.5" to "1,250.50", but adding commas alone is not a change (no "Discard changes?" for it)
+            if (value && tidy !== null && tidy.replace(/,/g, '') !== value.replace(/,/g, '')) onChangeText(tidy);
             onBlur?.();
           }}
           maxFontSizeMultiplier={1.2}

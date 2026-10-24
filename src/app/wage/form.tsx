@@ -86,6 +86,14 @@ function Inner({ existing, params }: { existing: WageEntry | null; params: { wor
   // For work, the amount follows days × rate unless the user types their own.
   const [amountTouched, setAmountTouched] = useState(!!existing);
   const nDays = Number(days);
+  // Paying or advancing: what the worker stands at on this project before this entry, so nobody is paid twice by mistake.
+  const before = (roster.find((r) => r.worker_id === workerValue)?.balance_cents ?? 0) + (existing && existing.kind !== 'work' ? (existing.amount_cents ?? 0) : 0);
+  const moneyHint =
+    kind === 'work' || !workerValue || before === 0
+      ? undefined
+      : before > 0
+        ? `${t('weOwe')} ${formatLKR(before)}`
+        : `${t('workerOwes')} ${formatLKR(-before)}`;
   const autoAmount = kind === 'work' && rate > 0 && nDays > 0 ? Math.round(rate * nDays) : null;
   const shownAmount = kind === 'work' && !amountTouched && autoAmount != null ? centsToInput(autoAmount) : amount;
 
@@ -181,7 +189,7 @@ function Inner({ existing, params }: { existing: WageEntry | null; params: { wor
             setAmount(s);
             form.clearError('amount');
           }}
-          hint={kind === 'work' && rate > 0 && nDays > 0 ? `${days} × ${formatLKR(rate)}` : undefined}
+          hint={kind === 'work' && rate > 0 && nDays > 0 ? `${days} × ${formatLKR(rate)}` : moneyHint}
           error={form.err('amount')}
           // an advance or a payment is just an amount: the keypad opens at once (work starts from days × rate)
           autoFocus={form.isNew && kind !== 'work'}

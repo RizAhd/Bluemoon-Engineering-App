@@ -14,7 +14,7 @@ import { Card, ListCard, ListRow, Screen, SectionTitle } from '@/components/ui/l
 import { Txt } from '@/components/ui/Txt';
 import { getSetting, setSetting, useFirst, useSetting } from '@/db';
 import { useT, type TKey } from '@/i18n';
-import { KEEP_DAYS, listAutoBackups, runAutoBackupIfDue } from '@/lib/autoBackup';
+import { KEEP_DAYS, listAutoBackups, mirrorTodaysSnapshot, runAutoBackupIfDue } from '@/lib/autoBackup';
 import { BackupError, ENCRYPTED_EXT, makeBackup, markBackedUp, MIN_PASSWORD, restorePart } from '@/lib/backup';
 import { daysSince, formatDay, toDay, today } from '@/lib/dates';
 import { driveConnected, uploadToDrive } from '@/lib/drive';
@@ -145,6 +145,8 @@ export default function BackupScreen() {
     if (busy) return;
     setBusy('auto');
     const r = await guard('backup.auto', t, () => runAutoBackupIfDue(true));
+    // and its copies in the phone folder and on Drive, as the daily run does (they never fail the backup itself)
+    if (r && r !== 'failed') await mirrorTodaysSnapshot().catch(() => undefined);
     setBusy(null);
     if (r === 'failed') {
       reportError(new Error(autoError ?? 'auto backup failed'), 'backup.auto');

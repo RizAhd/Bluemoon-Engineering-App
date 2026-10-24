@@ -1,7 +1,7 @@
 import * as Haptics from 'expo-haptics';
 import { router, Stack, useLocalSearchParams } from 'expo-router';
 import { Building2, CheckCircle2, Info, UserPlus } from 'lucide-react-native';
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useMemo, useRef, useState, type ComponentRef } from 'react';
 import { Alert, FlatList, Keyboard, Platform, Pressable, TextInput, View } from 'react-native';
 
 import { ShareHeaderButton, useShareSheet } from '@/components/ShareSheet';
@@ -110,10 +110,11 @@ export default function TodaysWorkScreen() {
   // The list is this screen's own scroller (not Screen's), so it brings the field being typed into view itself,
   // clear of the Pay / Save footer, when the keyboard opens.
   const list = useRef<FlatList<Vm>>(null);
+  const viewport = useRef<ComponentRef<typeof View>>(null);
   const listY = useRef(0);
   const revealField = useCallback(() => {
     const field = TextInput.State.currentlyFocusedInput?.();
-    const host = list.current?.getNativeScrollRef?.() as { measureInWindow?: (cb: (x: number, y: number, w: number, h: number) => void) => void } | null | undefined;
+    const host = viewport.current;
     if (!field?.measureInWindow || !host?.measureInWindow) return;
     host.measureInWindow((_sx, sy, _sw, sh) => {
       field.measureInWindow((_x, y, _w, h) => {
@@ -480,7 +481,9 @@ export default function TodaysWorkScreen() {
       <Stack.Screen options={{ title: t('todaysWork'), headerRight: () => <ShareHeaderButton onPress={openShare} /> }} />
       {/* On a short window (landscape, split screen) the totals and Save scroll with the sheet instead of covering it. */}
       <Screen scroll={false} footer={short ? undefined : footer}>
-        <FlatList
+        {/* measured as the list's visible window (the space between the header and the footer) */}
+        <View ref={viewport} collapsable={false} style={{ flex: 1 }}>
+          <FlatList
           ref={list}
           onScroll={(e) => {
             listY.current = e.nativeEvent.contentOffset.y;
@@ -516,7 +519,8 @@ export default function TodaysWorkScreen() {
             ) : undefined
           }
           renderItem={({ item }) => <WorkerRow vm={item} onToggle={toggle} onDays={setDays} onPatch={patch} onCommitAmount={commitAmount} />}
-        />
+          />
+        </View>
       </Screen>
       {share.sheet}
     </>

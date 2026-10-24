@@ -55,13 +55,20 @@ export function createFocusChain(reveal: () => void = () => {}): FocusChain {
         if (target) {
           noteFocusMove();
           target.focus();
-          // Android can swap to another keypad (letters → numbers) and not bring it back up: focus once more
-          setTimeout(() => {
-            if (Keyboard.isVisible() || !target.isFocused?.()) return;
+          // Android can swap to another keypad (letters → numbers) and close the keyboard instead of showing the new
+          // one: if it closes right after the move while the new field still has focus, open it on that field again.
+          const sub = Keyboard.addListener('keyboardDidHide', () => {
+            sub.remove();
+            clearTimeout(stop);
+            if (!target.isFocused?.()) return;
             noteFocusMove();
             target.blur();
-            setTimeout(() => target.focus(), 60);
-          }, 400);
+            setTimeout(() => {
+              noteFocusMove();
+              target.focus();
+            }, 80);
+          });
+          const stop = setTimeout(() => sub.remove(), 1500);
         } else Keyboard.dismiss();
       });
     },
