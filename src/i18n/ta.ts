@@ -684,4 +684,5 @@ export const ta: Dict = {
   textSmall: 'சிறியது',
   textMedium: 'நடுத்தரம்',
   textLarge: 'பெரியது',
+  typeDays: 'அல்லது நாட்களின் எண்ணிக்கையை உள்ளிடவும்',
 };

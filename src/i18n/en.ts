@@ -697,6 +697,7 @@ export const en = {
   textSmall: 'Small',
   textMedium: 'Medium',
   textLarge: 'Large',
+  typeDays: 'Or type the number of days',
 } as const;
 
 export type Dict = Record<keyof typeof en, string>;

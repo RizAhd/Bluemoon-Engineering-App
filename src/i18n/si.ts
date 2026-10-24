@@ -684,4 +684,5 @@ export const si: Dict = {
   textSmall: 'කුඩා',
   textMedium: 'මධ්‍යම',
   textLarge: 'විශාල',
+  typeDays: 'නැතහොත් දින ගණන ටයිප් කරන්න',
 };

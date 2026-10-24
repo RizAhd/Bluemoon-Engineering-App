@@ -1,8 +1,8 @@
 import * as Haptics from 'expo-haptics';
 import { router, Stack, useLocalSearchParams } from 'expo-router';
 import { Building2, CheckCircle2, Info, UserPlus } from 'lucide-react-native';
-import { memo, useCallback, useEffect, useMemo, useRef, useState, type ComponentRef } from 'react';
-import { Alert, FlatList, Keyboard, Platform, Pressable, TextInput, View } from 'react-native';
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Alert, FlatList, Keyboard, Platform, Pressable, View } from 'react-native';
 
 import { ShareHeaderButton, useShareSheet } from '@/components/ShareSheet';
 import { Button } from '@/components/ui/Button';
@@ -107,39 +107,26 @@ export default function TodaysWorkScreen() {
   if (opened.key !== key) setOpened({ key, recorded: hasRecorded });
   const alreadyRecorded = opened.key === key ? opened.recorded : hasRecorded;
 
-  // The list is this screen's own scroller (not Screen's), so it brings the field being typed into view itself,
-  // clear of the Pay / Save footer, when the keyboard opens.
+  // The list is this screen's own scroller (not Screen's): when a wage or Pay now box is tapped, the worker's whole
+  // row is brought up so its bottom sits just above the Pay / Save footer, once the keyboard has opened.
   const list = useRef<FlatList<Vm>>(null);
-  const viewport = useRef<ComponentRef<typeof View>>(null);
-  const listY = useRef(0);
-  const revealField = useCallback(() => {
-    const field = TextInput.State.currentlyFocusedInput?.();
-    const host = viewport.current;
-    if (!field?.measureInWindow || !host?.measureInWindow) return;
-    host.measureInWindow((_sx, sy, _sw, sh) => {
-      field.measureInWindow((_x, y, _w, h) => {
-        const room = space.xxxl; // the hint under the field
-        let by = 0;
-        if (y < sy + space.lg) by = y - sy - space.lg;
-        else if (y + h + room > sy + sh) by = y + h + room - (sy + sh);
-        if (by) list.current?.scrollToOffset({ offset: Math.max(0, listY.current + by), animated: true });
-      });
-    });
+  const rowIds = useRef<string[]>([]);
+  const focusRow = useCallback((workerId: string) => {
+    const index = rowIds.current.indexOf(workerId);
+    if (index < 0) return;
+    const go = () => list.current?.scrollToIndex({ index, viewPosition: 1, animated: true });
+    setTimeout(go, 400);
+    setTimeout(go, 800);
   }, []);
 
   useEffect(() => {
-    const a = Keyboard.addListener('keyboardDidShow', () => {
-      setKbOpen(true);
-      // after Screen has lifted its content above the keyboard (measured, then laid out), and once more for slow phones
-      setTimeout(revealField, 350);
-      setTimeout(revealField, 700);
-    });
+    const a = Keyboard.addListener('keyboardDidShow', () => setKbOpen(true));
     const b = Keyboard.addListener('keyboardDidHide', () => setKbOpen(false));
     return () => {
       a.remove();
       b.remove();
     };
-  }, [revealField]);
+  }, []);
 
   const dayMap = useMemo(() => new Map(dayRows.map((r) => [r.worker_id, r])), [dayRows]);
   // "Mark as left" only changes the worker, not the project assignment, so check the worker's own flag too.
@@ -178,6 +165,9 @@ export default function TodaysWorkScreen() {
         };
       });
   }, [roster, dayMap, activeIds, drafts, errors, payErrors]);
+  useEffect(() => {
+    rowIds.current = vms.map((v) => v.row.worker_id);
+  }, [vms]);
 
   // Back with a typed Pay now or a changed wage not saved asks first (ticks and days are saved the moment they are tapped).
   const saved = useRef(false);
@@ -481,14 +471,9 @@ export default function TodaysWorkScreen() {
       <Stack.Screen options={{ title: t('todaysWork'), headerRight: () => <ShareHeaderButton onPress={openShare} /> }} />
       {/* On a short window (landscape, split screen) the totals and Save scroll with the sheet instead of covering it. */}
       <Screen scroll={false} footer={short ? undefined : footer}>
-        {/* measured as the list's visible window (the space between the header and the footer) */}
-        <View ref={viewport} collapsable={false} style={{ flex: 1 }}>
-          <FlatList
+        <FlatList
           ref={list}
-          onScroll={(e) => {
-            listY.current = e.nativeEvent.contentOffset.y;
-          }}
-          scrollEventThrottle={32}
+          onScrollToIndexFailed={() => {}}
           data={vms}
           keyExtractor={vmKey}
           keyboardShouldPersistTaps="handled"
@@ -518,9 +503,8 @@ export default function TodaysWorkScreen() {
               </View>
             ) : undefined
           }
-          renderItem={({ item }) => <WorkerRow vm={item} onToggle={toggle} onDays={setDays} onPatch={patch} onCommitAmount={commitAmount} />}
-          />
-        </View>
+          renderItem={({ item }) => <WorkerRow vm={item} onToggle={toggle} onDays={setDays} onPatch={patch} onCommitAmount={commitAmount} onFocusRow={focusRow} />}
+        />
       </Screen>
       {share.sheet}
     </>
@@ -556,12 +540,14 @@ const WorkerRow = memo(function WorkerRow({
   onDays,
   onPatch,
   onCommitAmount,
+  onFocusRow,
 }: {
   vm: Vm;
   onToggle: (vm: Vm, next: boolean) => void;
   onDays: (vm: Vm, days: number) => void;
   onPatch: (id: string, p: Draft) => void;
   onCommitAmount: (vm: Vm) => void;
+  onFocusRow: (workerId: string) => void;
 }) {
   const c = useColors();
   const t = useT();
@@ -641,6 +627,7 @@ const WorkerRow = memo(function WorkerRow({
                 label={t('amount')}
                 value={vm.amountStr}
                 onChangeText={(s) => onPatch(row.worker_id, { amount: s })}
+                onFocus={() => onFocusRow(row.worker_id)}
                 onBlur={() => onCommitAmount(vm)}
                 error={vm.error ? t(vm.error) : null}
               />
@@ -654,6 +641,7 @@ const WorkerRow = memo(function WorkerRow({
                 label={t('payNow')}
                 value={vm.payStr}
                 onChangeText={(s) => onPatch(row.worker_id, { pay: s })}
+                onFocus={() => onFocusRow(row.worker_id)}
                 hint={payHint}
                 hintTone={overpay ? 'warning' : 'textMuted'}
                 error={vm.payError ? t(vm.payError) : null}

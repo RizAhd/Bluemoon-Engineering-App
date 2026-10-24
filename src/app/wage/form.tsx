@@ -168,8 +168,8 @@ function Inner({ existing, params }: { existing: WageEntry | null; params: { wor
               error={form.err('days')}
             />
             <Field
-              label={t('days')}
-              hideLabel
+              // labelled, so the box under the chips says what it is for (e.g. 3 or 2.5 days)
+              label={t('typeDays')}
               value={days}
               onChangeText={(s) => {
                 setDays(s);

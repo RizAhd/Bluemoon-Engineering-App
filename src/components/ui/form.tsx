@@ -171,7 +171,12 @@ export function Field({ label, optional, error, hint, multiline, hideLabel, disa
   const off = disabled || editable === false;
   const box = useBoxColors({ focus, error, disabled: off });
   // Multi-line boxes keep Enter for new lines; every other field gets a Next key that moves down the form.
-  const chain = useFocusChain(ref, { enabled: !off, onSubmitEditing: multiline || input.onSubmitEditing, returnKeyType: input.returnKeyType });
+  const chain = useFocusChain(ref, {
+    enabled: !off,
+    onSubmitEditing: multiline || input.onSubmitEditing,
+    returnKeyType: input.returnKeyType,
+    numeric: input.keyboardType === 'phone-pad' || input.keyboardType === 'number-pad' || input.keyboardType === 'numeric' || input.keyboardType === 'decimal-pad',
+  });
   const reveal = useFocusReveal();
   const focusIt = () => ref.current?.focus();
   return (
@@ -240,6 +245,7 @@ export interface AmountFieldProps {
   compact?: boolean;
   disabled?: boolean;
   /** Called after the blur re-format. */
+  onFocus?: () => void;
   onBlur?: () => void;
   onSubmitEditing?: () => void;
   returnKeyType?: TextInputProps['returnKeyType'];
@@ -261,14 +267,14 @@ export function groupTyped(s: string): string {
 }
 
 /** Amount input with an Rs prefix and a number keypad, grouped with thousands separators as it is typed. */
-export function AmountField({ label, value, onChangeText, error, autoFocus, optional, hint, hintTone, compact, disabled, onBlur, onSubmitEditing, returnKeyType, placeholder = '0' }: AmountFieldProps) {
+export function AmountField({ label, value, onChangeText, error, autoFocus, optional, hint, hintTone, compact, disabled, onFocus, onBlur, onSubmitEditing, returnKeyType, placeholder = '0' }: AmountFieldProps) {
   const c = useColors();
   const k = useTextScale();
   const t = useT();
   const ref = useRef<ComponentRef<typeof TextInput>>(null);
   const [focus, setFocus] = useState(false);
   const box = useBoxColors({ focus, error, disabled });
-  const chain = useFocusChain(ref, { enabled: !disabled, onSubmitEditing, returnKeyType });
+  const chain = useFocusChain(ref, { enabled: !disabled, onSubmitEditing, returnKeyType, numeric: true });
   const reveal = useFocusReveal();
   const focusIt = () => ref.current?.focus();
   const example = placeholder === '0' ? placeholder : `${t('eg')} ${placeholder}`;
@@ -303,6 +309,7 @@ export function AmountField({ label, value, onChangeText, error, autoFocus, opti
           onFocus={() => {
             setFocus(true);
             reveal();
+            onFocus?.();
           }}
           onBlur={() => {
             setFocus(false);

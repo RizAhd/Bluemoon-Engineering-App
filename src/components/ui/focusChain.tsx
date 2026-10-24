@@ -12,7 +12,7 @@ type InputRef = RefObject<ComponentRef<typeof TextInput> | null>;
  * last field closes the keyboard instead of jumping back to the top (Android's own guess).
  */
 export interface FocusChain {
-  register: (ref: InputRef) => () => void;
+  register: (ref: InputRef, numeric?: boolean) => () => void;
   next: (from: InputRef) => void;
   /** Scrolls the screen so the focused field is in sight (set by Screen; called when focus moves with the keyboard open). */
   reveal: () => void;
@@ -34,12 +34,16 @@ function measure(ref: InputRef): Promise<{ ref: InputRef; x: number; y: number }
 
 export function createFocusChain(reveal: () => void = () => {}): FocusChain {
   const refs = new Set<InputRef>();
+  // fields with a number keypad (amounts, phone numbers): Next from a letters field into one needs a second focus
+  const numeric = new Set<InputRef>();
   return {
     reveal,
-    register(ref) {
+    register(ref, isNumeric) {
       refs.add(ref);
+      if (isNumeric) numeric.add(ref);
       return () => {
         refs.delete(ref);
+        numeric.delete(ref);
       };
     },
     next(from) {
@@ -55,20 +59,20 @@ export function createFocusChain(reveal: () => void = () => {}): FocusChain {
         if (target) {
           noteFocusMove();
           target.focus();
-          // Android can swap to another keypad (letters → numbers) and close the keyboard instead of showing the new
-          // one: if it closes right after the move while the new field still has focus, open it on that field again.
-          const sub = Keyboard.addListener('keyboardDidHide', () => {
-            sub.remove();
-            clearTimeout(stop);
-            if (!target.isFocused?.()) return;
-            noteFocusMove();
-            target.blur();
+          // Android closes the keyboard instead of swapping letters for the number keypad, and tells nobody
+          // (no keyboardDidHide): moving from a letters field into a number field, focus it once more so it opens.
+          const swap = numeric.has(after[0].ref) && !numeric.has(from);
+          if (swap) {
             setTimeout(() => {
+              if (!target.isFocused?.()) return;
               noteFocusMove();
-              target.focus();
-            }, 80);
-          });
-          const stop = setTimeout(() => sub.remove(), 1500);
+              target.blur();
+              setTimeout(() => {
+                noteFocusMove();
+                target.focus();
+              }, 60);
+            }, 250);
+          }
         } else Keyboard.dismiss();
       });
     },
@@ -87,10 +91,11 @@ export function FocusChainProvider({ children, reveal }: { children: ReactNode; 
  * Joins `ref` to the screen's chain. Returns the props a single-line input needs ("next" key, stay open on
  * submit, move on) — or nothing when the field is outside a Screen or the caller handles submit itself.
  */
-export function useFocusChain(ref: InputRef, opts: { enabled: boolean; onSubmitEditing?: unknown; returnKeyType?: unknown }) {
+export function useFocusChain(ref: InputRef, opts: { enabled: boolean; onSubmitEditing?: unknown; returnKeyType?: unknown; numeric?: boolean }) {
   const chain = useContext(Ctx);
   const on = !!chain && opts.enabled;
-  useEffect(() => (on && chain ? chain.register(ref) : undefined), [on, chain, ref]);
+  const numericPad = !!opts.numeric;
+  useEffect(() => (on && chain ? chain.register(ref, numericPad) : undefined), [on, chain, ref, numericPad]);
   // a field that handles submit itself (save on Enter) or asks for another key ("done", "search") is left alone
   if (!chain || !on || opts.onSubmitEditing || (opts.returnKeyType && opts.returnKeyType !== 'next')) return null;
   return {
