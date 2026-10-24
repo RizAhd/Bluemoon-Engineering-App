@@ -19,6 +19,9 @@ export interface TxtProps extends TextProps {
   eyebrow?: boolean;
 }
 
+const TABULAR: ('tabular-nums')[] = ['tabular-nums'];
+const NO_VARIANT: ('tabular-nums')[] = [];
+
 /** Sinhala (U+0D80–0DFF) or Tamil (U+0B80–0BFF) letters. */
 const COMPLEX = /[඀-෿஀-௿]/;
 
@@ -60,7 +63,8 @@ export function Txt({ variant, weight, color, numeric, center, eyebrow, style, m
           fontSize: size * k,
           lineHeight: Math.round(lh * k),
           fontFamily: numeric || latinRun ? FONT_MAP.en[w] : font(w),
-          fontVariant: numeric ? ['tabular-nums'] : undefined,
+          // never undefined: text that stops being numeric would send null, and React Native's processFontVariant crashes on it
+          fontVariant: numeric ? TABULAR : NO_VARIANT,
           textAlign: center ? 'center' : undefined,
           textTransform: upper ? 'uppercase' : undefined,
           // Latin only: Sinhala / Tamil must not be tracked or their marks mis-shape.

@@ -33,6 +33,7 @@ import { useToday } from '@/hooks/today';
 import { useT, type TKey } from '@/i18n';
 import { daysSince, formatDay, toDay } from '@/lib/dates';
 import { formatLKR } from '@/lib/money';
+import { unpaidForDay } from '@/lib/wages';
 import { hairline, radius, space, useColors } from '@/theme';
 
 function greetingKey(): TKey {
@@ -133,9 +134,7 @@ export default function TodayScreen() {
   const onRoster = new Set(roster.map((r) => r.worker_id));
   const dayOnRoster = pid ? dayRows.filter((r) => onRoster.has(r.worker_id)) : dayRows;
   const worked = dayOnRoster.filter((r) => r.days != null).length;
-  // never more than the worker is owed on the project: an advance already covers part of the day's wage
-  const owedOf = new Map(roster.map((r) => [r.worker_id, Math.max(0, r.balance_cents)]));
-  const toPay = dayOnRoster.reduce((a, r) => a + Math.max(0, Math.min(r.work_cents - r.paid_cents, owedOf.get(r.worker_id) ?? 0)), 0);
+  const toPay = unpaidForDay(dayOnRoster, roster);
   const noRoster = !!pid && roster.length === 0;
 
   const workSubtitle = !pid

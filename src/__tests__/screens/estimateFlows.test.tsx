@@ -231,7 +231,7 @@ describe('from a new estimate to a project and back to a draft', () => {
     await pressLabel(E('reopenAsDraft'));
     expect(estimates()[0].status).toBe('draft');
     expect(hasLabel(E('addItem'))).toBe(true);
-    expect(hasLabel(E('addStage'))).toBe(true);
+    expect(hasLabel(E('addStage'))).toBe(false); // the standard schedule already makes 100 %: nothing left to add
     expect(hasLabel(E('openProject'))).toBe(true);
     expect(visibleText()).not.toContain(E('estimateLockedCaption'));
     expectClean('estimate hub after the whole flow');

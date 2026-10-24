@@ -190,8 +190,6 @@ smokeScreen('estimate/[id] (hub, demo data)', () => <EstimateHub />, {
           tr('addItem'),
           tr('paymentSchedule'),
           ...payments.flatMap((p, i) => [p.label, `${formatPercent(p.percent_bp)} %`, formatLKR(amounts[i])]),
-          tr('addStage'),
-          tr('useStandardSchedule'),
           tr('paymentDetails'),
           tr('termsAndNotes'),
           estimate.notes ?? '',

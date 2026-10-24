@@ -39,7 +39,11 @@ export function BrandMark({ size = 32, style, scheme: forced }: { size?: number;
   const scheme = forced ?? appScheme;
   return (
     <Image
+      // a new image per theme: expo-image kept the first one it drew (navy) after a switch to dark
+      key={scheme}
       source={MARK[scheme]}
+      // the mark is one colour: white on dark is certain even if the navy file is still the one drawn
+      tintColor={scheme === 'dark' ? '#FFFFFF' : undefined}
       contentFit="contain"
       accessibilityRole="image"
       accessibilityLabel="Bluemoon Engineering"
@@ -53,6 +57,8 @@ export function BrandLogo({ width = 200, style }: { width?: number; style?: Styl
   const scheme = useScheme();
   return (
     <Image
+      // a new image per theme: expo-image kept the first one it drew (navy) after a switch to dark
+      key={scheme}
       source={LOCKUP[scheme]}
       contentFit="contain"
       accessibilityRole="image"
@@ -66,6 +72,8 @@ export function BrandLogo({ width = 200, style }: { width?: number; style?: Styl
 export function BrandWordmark({ width = 144, scheme, style }: { width?: number; scheme: Scheme; style?: StyleProp<ImageStyle> }) {
   return (
     <Image
+      // a new image per theme: expo-image kept the first one it drew (navy) after a switch to dark
+      key={scheme}
       source={WORDMARK[scheme]}
       contentFit="contain"
       accessibilityRole="image"

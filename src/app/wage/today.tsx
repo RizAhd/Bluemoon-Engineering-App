@@ -129,7 +129,9 @@ export default function TodaysWorkScreen() {
   useEffect(() => {
     const a = Keyboard.addListener('keyboardDidShow', () => {
       setKbOpen(true);
-      setTimeout(revealField, 150);
+      // after Screen has lifted its content above the keyboard (measured, then laid out), and once more for slow phones
+      setTimeout(revealField, 350);
+      setTimeout(revealField, 700);
     });
     const b = Keyboard.addListener('keyboardDidHide', () => setKbOpen(false));
     return () => {
@@ -461,7 +463,7 @@ export default function TodaysWorkScreen() {
                 {/* "Pay all" only when this pays everything still owed; a typed part payment says just what it pays.
                     Shown with the keyboard open too, so closing the keyboard never swaps the button under the finger. */}
                 <Button
-                  label={payAllTotal >= totalToPay ? `${t('payAll')} · ${formatLKR(payAllTotal)}` : t('payAmount', { amount: formatLKR(payAllTotal) })}
+                  label={totalToPay > 0 && payAllTotal >= totalToPay ? `${t('payAll')} · ${formatLKR(payAllTotal)}` : t('payAmount', { amount: formatLKR(payAllTotal) })}
                   onPress={onPayAll}
                   loading={busy}
                 />

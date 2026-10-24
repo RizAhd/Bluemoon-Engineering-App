@@ -30,6 +30,7 @@ import {
 import { useT, type TKey } from '@/i18n';
 import { today } from '@/lib/dates';
 import { formatLKR } from '@/lib/money';
+import { unpaidForDay } from '@/lib/wages';
 import { space, useColors } from '@/theme';
 
 /** What the Workers tab remembers (settings `list_workers_<field>`), the same with a project or "All projects". */
@@ -125,7 +126,7 @@ export default function WorkersScreen() {
   const onRoster = new Set(roster.map((r) => r.worker_id));
   const dayOnRoster = dayRows.filter((r) => onRoster.has(r.worker_id));
   const worked = dayOnRoster.filter((r) => r.days != null).length;
-  const toPayToday = dayOnRoster.reduce((s, r) => s + Math.max(0, (r.work_cents ?? 0) - (r.paid_cents ?? 0)), 0);
+  const toPayToday = unpaidForDay(dayOnRoster, roster);
   const workPaySubtitle = pid
     ? roster.length === 0
       ? t('noWorkersOnProject')

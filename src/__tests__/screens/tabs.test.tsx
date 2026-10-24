@@ -47,7 +47,7 @@ smokeScreen('Today tab (demo data)', () => <TodayScreen />, {
         tr('periodDay'),
         tr('periodWeek'),
         tr('periodMonth'),
-        tr('periodTotal'),
+        tr('total_day'),
         tr('wagesToPay'),
         tr('totalCost'),
         tr('recent'),

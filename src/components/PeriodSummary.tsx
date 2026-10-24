@@ -112,7 +112,7 @@ export function PeriodSummary({ pid, today }: { pid: string | null; today: strin
       </Tiles>
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline', gap: space.sm }}>
         <Txt color="textMuted" weight="semibold">
-          {t('periodTotal')}
+          {t(`total_${period}`)}
         </Txt>
         <Txt variant="title" weight="bold" numeric>
           {formatLKR(sum.exp + sum.labour)}

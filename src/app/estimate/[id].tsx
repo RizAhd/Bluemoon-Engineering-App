@@ -572,7 +572,8 @@ export default function EstimateHub() {
                   </View>
                 </Card>
               ) : null}
-              {!locked && payments.length ? (
+              {/* once the stages make 100 % there is nothing left to add; a stage is still changed by tapping it */}
+              {!locked && payments.length && unscheduled > 0 ? (
                 <View style={{ gap: space.sm }}>
                   <Button kind="secondary" compact icon={Plus} label={t('addStage')} onPress={() => openStage()} full />
                   <Button kind="ghost" compact icon={ListChecks} label={t('useStandardSchedule')} onPress={standardSchedule} full />
