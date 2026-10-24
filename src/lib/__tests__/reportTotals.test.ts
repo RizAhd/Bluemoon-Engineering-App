@@ -63,11 +63,12 @@ describe.each([false, true])('the report (letterhead: %p)', (letterhead) => {
     expect(html).toContain(formatLKR(55_735_000)); // Rs 557,350
   });
 
-  it('the by-category table adds up to the project expenses', () => {
+  it('the by-category table adds up to the total cost: the expense categories plus a wages row', () => {
     const id = projectId('Welimada');
     const cats = amounts(section(report(id, letterhead), 'byCategory'));
-    expect(cats).toHaveLength(8);
-    expect(sum(cats)).toBe(49_555_000);
+    expect(cats).toHaveLength(9);
+    expect(cats).toContain(6_180_000); // wages, as on the project screen
+    expect(sum(cats)).toBe(49_555_000 + 6_180_000);
   });
 
   it('the expense list adds up to the same figure, and has one line per live expense', () => {
@@ -98,7 +99,7 @@ describe('after corrections', () => {
     const html = report(id);
     const cost = first<ProjectCost>('SELECT * FROM v_project_cost WHERE project_id = ?', [id]) as ProjectCost;
     expect(cost.expense_cents).toBe(49_555_000 - (biggest?.amount_cents as number));
-    expect(sum(amounts(section(html, 'byCategory')))).toBe(cost.expense_cents);
+    expect(sum(amounts(section(html, 'byCategory')))).toBe(cost.expense_cents + cost.labour_cents); // the categories plus the wages row
     expect(sum(amounts(section(html, 'expenses')))).toBe(cost.expense_cents);
     const cells = amounts(section(html, 'workers'));
     expect(sum(cells.filter((_, i) => i % 2 === 0))).toBe(cost.labour_cents);

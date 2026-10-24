@@ -139,7 +139,13 @@ export function buildReportHtml(input: ReportInput): string {
   sections.push(
     table(
       [{ label: t('category') }, { label: t('amount'), num: true, width: '34%' }],
-      [...byCat.entries()].sort((a, b) => b[1] - a[1]).map(([c, v]) => [t(`cat_${c}` as TKey), esc(formatLKR(v))]),
+      // wages are part of the total cost too, so they get their own row beside the expense categories (as on the project screen)
+      [
+        ...[...byCat.entries()].map(([c, v]) => [t(`cat_${c}` as TKey), v] as const),
+        ...((cost?.labour_cents ?? 0) > 0 ? [[t('wages'), cost?.labour_cents ?? 0] as const] : []),
+      ]
+        .sort((a, b) => b[1] - a[1])
+        .map(([label, v]) => [label, esc(formatLKR(v))]),
     ),
   );
 

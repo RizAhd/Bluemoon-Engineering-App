@@ -254,6 +254,7 @@ export const en = {
   runNow: 'Run now',
   fullBackup: 'Full backup with photos',
   fullBackupHint: 'Photos are kept only on this phone. Once a week, save a full backup to Google Drive.',
+  fullBackupHintAuto: 'Photos are kept only on this phone. Tap Back up now once a week: the full backup is then copied to your backup folder and Google Drive by itself.',
   dataSafe: 'Records backed up today',
   photosOverdue: 'Photos not saved to Drive for {days} days',
   olderDeleted: 'Backups older than {days} days are deleted automatically.',
@@ -679,6 +680,20 @@ export const en = {
   backupLockedBody: 'Type the password it was saved with.',
   openAndRestore: 'Open and restore',
   wrongPassword: 'Wrong password. Check it and try again.',
+  summary: 'Summary',
+  periodDay: 'Day',
+  periodWeek: 'Week',
+  periodMonth: 'Month',
+  thisWeek: 'This week',
+  previousPeriod: 'Earlier',
+  nextPeriod: 'Later',
+  paidToWorkers: 'Paid to workers',
+  nothingInPeriod: 'Nothing recorded in this period',
+  periodTotal: 'Total cost',
+  textSize: 'Text size',
+  textSmall: 'Small',
+  textMedium: 'Medium',
+  textLarge: 'Large',
 } as const;
 
 export type Dict = Record<keyof typeof en, string>;

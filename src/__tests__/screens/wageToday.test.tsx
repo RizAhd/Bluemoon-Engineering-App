@@ -14,7 +14,7 @@ import { router } from 'expo-router';
 import TodaysWorkScreen from '@/app/wage/today';
 import { ToastHost } from '@/components/ui/feedback';
 import { setSetting } from '@/db';
-import { assignWorker, payWages, recordWorkDay, saveWorker } from '@/db/repo';
+import { assignWorker, payWages, recordWorkDay, saveWageEntry, saveWorker } from '@/db/repo';
 import { addDays, today } from '@/lib/dates';
 import { mockAlert, resetDb, seedDemo } from '@/test-utils';
 import { buildCleanSite, CULVERT, DRAIN, projectId, rows, SCHOOL, setCurrent, workerId } from '@/test-utils/screenData';
@@ -231,6 +231,19 @@ describe('wage/today: tick a worker, pick days, pay, save', () => {
     await waitFor(() => expect(router.back).toHaveBeenCalled());
     expect(payRows().map((r) => r.amount_cents)).toEqual([100_000, 200_000]);
     expect(workRows()).toHaveLength(1);
+  });
+
+  it('an advance already given counts: "Pay all" offers only what the worker is still owed', async () => {
+    const site = buildCleanSite();
+    recordWorkDay({ project_id: site.project, worker_id: site.asanka, day: today(), days: 1 }); // earns Rs 3,000
+    payWages({ project_id: site.project, worker_id: site.asanka, day: today(), amount_cents: 50_000 });
+    saveWageEntry({ worker_id: site.asanka, project_id: site.project, day: today(), kind: 'advance', amount_cents: 200_000 });
+    setCurrent(site.project);
+    mockAlert();
+    await renderScreen(<TodaysWorkScreen />);
+    // 3,000 earned − 500 paid − 2,000 advance = 500 owed, not the 2,500 the day alone would say
+    expect(visibleText()).toContain("Unpaid for today's work Rs 500");
+    expect(visibleText()).toContain('Pay all · Rs 500');
   });
 
   it('"All worked today" ticks everyone; "Pay all" lists each name and amount, then pays them', async () => {

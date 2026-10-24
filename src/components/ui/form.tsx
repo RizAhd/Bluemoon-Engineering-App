@@ -10,7 +10,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useT } from '@/i18n';
 import { addDays, formatDay, toDay, today } from '@/lib/dates';
 import { formatAmount, parseCents } from '@/lib/money';
-import { FONT_MAP, hairline, lineHeight, listTuning, motion, radius, space, touch, touchMin, type, useColors, useElevation, useFont, useLayout } from '@/theme';
+import { FONT_MAP, hairline, lineHeight, listTuning, motion, radius, space, touch, touchMin, type, useColors, useElevation, useFont, useLayout, useTextScale } from '@/theme';
 
 import { IconButton } from './Button';
 import { useFocusChain, useFocusReveal } from './focusChain';
@@ -160,6 +160,7 @@ export interface FieldProps extends TextInputProps {
 
 export function Field({ label, optional, error, hint, multiline, hideLabel, disabled, editable, style, icon: Icon, ...input }: FieldProps) {
   const c = useColors();
+  const k = useTextScale();
   const font = useFont();
   const t = useT();
   const ref = useRef<ComponentRef<typeof TextInput>>(null);
@@ -207,7 +208,7 @@ export function Field({ label, optional, error, hint, multiline, hideLabel, disa
               paddingVertical: multiline ? space.md : 0,
               color: box.color,
               // The example text sits a step smaller than what is typed, so it never reads as a filled-in value.
-              fontSize: input.value ? type.bodyLg : type.body,
+              fontSize: (input.value ? type.bodyLg : type.body) * k,
               fontFamily: input.value && isLatinText(input.value) ? FONT_MAP.en.regular : font('regular'),
             },
             style,
@@ -262,6 +263,7 @@ export function groupTyped(s: string): string {
 /** Amount input with an Rs prefix and a number keypad, grouped with thousands separators as it is typed. */
 export function AmountField({ label, value, onChangeText, error, autoFocus, optional, hint, hintTone, compact, disabled, onBlur, onSubmitEditing, returnKeyType, placeholder = '0' }: AmountFieldProps) {
   const c = useColors();
+  const k = useTextScale();
   const t = useT();
   const ref = useRef<ComponentRef<typeof TextInput>>(null);
   const [focus, setFocus] = useState(false);
@@ -310,7 +312,7 @@ export function AmountField({ label, value, onChangeText, error, autoFocus, opti
             minWidth: 0,
             minHeight: (compact ? touchMin : touch) - 2,
             // Empty, the example amount is a lighter, smaller line, so it cannot be mistaken for a typed amount.
-            fontSize: value ? (compact ? type.bodyLg : type.heading) : type.body,
+            fontSize: (value ? (compact ? type.bodyLg : type.heading) : type.body) * k,
             // Android draws the placeholder off-centre when a lineHeight is set, so the empty state has none.
             lineHeight: value ? (compact ? lineHeight.bodyLg.latin : lineHeight.heading.latin) : undefined,
             fontFamily: value ? FONT_MAP.en.bold : FONT_MAP.en.regular,
@@ -530,6 +532,7 @@ export function SearchField({
   autoFocus?: boolean;
   style?: StyleProp<ViewStyle>;
 }) {
+  const k = useTextScale();
   const c = useColors();
   const t = useT();
   const font = useFont();
@@ -563,7 +566,7 @@ export function SearchField({
           autoCorrect={false}
           onFocus={() => setFocus(true)}
           onBlur={() => setFocus(false)}
-          style={{ flex: 1, minHeight: touchMin - 2, color: c.text, fontSize: type.body, fontFamily: font('regular'), paddingVertical: 0 }}
+          style={{ flex: 1, minHeight: touchMin - 2, color: c.text, fontSize: type.body * k, fontFamily: font('regular'), paddingVertical: 0 }}
         />
         {value ? <IconButton icon={X} label={t('close')} size={44} tone="textMuted" onPress={() => onChangeText('')} /> : <View style={{ width: 44 }} />}
       </View>

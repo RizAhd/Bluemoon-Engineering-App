@@ -1,7 +1,7 @@
 import { Platform, Text, type TextProps } from 'react-native';
 
 import { useLang } from '@/i18n';
-import { FONT_MAP, fontScaleMax, lineHeight, tracking, type, useColors, useFont, type Palette, type Weight } from '@/theme';
+import { FONT_MAP, fontScaleMax, lineHeight, tracking, type, useColors, useFont, useTextScale, type Palette, type Weight } from '@/theme';
 
 export type TxtVariant = keyof typeof type;
 
@@ -41,6 +41,7 @@ export function Txt({ variant, weight, color, numeric, center, eyebrow, style, m
   const c = useColors();
   const font = useFont();
   const lang = useLang();
+  const k = useTextScale();
   const v: TxtVariant = variant ?? (eyebrow ? 'caption' : 'body');
   const w: Weight = weight ?? (eyebrow ? 'semibold' : 'regular');
   const col: keyof Palette = color ?? (eyebrow ? 'textMuted' : 'text');
@@ -56,8 +57,8 @@ export function Txt({ variant, weight, color, numeric, center, eyebrow, style, m
       style={[
         {
           color: c[col],
-          fontSize: size,
-          lineHeight: lh,
+          fontSize: size * k,
+          lineHeight: Math.round(lh * k),
           fontFamily: numeric || latinRun ? FONT_MAP.en[w] : font(w),
           fontVariant: numeric ? ['tabular-nums'] : undefined,
           textAlign: center ? 'center' : undefined,

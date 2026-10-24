@@ -43,18 +43,24 @@ smokeScreen('Today tab (demo data)', () => <TodayScreen />, {
       name: 'all projects',
       expect: (tr) => [
         greetings(tr),
-        tr('spentToday'),
+        tr('summary'),
+        tr('periodDay'),
+        tr('periodWeek'),
+        tr('periodMonth'),
+        tr('periodTotal'),
         tr('wagesToPay'),
         tr('totalCost'),
         tr('recent'),
         tr('todaysWork'),
-        'Rs 253,500', // spent today: 185,000 + 4,200 school, 64,300 culvert
+        'Rs 253,500', // expenses today: 185,000 + 4,200 school, 64,300 culvert
+        'Rs 274,100', // today's total: those expenses + 20,600 labour earned today
         'Rs 39,800', // wages still owed over all workers
         'Rs 643,750', // expenses + labour of the two running projects
         SCHOOL,
         CULVERT,
         tr('noProjectSelected'),
-        tr('toolsOutCount', { n: 2 }),
+        tr('toolsOut'),
+        /^2$/m, // tools out
       ],
     },
     {
@@ -94,13 +100,13 @@ smokeScreen('Today tab (demo data)', () => <TodayScreen />, {
       width: 320,
       langs: ['en', 'ta'],
       prepare: () => setCurrent(projectId(SCHOOL)),
-      expect: (tr) => [tr('spentToday'), 'Rs 189,200', tr('wagesToPay'), 'Rs 32,800', tr('todaysWork'), tr('newExpense')],
+      expect: (tr) => [tr('summary'), 'Rs 189,200', tr('wagesToPay'), 'Rs 32,800', tr('todaysWork'), tr('newExpense')],
     },
     {
       name: 'tablet (768 wide): content is centred',
       width: 768,
       langs: ['en', 'si'],
-      expect: (tr) => [tr('spentToday'), 'Rs 253,500', tr('recent')],
+      expect: (tr) => [tr('summary'), 'Rs 253,500', tr('recent')],
     },
     {
       name: 'daily backup done today',
@@ -118,7 +124,7 @@ smokeScreen('Today tab (empty phone)', () => <TodayScreen />, {
     {
       name: 'no projects yet shows the empty state with the primary action',
       expect: (tr) => [greetings(tr), tr('noProjects'), tr('noProjectsHint'), tr('newProject')],
-      absent: (tr) => [tr('spentToday'), tr('recent')],
+      absent: (tr) => [tr('summary'), tr('recent')],
     },
   ],
 });

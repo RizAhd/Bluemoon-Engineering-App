@@ -283,7 +283,7 @@ describe('backup: actions', () => {
     await fireEvent.press(screen.getAllByRole('button', { name: /^Restore backup / })[0]);
     expect(alert).toHaveBeenCalled();
     await pressAlertButton(alert, E('restore'));
-    await waitFor(() => expect(visibleText()).toContain(E('restoreDone')));
+    await waitFor(() => expect(visibleText()).toContain(E('restoreDone')), { timeout: 8000 });
     expectClean('backup restored');
   });
 

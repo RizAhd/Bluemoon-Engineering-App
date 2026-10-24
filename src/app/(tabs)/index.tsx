@@ -18,18 +18,20 @@ import { useMemo, useState } from 'react';
 import { Pressable, View } from 'react-native';
 
 import { BrandLogo } from '@/components/Brand';
+import { PeriodSummary } from '@/components/PeriodSummary';
 import { TabHeader } from '@/components/ProjectSwitcher';
 import { ContractBar, Stat, Tiles } from '@/components/Stats';
 import { Button } from '@/components/ui/Button';
-import { Badge, EmptyState } from '@/components/ui/feedback';
+import { EmptyState } from '@/components/ui/feedback';
 import { PickerSheet } from '@/components/ui/form';
 import { Card, Divider, InfoLine, ListCard, ListRow, Screen, SectionTitle } from '@/components/ui/layout';
 import { Txt } from '@/components/ui/Txt';
 import { useFirst, useQuery, useSetting } from '@/db';
 import type { ProjectCost } from '@/db/types';
 import { setCurrentProject, useCurrentProjectId, useProjects, useProjectWorkers, useWageDay } from '@/hooks/data';
+import { useToday } from '@/hooks/today';
 import { useT, type TKey } from '@/i18n';
-import { daysSince, formatDay, toDay, today } from '@/lib/dates';
+import { daysSince, formatDay, toDay } from '@/lib/dates';
 import { formatLKR } from '@/lib/money';
 import { hairline, radius, space, useColors } from '@/theme';
 
@@ -56,18 +58,12 @@ export default function TodayScreen() {
   const c = useColors();
   const projects = useProjects();
   const pid = useCurrentProjectId();
-  const td = today();
+  // moves on at midnight by itself, so the screen never shows yesterday as "today"
+  const td = useToday();
   const scope = pid ? 'AND project_id = ?' : '';
   const args = pid ? [pid] : [];
   const [choosing, setChoosing] = useState(false);
 
-  const spentToday =
-    useFirst<{ s: number }>(
-      // Same rule as the project totals: only expenses of projects that still exist.
-      `SELECT COALESCE(SUM(e.amount_cents),0) AS s FROM expenses e JOIN projects p ON p.id = e.project_id AND p.deleted_at IS NULL
-       WHERE e.deleted_at IS NULL AND e.day = ? ${pid ? 'AND e.project_id = ?' : ''}`,
-      [td, ...args],
-    )?.s ?? 0;
   const roster = useProjectWorkers(pid);
   const allOwed =
     useFirst<{ s: number }>('SELECT COALESCE(SUM(CASE WHEN balance_cents > 0 THEN balance_cents END),0) AS s FROM v_worker_balance')?.s ?? 0;
@@ -137,7 +133,9 @@ export default function TodayScreen() {
   const onRoster = new Set(roster.map((r) => r.worker_id));
   const dayOnRoster = pid ? dayRows.filter((r) => onRoster.has(r.worker_id)) : dayRows;
   const worked = dayOnRoster.filter((r) => r.days != null).length;
-  const toPay = dayOnRoster.reduce((a, r) => a + Math.max(0, r.work_cents - r.paid_cents), 0);
+  // never more than the worker is owed on the project: an advance already covers part of the day's wage
+  const owedOf = new Map(roster.map((r) => [r.worker_id, Math.max(0, r.balance_cents)]));
+  const toPay = dayOnRoster.reduce((a, r) => a + Math.max(0, Math.min(r.work_cents - r.paid_cents, owedOf.get(r.worker_id) ?? 0)), 0);
   const noRoster = !!pid && roster.length === 0;
 
   const workSubtitle = !pid
@@ -174,14 +172,16 @@ export default function TodayScreen() {
           />
         ) : null}
 
+        <PeriodSummary pid={pid} today={td} />
+
         <Tiles>
-          <Stat label={t('spentToday')} value={formatLKR(spentToday)} onPress={() => router.push('/(tabs)/expenses')} />
           <Stat
             label={t('wagesToPay')}
             value={formatLKR(wagesToPay)}
             tone={wagesToPay > 0 ? 'danger' : 'text'}
             onPress={() => router.push('/(tabs)/workers')}
           />
+          <Stat label={t('toolsOut')} value={String(toolsOut)} tone={toolsOut > 0 ? 'warning' : 'text'} onPress={() => router.push('/(tabs)/tools')} />
         </Tiles>
 
         <Card>
@@ -189,7 +189,6 @@ export default function TodayScreen() {
             <Txt eyebrow style={{ flexShrink: 1 }}>
               {t('totalCost')}
             </Txt>
-            {toolsOut > 0 ? <Badge icon={Hammer} tone="warning" label={t('toolsOutCount', { n: toolsOut })} /> : null}
           </View>
           <Txt variant="amount" weight="bold" numeric adjustsFontSizeToFit minimumFontScale={0.7} numberOfLines={1}>
             {formatLKR(totals.spent)}
@@ -296,7 +295,7 @@ function QuickAction({ icon: Icon, label, onPress }: { icon: LucideIcon; label: 
 
 function ActivityRow({ a, showProject }: { a: Activity; showProject: boolean }) {
   const t = useT();
-  const day = a.day === today() ? t('today') : formatDay(a.day);
+  const day = a.day === toDay(new Date()) ? t('today') : formatDay(a.day);
   const withProject = (...parts: (string | null | undefined)[]) =>
     [...parts, showProject ? a.project_name : null, day].filter(Boolean).join(' · ');
   switch (a.kind) {

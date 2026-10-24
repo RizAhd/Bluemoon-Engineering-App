@@ -1,6 +1,8 @@
 import { createContext, useContext, useEffect, useMemo, type ComponentRef, type ReactNode, type RefObject } from 'react';
 import { Keyboard, type TextInput } from 'react-native';
 
+import { noteFocusMove } from '@/lib/keyboard';
+
 type InputRef = RefObject<ComponentRef<typeof TextInput> | null>;
 
 /**
@@ -50,8 +52,10 @@ export function createFocusChain(reveal: () => void = () => {}): FocusChain {
           .filter((m) => (Math.abs(m.y - here.y) < 8 ? m.x > here.x : m.y > here.y))
           .sort((a, b) => (Math.abs(a.y - b.y) < 8 ? a.x - b.x : a.y - b.y));
         const target = after[0]?.ref.current;
-        if (target) target.focus();
-        else Keyboard.dismiss();
+        if (target) {
+          noteFocusMove();
+          target.focus();
+        } else Keyboard.dismiss();
       });
     },
   };

@@ -80,6 +80,9 @@ export default function TabLayout() {
           tabBarLabel: ({ color, children }) => (
             <Text
               numberOfLines={1}
+              // a long word on a narrow, enlarged screen ("Expenses" at the biggest display size) shrinks a little instead of being cut
+              adjustsFontSizeToFit
+              minimumFontScale={0.75}
               maxFontSizeMultiplier={TAB_LABEL_MAX_SCALE}
               style={{ color, fontFamily: font('semibold'), fontSize: tabLabel.size, lineHeight: tabLabel.lineHeight, marginTop: space.xs, textAlign: 'center' }}>
               {children}

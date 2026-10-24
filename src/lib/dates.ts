@@ -43,3 +43,38 @@ export function isValidDay(day: string): boolean {
   const dt = new Date(y, m - 1, d);
   return dt.getFullYear() === y && dt.getMonth() === m - 1 && dt.getDate() === d;
 }
+
+export type Period = 'day' | 'week' | 'month';
+
+const MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+
+function parts(day: string) {
+  const [y, m, d] = day.split('-').map(Number);
+  return { y, m, d };
+}
+
+/** First and last day of the period that holds `anchor`. Weeks run Monday to Sunday. */
+export function periodRange(period: Period, anchor: string): { from: string; to: string } {
+  if (period === 'day') return { from: anchor, to: anchor };
+  const { y, m, d } = parts(anchor);
+  if (period === 'week') {
+    const back = (new Date(y, m - 1, d).getDay() + 6) % 7; // days since Monday
+    const from = addDays(anchor, -back);
+    return { from, to: addDays(from, 6) };
+  }
+  return { from: toDay(new Date(y, m - 1, 1)), to: toDay(new Date(y, m, 0)) };
+}
+
+/** The same period one step earlier (-1) or later (+1). */
+export function shiftPeriod(period: Period, anchor: string, by: -1 | 1): string {
+  if (period === 'day') return addDays(anchor, by);
+  if (period === 'week') return addDays(anchor, 7 * by);
+  const { y, m } = parts(anchor);
+  return toDay(new Date(y, m - 1 + by, 1));
+}
+
+/** "2026-10-05" -> "October 2026" */
+export function monthName(day: string): string {
+  const { y, m } = parts(day);
+  return `${MONTH_NAMES[m - 1]} ${y}`;
+}

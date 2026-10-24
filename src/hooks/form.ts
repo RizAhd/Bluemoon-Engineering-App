@@ -19,7 +19,8 @@ export function useRecordForm(table: string, existingId?: string) {
   const t = useT();
   const [id] = useState(() => existingId ?? newId());
   const [errors, setErrors] = useState<Record<string, TKey>>({});
-  const saved = useRef(!!existingId);
+  // set once the record is saved or deleted on purpose: then the screen may close without the unsaved-changes question
+  const saved = useRef(false);
   // True from the moment Save starts until it fails: a second tap while saving (or after saving, while the screen closes) does nothing.
   const busy = useRef(false);
 

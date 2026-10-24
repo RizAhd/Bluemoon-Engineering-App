@@ -109,6 +109,16 @@ function withStyles(config) {
       styles.push(pickerStyle);
     }
     setItem(pickerStyle, 'android:headerBackground', '@color/bm_dialog_fill');
+    // and white words on it (left alone, MIUI draws them navy on the blue)
+    setItem(pickerStyle, 'android:headerMonthTextAppearance', '@style/BluemoonPickerHeaderText');
+    setItem(pickerStyle, 'android:headerYearTextAppearance', '@style/BluemoonPickerHeaderText');
+    setItem(pickerStyle, 'android:headerDayOfMonthTextAppearance', '@style/BluemoonPickerHeaderText');
+    let headerText = styles.find((s) => s.$.name === 'BluemoonPickerHeaderText');
+    if (!headerText) {
+      headerText = { $: { name: 'BluemoonPickerHeaderText', parent: 'android:TextAppearance.Material' }, item: [] };
+      styles.push(headerText);
+    }
+    setItem(headerText, 'android:textColor', '#FFFFFF');
 
     const app = styles.find((s) => s.$.name === 'AppTheme');
     if (app) {

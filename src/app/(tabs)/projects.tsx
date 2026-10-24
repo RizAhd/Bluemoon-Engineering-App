@@ -38,7 +38,8 @@ function MiniBar({ spent, contract }: { spent: number; contract: number }) {
   return (
     <View
       accessible
-      accessibilityLabel={`${Math.round(ratio * 100)} %`}
+      // read out like the Today card: something spent but under half a percent is "<1 %", not "0 %"
+      accessibilityLabel={`${spent > 0 && Math.round(ratio * 100) === 0 ? '<1' : Math.round(ratio * 100)} %`}
       style={{ marginTop: space.sm, height: 6, borderRadius: radius.sm, backgroundColor: c.border, overflow: 'hidden' }}>
       <View style={{ width: `${Math.min(100, Math.max(0, ratio * 100))}%`, height: 6, borderRadius: radius.sm, backgroundColor: fill }} />
     </View>

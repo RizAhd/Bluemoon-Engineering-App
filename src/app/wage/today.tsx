@@ -1,8 +1,8 @@
 import * as Haptics from 'expo-haptics';
 import { router, Stack, useLocalSearchParams } from 'expo-router';
 import { Building2, CheckCircle2, Info, UserPlus } from 'lucide-react-native';
-import { memo, useCallback, useEffect, useMemo, useState } from 'react';
-import { Alert, FlatList, Keyboard, Platform, Pressable, View } from 'react-native';
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Alert, FlatList, Keyboard, Platform, Pressable, TextInput, View } from 'react-native';
 
 import { ShareHeaderButton, useShareSheet } from '@/components/ShareSheet';
 import { Button } from '@/components/ui/Button';
@@ -12,6 +12,7 @@ import { InfoLine, ListCard, ListRow, Screen } from '@/components/ui/layout';
 import { Txt } from '@/components/ui/Txt';
 import type { ProjectWorkerBalance, WageDay } from '@/db/types';
 import { recordWorkDay, removeWorkDay, payWages } from '@/db/repo';
+import { useLeaveGuard } from '@/hooks/form';
 import { setCurrentProject, useCurrentProjectId, useProjects, useProjectWorkers, useWageDay, useWorkers } from '@/hooks/data';
 import { useT, type TKey } from '@/i18n';
 import { isValidDay, today } from '@/lib/dates';
@@ -106,14 +107,36 @@ export default function TodaysWorkScreen() {
   if (opened.key !== key) setOpened({ key, recorded: hasRecorded });
   const alreadyRecorded = opened.key === key ? opened.recorded : hasRecorded;
 
+  // The list is this screen's own scroller (not Screen's), so it brings the field being typed into view itself,
+  // clear of the Pay / Save footer, when the keyboard opens.
+  const list = useRef<FlatList<Vm>>(null);
+  const listY = useRef(0);
+  const revealField = useCallback(() => {
+    const field = TextInput.State.currentlyFocusedInput?.();
+    const host = list.current?.getNativeScrollRef?.() as { measureInWindow?: (cb: (x: number, y: number, w: number, h: number) => void) => void } | null | undefined;
+    if (!field?.measureInWindow || !host?.measureInWindow) return;
+    host.measureInWindow((_sx, sy, _sw, sh) => {
+      field.measureInWindow((_x, y, _w, h) => {
+        const room = space.xxxl; // the hint under the field
+        let by = 0;
+        if (y < sy + space.lg) by = y - sy - space.lg;
+        else if (y + h + room > sy + sh) by = y + h + room - (sy + sh);
+        if (by) list.current?.scrollToOffset({ offset: Math.max(0, listY.current + by), animated: true });
+      });
+    });
+  }, []);
+
   useEffect(() => {
-    const a = Keyboard.addListener('keyboardDidShow', () => setKbOpen(true));
+    const a = Keyboard.addListener('keyboardDidShow', () => {
+      setKbOpen(true);
+      setTimeout(revealField, 150);
+    });
     const b = Keyboard.addListener('keyboardDidHide', () => setKbOpen(false));
     return () => {
       a.remove();
       b.remove();
     };
-  }, []);
+  }, [revealField]);
 
   const dayMap = useMemo(() => new Map(dayRows.map((r) => [r.worker_id, r])), [dayRows]);
   // "Mark as left" only changes the worker, not the project assignment, so check the worker's own flag too.
@@ -131,7 +154,9 @@ export default function TodaysWorkScreen() {
         const amountStr = d.amount ?? (worked && wage > 0 ? centsToInput(wage) : '');
         const amountCents = amountStr.trim() === '' ? 0 : parseCents(amountStr);
         const paid = rec?.paid_cents ?? 0;
-        const remaining = Math.max(0, (amountCents ?? 0) - paid);
+        // Never more than the worker is owed on the project: an advance (today or earlier) already covers part of the wage.
+        const owed = row.balance_cents - wage + (amountCents ?? 0);
+        const remaining = Math.max(0, Math.min((amountCents ?? 0) - paid, owed));
         const payStr = d.pay ?? '';
         const payCents = payStr.trim() === '' ? 0 : (parseCents(payStr) ?? 0);
         return {
@@ -150,6 +175,14 @@ export default function TodaysWorkScreen() {
         };
       });
   }, [roster, dayMap, activeIds, drafts, errors, payErrors]);
+
+  // Back with a typed Pay now or a changed wage not saved asks first (ticks and days are saved the moment they are tapped).
+  const saved = useRef(false);
+  useLeaveGuard(
+    // only rows with something unsaved, so rows loading or a project switch do not count as a change
+    vms.filter((v) => v.payStr.trim() !== '' || (v.worked && v.amountCents !== (v.rec?.work_cents ?? 0))).map((v) => [v.row.worker_id, v.payStr, v.amountStr]),
+    saved,
+  );
 
   const patch = useCallback(
     (id: string, p: Draft) => {
@@ -322,6 +355,7 @@ export default function TodaysWorkScreen() {
     if (done) {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
       toast(t('sheetSaved'));
+      saved.current = true;
       router.back();
     }
   }
@@ -445,13 +479,18 @@ export default function TodaysWorkScreen() {
       {/* On a short window (landscape, split screen) the totals and Save scroll with the sheet instead of covering it. */}
       <Screen scroll={false} footer={short ? undefined : footer}>
         <FlatList
+          ref={list}
+          onScroll={(e) => {
+            listY.current = e.nativeEvent.contentOffset.y;
+          }}
+          scrollEventThrottle={32}
           data={vms}
           keyExtractor={vmKey}
           keyboardShouldPersistTaps="handled"
           keyboardDismissMode="on-drag"
           {...listTuning}
           removeClippedSubviews={Platform.OS === 'android'}
-          contentContainerStyle={[column, { paddingHorizontal: gutter, paddingTop: space.lg, paddingBottom: space.xl }]}
+          contentContainerStyle={[column, { paddingHorizontal: gutter, paddingTop: space.lg, paddingBottom: space.xl + (kbOpen ? space.xxxl * 3 : 0) }]}
           ItemSeparatorComponent={Gap}
           ListHeaderComponent={header}
           ListEmptyComponent={

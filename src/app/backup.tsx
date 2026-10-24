@@ -56,6 +56,10 @@ export default function BackupScreen() {
   const autoAt = useSetting('auto_backup_at');
   const autoError = useSetting('auto_backup_error');
   const autoOn = useSetting('auto_backup') !== 'off';
+  // with a folder or Drive set up, Back up now copies the full backup there itself
+  const folderSet = useSetting('backup_folder_uri');
+  const driveSet = useSetting('drive_email');
+  const copiesSetUp = !!folderSet || !!driveSet;
   const stats = useFirst<{ records: number; photos: number; bytes: number }>(
     `SELECT
        (SELECT COUNT(*) FROM projects WHERE deleted_at IS NULL)
@@ -293,7 +297,7 @@ export default function BackupScreen() {
           {`${stats?.records ?? 0} ${t('records')} · ${stats?.photos ?? 0} ${t('receiptPhotos')} · ${kb(stats?.bytes ?? 0)}`}
         </Txt>
         <Txt variant="caption" color="textMuted">
-          {t('fullBackupHint')}
+          {t(copiesSetUp ? 'fullBackupHintAuto' : 'fullBackupHint')}
         </Txt>
       </Card>
 

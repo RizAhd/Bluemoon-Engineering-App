@@ -15,7 +15,7 @@ import { daysSince, formatDay, toDay, today } from '@/lib/dates';
 import { seedDemoData } from '@/lib/demoData';
 import { biometricAvailable, loadLock, setBiometric, useLockState } from '@/lib/appLock';
 import { guard } from '@/lib/errors';
-import { space, useThemePref, type ThemePref } from '@/theme';
+import { space, useTextSize, useThemePref, type TextSize, type ThemePref } from '@/theme';
 
 function timeOf(iso: string) {
   return new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
@@ -60,6 +60,7 @@ export default function MoreScreen() {
   const t = useT();
   const lang = useLang();
   const theme = useThemePref();
+  const textSize = useTextSize();
   const driveEmail = useSetting('drive_email');
   const autoAt = useSetting('auto_backup_at');
   const autoError = useSetting('auto_backup_error');
@@ -122,6 +123,17 @@ export default function MoreScreen() {
         value={theme}
         onChange={(v) => void guard('settings.theme', t, () => setSetting('theme', v))}
         options={(['system', 'light', 'dark'] as const).map((v) => ({ value: v, label: t(`theme_${v}`) }))}
+      />
+
+      <SectionTitle title={t('textSize')} />
+      <Chips<TextSize>
+        value={textSize}
+        onChange={(v) => void guard('settings.textSize', t, () => setSetting('text_size', v === 'medium' ? null : v))}
+        options={[
+          { value: 'small', label: t('textSmall') },
+          { value: 'medium', label: t('textMedium') },
+          { value: 'large', label: t('textLarge') },
+        ]}
       />
 
       <SectionTitle title={t('about')} />

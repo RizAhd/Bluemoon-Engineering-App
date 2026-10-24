@@ -181,7 +181,7 @@ interface ScreenCase {
 
 const CASES: ScreenCase[] = [
   // tabs
-  { title: 'Today tab', ui: () => <TodayScreen />, prepare: () => setCurrent(longProject()), expect: (tr) => [tr('spentToday'), tr('wagesToPay'), LONG_PROJECT] },
+  { title: 'Today tab', ui: () => <TodayScreen />, prepare: () => setCurrent(longProject()), expect: (tr) => [tr('summary'), tr('wagesToPay'), LONG_PROJECT] },
   { title: 'Projects tab', ui: () => <ProjectsScreen />, expect: () => [LONG_PROJECT, 'Welimada Primary School Building'] },
   { title: 'Expenses tab', ui: () => <ExpensesScreen />, prepare: () => setCurrent(longProject()), expect: () => [LONG_SUPPLIER, BIG_AMOUNT] },
   { title: 'Workers tab', ui: () => <WorkersScreen />, prepare: () => setCurrent(longProject()), expect: (tr) => [LONG_WORKER, tr('todaysWork')] },

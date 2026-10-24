@@ -22,6 +22,19 @@ export function useScheme(): 'light' | 'dark' {
   return system === 'dark' ? 'dark' : 'light';
 }
 
+export type TextSize = 'small' | 'medium' | 'large';
+const TEXT_SCALE: Record<TextSize, number> = { small: 0.9, medium: 1, large: 1.15 };
+
+/** Settings → Text size: the owner's own choice on top of the phone's text size (Medium = as designed). */
+export function useTextSize(): TextSize {
+  const v = useSetting('text_size');
+  return v === 'small' || v === 'large' ? v : 'medium';
+}
+
+export function useTextScale(): number {
+  return TEXT_SCALE[useTextSize()];
+}
+
 export function useColors(): Palette {
   return palette[useScheme()];
 }
