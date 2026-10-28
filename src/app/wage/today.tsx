@@ -10,14 +10,17 @@ import { Badge, EmptyState, toast } from '@/components/ui/feedback';
 import { AmountField, Checkbox, DateField, Segmented, SelectField } from '@/components/ui/form';
 import { InfoLine, ListCard, ListRow, Screen } from '@/components/ui/layout';
 import { Txt } from '@/components/ui/Txt';
+import { useSetting } from '@/db';
 import type { ProjectWorkerBalance, WageDay } from '@/db/types';
 import { recordWorkDay, removeWorkDay, payWages } from '@/db/repo';
 import { useLeaveGuard } from '@/hooks/form';
 import { setCurrentProject, useCurrentProjectId, useProjects, useProjectWorkers, useWageDay, useWorkers } from '@/hooks/data';
+import { usePdfShare } from '@/hooks/pdfShare';
 import { useT, type TKey } from '@/i18n';
-import { isValidDay, today } from '@/lib/dates';
+import { formatDay, isValidDay, today } from '@/lib/dates';
 import { guard } from '@/lib/errors';
 import { centsToInput, formatLKR, parseCents } from '@/lib/money';
+import { exportDaySheetPdf } from '@/lib/reports/export';
 import { hairline, listTuning, radius, space, useColors, useLayout } from '@/theme';
 
 const DAY_CHOICES = ['0.5', '1', '1.5', '2'] as const;
@@ -99,7 +102,20 @@ export default function TodaysWorkScreen() {
   const [busy, setBusy] = useState(false);
   const [kbOpen, setKbOpen] = useState(false);
   // The day's work and pay of this project, as saved: amounts still being typed are saved first (openShare).
-  const share = useShareSheet({ kind: 'daySheet', id: pid, options: { day } });
+  // The PDF is the same sheet with signature lines, for the site file.
+  const letterhead = useSetting('export_letterhead') === '1';
+  const pdf = usePdfShare({
+    tag: 'wage.daySheetPdf',
+    title: `${t('todaysWork')} · ${formatDay(day)}`,
+    make: (notice) => exportDaySheetPdf(pid ?? '', day, { letterhead, onNotice: notice }),
+    details: { projectId: pid, day, letterhead },
+  });
+  const share = useShareSheet({
+    kind: 'daySheet',
+    id: pid,
+    options: { day },
+    pdf: { hint: `${t('pdfDaySheet')} · ${formatDay(day)} · ${t(letterhead ? 'letterheadOption' : 'pdfPlainPaper')}`, run: pdf.run },
+  });
 
   // "Already recorded" is about the day as it was when the sheet opened: ticking a worker here must not make it appear.
   const hasRecorded = dayRows.some((r) => r.days != null || r.paid_cents > 0);

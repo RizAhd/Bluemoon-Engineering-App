@@ -69,7 +69,11 @@ src/db/                  schema.ts (tables, views, migrations), repo.ts (the sin
 src/hooks/               data.ts (queries), form.ts (useRecordForm, useLeaveGuard), today.ts (useToday)
 src/lib/                 money, dates (incl. week / month ranges), wages (unpaid for a day), backup,
                          autoBackup, phoneFolder, drive, pdf / estimatePdf / reportHtml, share*, errors,
-                         keyboard (app-wide keyboard behaviour), letterheadData (embedded JPEG)
+                         keyboard (app-wide keyboard behaviour), letterheadData (embedded JPEG),
+                         pdfShell (page frame + print / letterhead / write for the printable lists)
+  lib/reports/           the PDF row of the Share sheets: worker statement (3 languages), expense list,
+                         workers list, day sheet, tools register, site notes (pure html builders +
+                         load.ts from the views + export.ts); src/hooks/pdfShare.ts hands the file over
 src/i18n/                en.ts (the key list), si.ts, ta.ts — every key in all three
 src/theme/               tokens (colours, type scale, spacing, elevation), hooks (useColors, useTextScale…)
 plugins/                 Expo config plugins (section 9)

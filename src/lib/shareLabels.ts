@@ -112,6 +112,22 @@ const en = {
   weather_sunny: 'Sunny',
   weather_cloudy: 'Cloudy',
   weather_rain: 'Rain',
+
+  // ---- the workers list and the notes list
+  left: 'Left',
+  noWorkers: 'No workers yet',
+  siteNotes: 'Site notes',
+  noNotes: 'No site notes yet',
+
+  // ---- the printed statement
+  statement: 'Statement',
+  history: 'History',
+  kind: 'Type',
+  note: 'Note',
+  amount: 'Amount',
+  wage_work: 'Work',
+  noHistory: 'Nothing recorded yet',
+  printedOn: 'Printed {date}',
 } as const;
 
 export type ShareLabelKey = keyof typeof en;
@@ -206,6 +222,20 @@ const si: ShareLabels = {
   weather_sunny: 'අව්ව',
   weather_cloudy: 'වලාකුළු',
   weather_rain: 'වැසි',
+
+  left: 'ඉවත් වූ',
+  noWorkers: 'තවම කම්කරුවන් නැත',
+  siteNotes: 'සයිට් සටහන්',
+  noNotes: 'තවම සයිට් සටහන් නැත',
+
+  statement: 'ගිණුම් ප්‍රකාශය',
+  history: 'ඉතිහාසය',
+  kind: 'වර්ගය',
+  note: 'සටහන',
+  amount: 'මුදල',
+  wage_work: 'වැඩ',
+  noHistory: 'තවම කිසිවක් සටහන් කර නැත',
+  printedOn: 'මුද්‍රණය කළේ {date}',
 };
 
 const ta: ShareLabels = {
@@ -297,6 +327,20 @@ const ta: ShareLabels = {
   weather_sunny: 'வெயில்',
   weather_cloudy: 'மேகமூட்டம்',
   weather_rain: 'மழை',
+
+  left: 'விலகியவர்',
+  noWorkers: 'இன்னும் தொழிலாளர் இல்லை',
+  siteNotes: 'தளக் குறிப்புகள்',
+  noNotes: 'இன்னும் தளக் குறிப்புகள் இல்லை',
+
+  statement: 'கணக்கு அறிக்கை',
+  history: 'வரலாறு',
+  kind: 'வகை',
+  note: 'குறிப்பு',
+  amount: 'தொகை',
+  wage_work: 'வேலை',
+  noHistory: 'இன்னும் எதுவும் பதிவு செய்யப்படவில்லை',
+  printedOn: 'அச்சிடப்பட்டது {date}',
 };
 
 export const SHARE_LABELS: Record<Lang, ShareLabels> = { en, si, ta };

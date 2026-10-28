@@ -10,11 +10,13 @@ import { CardList, type CardSection } from '@/components/ui/CardList';
 import { Badge, EmptyState } from '@/components/ui/feedback';
 import { Chips } from '@/components/ui/form';
 import { ListRow, Screen } from '@/components/ui/layout';
-import { useQuery } from '@/db';
+import { useQuery, useSetting } from '@/db';
 import type { ToolStatus } from '@/db/types';
 import { useCurrentProjectId } from '@/hooks/data';
+import { usePdfShare } from '@/hooks/pdfShare';
 import { useT } from '@/i18n';
 import { formatDay } from '@/lib/dates';
+import { exportToolsRegisterPdf } from '@/lib/reports/export';
 import { useColors } from '@/theme';
 
 type Row = ToolStatus & { worker_name: string | null; project_name: string | null };
@@ -30,13 +32,24 @@ export default function ToolsScreen() {
   const pid = useCurrentProjectId();
   const [filter, setFilter] = useState<Filter>('all');
   const [showElsewhere, setShowElsewhere] = useState(false);
-  // The tools that are out now, on the current project (or on all projects), as a message.
-  const share = useShareSheet({ kind: 'toolsOut', id: pid });
   const rows = useQuery<Row>(
     `SELECT s.*, w.name AS worker_name, p.name AS project_name FROM v_tool_status s
      LEFT JOIN workers w ON w.id = s.worker_id LEFT JOIN projects p ON p.id = s.project_id
      ORDER BY s.is_out DESC, s.name COLLATE NOCASE`,
   );
+  // The tools that are out now, on the current project (or on all projects), as a message; the PDF is the whole register.
+  const letterhead = useSetting('export_letterhead') === '1';
+  const pdf = usePdfShare({
+    tag: 'tools.pdf',
+    title: t('tools'),
+    make: (notice) => exportToolsRegisterPdf({ letterhead, onNotice: notice }),
+    details: { letterhead },
+  });
+  const share = useShareSheet({
+    kind: 'toolsOut',
+    id: pid,
+    pdf: { hint: `${t('pdfToolsRegister')} · ${t('toolsCount', { n: rows.length })} · ${t(letterhead ? 'letterheadOption' : 'pdfPlainPaper')}`, run: pdf.run },
+  });
 
   const { out, inStore, outHere, outElsewhere } = useMemo(() => {
     const out = rows.filter((r) => r.is_out);

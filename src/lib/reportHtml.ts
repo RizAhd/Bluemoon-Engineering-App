@@ -49,8 +49,8 @@ export function esc(s: unknown): string {
   return String(s ?? '').replace(/[&<>"]/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[ch] as string);
 }
 
-/** Printed beside the logo on plain reports (the letterhead already carries these). */
-const COMPANY = {
+/** Printed beside the logo on plain reports (the letterhead already carries these). Shared with pdfShell.ts. */
+export const COMPANY = {
   address: 'Ambagaha Kumbura, Silmiyapura, Welimada, Badulla',
   phone: '077 337 0056',
   email: 'bluemoonengi@gmail.com',
@@ -60,19 +60,24 @@ const COMPANY = {
 const NAVY = '#253046';
 const BLUE = '#1D4ED8';
 
-interface Col {
+export interface Col {
   label: string;
   /** Right-aligned numeric column. */
   num?: boolean;
   width?: string;
 }
 
-function table(cols: Col[], rows: string[][], cls = ''): string {
+/**
+ * A data table: a header row, the rows (cells already HTML), and optionally a totals row at the end.
+ * Shared with the lists in src/lib/reports/ (through pdfShell.ts); the project report never passes a totals row.
+ */
+export function table(cols: Col[], rows: string[][], cls = '', total?: string[]): string {
   const head = cols
     .map((c) => `<th class="${c.num ? 'n' : ''}"${c.width ? ` style="width:${c.width}"` : ''}>${c.label}</th>`)
     .join('');
   const body = rows.map((r) => `<tr>${r.map((cell, i) => `<td class="${cols[i]?.num ? 'n' : ''}">${cell}</td>`).join('')}</tr>`).join('');
-  return `<table class="data ${cls}"><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table>`;
+  const foot = total ? `<tr class="total">${total.map((cell, i) => `<td class="${cols[i]?.num ? 'n' : ''}">${cell}</td>`).join('')}</tr>` : '';
+  return `<table class="data ${cls}"><thead><tr>${head}</tr></thead><tbody>${body}${foot}</tbody></table>`;
 }
 
 export function buildReportHtml(input: ReportInput): string {

@@ -5,6 +5,7 @@ import { View } from 'react-native';
 
 import { ListControls, oneOf, useListPrefs } from '@/components/ListControls';
 import { HeaderAction, TabHeader } from '@/components/ProjectSwitcher';
+import { ShareHeaderButton, useShareSheet } from '@/components/ShareSheet';
 import { Stat, Tiles } from '@/components/Stats';
 import { Button } from '@/components/ui/Button';
 import { CardList } from '@/components/ui/CardList';
@@ -12,6 +13,7 @@ import { Badge, EmptyState } from '@/components/ui/feedback';
 import { Chips, PickerSheet } from '@/components/ui/form';
 import { Card, ListRow, Screen } from '@/components/ui/layout';
 import { Txt } from '@/components/ui/Txt';
+import { useSetting } from '@/db';
 import {
   BALANCE_FILTERS,
   setCurrentProject,
@@ -27,9 +29,11 @@ import {
   type WorkerSort,
   type WorkerStatusFilter,
 } from '@/hooks/data';
+import { usePdfShare } from '@/hooks/pdfShare';
 import { useT, type TKey } from '@/i18n';
 import { today } from '@/lib/dates';
 import { formatLKR } from '@/lib/money';
+import { exportWorkersListPdf } from '@/lib/reports/export';
 import { unpaidForDay } from '@/lib/wages';
 import { space, useColors } from '@/theme';
 
@@ -117,6 +121,21 @@ export default function WorkersScreen() {
   const list = useWorkerList(pid, { sort, balance, status });
   const rows = list.rows;
 
+  // The whole roster (or every worker) with the balances, as a message or as a PDF with every figure.
+  const projectName = projects.find((p) => p.id === pid)?.name ?? null;
+  const letterhead = useSetting('export_letterhead') === '1';
+  const pdf = usePdfShare({
+    tag: 'workers.pdf',
+    title: t('workers'),
+    make: (notice) => exportWorkersListPdf(pid, { letterhead, onNotice: notice }),
+    details: { projectId: pid, letterhead },
+  });
+  const share = useShareSheet({
+    kind: 'workersList',
+    id: pid,
+    pdf: { hint: `${t('pdfWorkersList')} · ${projectName ?? t('allProjects')} · ${t(letterhead ? 'letterheadOption' : 'pdfPlainPaper')}`, run: pdf.run },
+  });
+
   const active = rows.filter((r) => !!r.active);
   const inactive = rows.filter((r) => !r.active);
   const weOwe = rows.reduce((s, r) => s + Math.max(0, r.balance), 0);
@@ -158,11 +177,15 @@ export default function WorkersScreen() {
       <TabHeader
         title={t('workers')}
         right={
-          pid ? (
-            <HeaderAction icon={UserPlus} label={t('addWorkerToProject')} onPress={addToProject} />
-          ) : (
-            <HeaderAction icon={UserPlus} label={t('newWorker')} onPress={newWorker} />
-          )
+          <>
+            {/* With no worker anywhere there is nothing to share yet. */}
+            {list.total ? <ShareHeaderButton onPress={share.open} /> : null}
+            {pid ? (
+              <HeaderAction icon={UserPlus} label={t('addWorkerToProject')} onPress={addToProject} />
+            ) : (
+              <HeaderAction icon={UserPlus} label={t('newWorker')} onPress={newWorker} />
+            )}
+          </>
         }
       />
       <Screen hairlineTop={false} scroll={false}>
@@ -294,6 +317,7 @@ export default function WorkersScreen() {
           router.push('/wage/today');
         }}
       />
+      {share.sheet}
     </View>
   );
 }

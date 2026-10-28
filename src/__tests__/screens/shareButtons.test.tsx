@@ -14,17 +14,20 @@ import * as Sharing from 'expo-sharing';
 
 import ExpensesScreen from '@/app/(tabs)/expenses';
 import ToolsScreen from '@/app/(tabs)/tools';
+import WorkersScreen from '@/app/(tabs)/workers';
 import EstimateHub from '@/app/estimate/[id]';
 import NoteForm from '@/app/note/form';
+import NotesScreen from '@/app/notes';
 import ProjectDetail from '@/app/project/[id]';
 import TodaysWorkScreen from '@/app/wage/today';
 import WorkerDetail from '@/app/worker/[id]';
 import { ToastHost } from '@/components/ui/feedback';
-import { setSetting } from '@/db';
+import { getSetting, setSetting } from '@/db';
 import { saveEstimate, saveEstimateItem } from '@/db/estimates';
 import { addDays, today } from '@/lib/dates';
 import { exportEstimatePdf } from '@/lib/estimatePdf';
 import { exportProjectPdf } from '@/lib/pdf';
+import { exportDaySheetPdf, exportExpensesPdf, exportNotesPdf, exportToolsRegisterPdf, exportWorkersListPdf, exportWorkerStatementPdf } from '@/lib/reports/export';
 import { shareToWhatsApp } from '@/lib/share';
 import { buildShareMessage } from '@/lib/shareLoad';
 import { mockAlert, resetDb, seedDemo } from '@/test-utils';
@@ -49,17 +52,35 @@ jest.mock('@/lib/share', () => ({ __esModule: true, WHATSAPP_MAX_CHARS: 3000, sh
 jest.mock('@/lib/shareLoad', () => ({ __esModule: true, ...jest.requireActual('@/lib/shareLoad'), buildShareMessage: jest.fn() }));
 jest.mock('@/lib/estimatePdf', () => ({ __esModule: true, exportEstimatePdf: jest.fn(), estimatePdfName: jest.fn() }));
 jest.mock('@/lib/pdf', () => ({ __esModule: true, ...jest.requireActual('@/lib/pdf'), exportProjectPdf: jest.fn() }));
+jest.mock('@/lib/reports/export', () => ({
+  __esModule: true,
+  exportWorkerStatementPdf: jest.fn(),
+  exportExpensesPdf: jest.fn(),
+  exportWorkersListPdf: jest.fn(),
+  exportDaySheetPdf: jest.fn(),
+  exportToolsRegisterPdf: jest.fn(),
+  exportNotesPdf: jest.fn(),
+}));
 
 const E = makeTr('en');
 const MSG = '*Bluemoon message*\nLine two\nLine three\nLine four';
 const LANG_NAME: Record<Lang, string> = { en: 'English', si: 'සිංහල', ta: 'தமிழ்' };
+const LIST_PDFS = [exportWorkerStatementPdf, exportExpensesPdf, exportWorkersListPdf, exportDaySheetPdf, exportToolsRegisterPdf, exportNotesPdf] as const;
 
 beforeEach(() => {
   jest.mocked(buildShareMessage).mockReturnValue(MSG);
   jest.mocked(shareToWhatsApp).mockResolvedValue('whatsapp');
   jest.mocked(exportProjectPdf).mockResolvedValue({ uri: 'file:///cache/project.pdf' } as never);
   jest.mocked(exportEstimatePdf).mockResolvedValue({ uri: 'file:///cache/estimate.pdf' } as never);
+  for (const fn of LIST_PDFS) jest.mocked(fn).mockResolvedValue({ uri: 'file:///cache/list.pdf' } as never);
 });
+
+/** The PDF row is there, with a hint that says what it prints (`words`) and the letterhead choice. */
+function expectPdfRow(tr: Tr, ...words: string[]) {
+  expect(hasLabel(tr('sharePdf'))).toBe(true);
+  const text = visibleText();
+  for (const word of [...words, tr(getSetting('export_letterhead') === '1' ? 'letterheadOption' : 'pdfPlainPaper')]) expect(text).toContain(word);
+}
 
 /** The Share button comes before `next` in the header (Share, then Edit). */
 function shareBefore(tr: Tr, next: string) {
@@ -162,7 +183,7 @@ smokeScreen("Share on wage/today (Today's work & pay)", () => <TodaysWorkScreen 
       check: async (tr, lang) => {
         await openShare(tr, lang);
         expect(lastBuild()).toEqual(['daySheet', projectId(SCHOOL), lang, { day: addDays(today(), -1) }]);
-        expect(hasLabel(tr('sharePdf'))).toBe(false);
+        expectPdfRow(tr, tr('pdfDaySheet'));
       },
     },
     {
@@ -185,11 +206,13 @@ smokeScreen('Share on worker/[id]', () => <WorkerDetail />, {
         setCurrent(projectId(SCHOOL));
         setRouteParams({ id: workerId('Nimal Perera') });
       },
-      expect: (tr) => [tr('share'), tr('editWorker')],
+      expect: (tr) => [tr('share'), tr('editWorker'), tr('statementPdf')],
       check: async (tr, lang) => {
         shareBefore(tr, tr('editWorker'));
         await openShare(tr, lang);
         expect(lastBuild()).toEqual(['workerStatement', workerId('Nimal Perera'), lang, { projectId: projectId(SCHOOL) }]);
+        // the statement's language is the app's until one is chosen
+        expectPdfRow(tr, tr('pdfStatement'), SCHOOL, LANG_NAME[lang]);
       },
     },
     {
@@ -201,7 +224,80 @@ smokeScreen('Share on worker/[id]', () => <WorkerDetail />, {
       check: async (tr, lang) => {
         await openShare(tr, lang);
         expect(lastBuild()).toEqual(['workerStatement', workerId('Nimal Perera'), lang, { projectId: null }]);
+        expectPdfRow(tr, tr('pdfStatement'), tr('allProjects'));
       },
+    },
+  ],
+});
+
+// ---------------------------------------------------------------- the Workers tab
+
+smokeScreen('Share on the Workers tab', () => <WorkersScreen />, {
+  db: 'demo',
+  variants: [
+    {
+      name: 'the roster of the current project',
+      prepare: () => setCurrent(projectId(SCHOOL)),
+      expect: (tr) => [tr('share'), tr('addWorkerToProject'), tr('settingsAndMore')],
+      check: async (tr, lang) => {
+        shareBefore(tr, tr('addWorkerToProject'));
+        await openShare(tr, lang);
+        expect(lastBuild()).toEqual(['workersList', projectId(SCHOOL), lang, undefined]);
+        expectPdfRow(tr, tr('pdfWorkersList'), SCHOOL);
+      },
+    },
+    {
+      name: 'every worker with all projects',
+      prepare: () => setCurrent(null),
+      expect: (tr) => [tr('share'), tr('newWorker')],
+      check: async (tr, lang) => {
+        shareBefore(tr, tr('newWorker'));
+        await openShare(tr, lang);
+        expect(lastBuild()).toEqual(['workersList', null, lang, undefined]);
+        expectPdfRow(tr, tr('pdfWorkersList'), tr('allProjects'));
+      },
+    },
+  ],
+});
+
+smokeScreen('Share on the Workers tab of an empty phone', () => <WorkersScreen />, {
+  db: 'empty',
+  variants: [{ name: 'no workers: nothing to share yet', langs: ['en'], absent: (tr) => [tr('share')] }],
+});
+
+// ---------------------------------------------------------------- the site notes list
+
+smokeScreen('Share on the Site notes screen', () => <NotesScreen />, {
+  db: 'demo',
+  variants: [
+    {
+      name: 'the notes of the project passed in',
+      prepare: () => setRouteParams({ projectId: projectId(SCHOOL) }),
+      expect: (tr) => [tr('share'), tr('newNote')],
+      check: async (tr, lang) => {
+        await openShare(tr, lang);
+        expect(lastBuild()).toEqual(['notesList', projectId(SCHOOL), lang, undefined]);
+        expectPdfRow(tr, tr('pdfNotes'), SCHOOL);
+      },
+    },
+    {
+      name: 'every project\'s notes',
+      langs: ['en'],
+      prepare: () => {
+        setCurrent(null);
+        setRouteParams({});
+      },
+      check: async (tr, lang) => {
+        await openShare(tr, lang);
+        expect(lastBuild()).toEqual(['notesList', null, lang, undefined]);
+        expectPdfRow(tr, tr('pdfNotes'), tr('allProjects'));
+      },
+    },
+    {
+      name: 'a project without notes has nothing to share yet',
+      langs: ['en'],
+      prepare: () => setRouteParams({ projectId: projectId('Bandarawela Drain Renovation') }),
+      absent: (tr) => [tr('share')],
     },
   ],
 });
@@ -219,6 +315,7 @@ smokeScreen('Share on the Expenses tab', () => <ExpensesScreen />, {
         shareBefore(tr, tr('settingsAndMore'));
         await openShare(tr, lang);
         expect(lastBuild()).toEqual(['expenses', projectId(SCHOOL), lang, undefined]);
+        expectPdfRow(tr, tr('pdfExpenses'), SCHOOL);
       },
     },
     {
@@ -227,6 +324,7 @@ smokeScreen('Share on the Expenses tab', () => <ExpensesScreen />, {
       check: async (tr, lang) => {
         await openShare(tr, lang);
         expect(lastBuild()).toEqual(['expenses', null, lang, undefined]);
+        expectPdfRow(tr, tr('pdfExpenses'), tr('allProjects'));
       },
     },
   ],
@@ -243,6 +341,7 @@ smokeScreen('Share on the Tools tab', () => <ToolsScreen />, {
         shareBefore(tr, tr('newTool'));
         await openShare(tr, lang);
         expect(lastBuild()).toEqual(['toolsOut', projectId(SCHOOL), lang, undefined]);
+        expectPdfRow(tr, tr('pdfToolsRegister'), tr('toolsCount', { n: 5 }));
       },
     },
     {
@@ -251,6 +350,7 @@ smokeScreen('Share on the Tools tab', () => <ToolsScreen />, {
       check: async (tr, lang) => {
         await openShare(tr, lang);
         expect(lastBuild()).toEqual(['toolsOut', null, lang, undefined]);
+        expectPdfRow(tr, tr('pdfToolsRegister'));
       },
     },
   ],
@@ -381,5 +481,132 @@ describe('the PDF row runs the screen\'s own export with its remembered choices'
     await renderScreen(<TodaysWorkScreen />);
     await pressLabel(E('share'));
     expect(buildShareMessage).toHaveBeenLastCalledWith('daySheet', projectId(SCHOOL), 'en', { day: today() });
+  });
+});
+
+// ---------------------------------------------------------------- the PDF rows of the lists
+
+describe('the PDF row of each list makes that list\'s PDF with the letterhead choice and hands it to the phone', () => {
+  beforeEach(() => {
+    resetDb();
+    seedDemo();
+    setSetting('lang', 'en');
+    setSetting('theme', 'light');
+  });
+
+  /** Open Share, press PDF, and wait for the phone's share sheet. */
+  async function sharePdf() {
+    await pressLabel(E('share'));
+    await pressLabel(E('sharePdf'));
+    await waitFor(() => expect(Sharing.shareAsync).toHaveBeenCalledTimes(1));
+    expect(Sharing.shareAsync).toHaveBeenCalledWith('file:///cache/list.pdf', expect.objectContaining({ mimeType: 'application/pdf', UTI: 'com.adobe.pdf' }));
+    await waitFor(() => expect(hasLabel(E('viaWhatsApp'))).toBe(false));
+  }
+
+  it('worker: the statement for the chosen project, in the remembered language, on the letterhead', async () => {
+    setSetting('export_letterhead', '1');
+    setSetting('statement_lang', 'ta');
+    setCurrent(projectId(SCHOOL));
+    setRouteParams({ id: workerId('Nimal Perera') });
+    await renderScreen(<WorkerDetail />);
+    await pressLabel(E('share'));
+    expect(visibleText()).toContain(`${E('pdfStatement')} · ${SCHOOL} · தமிழ் · ${E('letterheadOption')}`);
+    await pressLabel(E('sharePdf'));
+    await waitFor(() => expect(Sharing.shareAsync).toHaveBeenCalledTimes(1));
+    expect(exportWorkerStatementPdf).toHaveBeenCalledWith(workerId('Nimal Perera'), projectId(SCHOOL), expect.objectContaining({ letterhead: true, lang: 'ta' }));
+    expect(Sharing.shareAsync).toHaveBeenCalledWith('file:///cache/list.pdf', expect.objectContaining({ dialogTitle: `${E('pdfStatement')} · Nimal Perera` }));
+    await waitFor(() => expect(hasLabel(E('viaWhatsApp'))).toBe(false));
+  });
+
+  it('worker: the "Statement PDF" row opens the options; the language and the letterhead chosen there are used and remembered', async () => {
+    setCurrent(null);
+    setRouteParams({ id: workerId('Nimal Perera') });
+    await renderScreen(<WorkerDetail />);
+    await pressLabel(E('statementPdf'));
+    expect(visibleText()).toContain(E('statementLanguage'));
+    await pressLabel('සිංහල');
+    await pressLabel(`${E('letterheadOption')}. ${E('estimateLetterheadHint')}`);
+    expect(getSetting('statement_lang')).toBe('si');
+    expect(getSetting('export_letterhead')).toBe('1');
+    await pressLabel(E('shareNow'));
+    await waitFor(() => expect(Sharing.shareAsync).toHaveBeenCalledTimes(1));
+    expect(exportWorkerStatementPdf).toHaveBeenCalledWith(workerId('Nimal Perera'), null, expect.objectContaining({ letterhead: true, lang: 'si' }));
+    await waitFor(() => expect(visibleText()).not.toContain(E('statementLanguage'))); // the options sheet has gone
+  });
+
+  it('worker: a letterhead that could not load is told after the sheet has gone; a failure keeps the sheet', async () => {
+    setSetting('export_letterhead', '1');
+    jest.mocked(exportWorkerStatementPdf).mockImplementationOnce(async (_id, _p, opts) => {
+      opts.onNotice?.('letterhead-unavailable');
+      return { uri: 'file:///cache/list.pdf' } as never;
+    });
+    setRouteParams({ id: workerId('Nimal Perera') });
+    await renderScreen(
+      <>
+        <WorkerDetail />
+        <ToastHost />
+      </>,
+    );
+    await sharePdf();
+    expect(visibleText()).toContain(E('letterheadUnavailable'));
+
+    const alert = mockAlert();
+    jest.mocked(exportWorkerStatementPdf).mockRejectedValueOnce(new Error('no space left on device'));
+    await pressLabel(E('share'));
+    await pressLabel(E('sharePdf'));
+    await waitFor(() => expect(alert).toHaveBeenCalledWith(E('errorTitle'), expect.stringContaining(E('storageFull'))));
+    expect(Sharing.shareAsync).toHaveBeenCalledTimes(1);
+    expect(hasLabel(E('viaWhatsApp'))).toBe(true);
+    takeConsole();
+  });
+
+  it('expenses: every expense the current filters match, with the filters named', async () => {
+    setCurrent(projectId(SCHOOL));
+    setSetting('list_expenses_cats', 'materials,fuel');
+    setSetting('list_expenses_sort', 'highest');
+    await renderScreen(<ExpensesScreen />);
+    await sharePdf();
+    expect(exportExpensesPdf).toHaveBeenCalledWith(
+      expect.objectContaining({ projectId: projectId(SCHOOL), categories: ['materials', 'fuel'], methods: [], minCents: null, maxCents: null }),
+      'highest',
+      expect.objectContaining({
+        letterhead: false,
+        filters: expect.arrayContaining([
+          { label: E('period'), value: E('allTime') },
+          { label: E('category'), value: `${E('cat_materials')}, ${E('cat_fuel')}` },
+          { label: E('sortBy'), value: E('sort_highest') },
+        ]),
+      }),
+    );
+  });
+
+  it('workers: the roster of the current project', async () => {
+    setSetting('export_letterhead', '1');
+    setCurrent(projectId(SCHOOL));
+    await renderScreen(<WorkersScreen />);
+    await sharePdf();
+    expect(exportWorkersListPdf).toHaveBeenCalledWith(projectId(SCHOOL), expect.objectContaining({ letterhead: true }));
+  });
+
+  it('tools: the whole register', async () => {
+    setCurrent(null);
+    await renderScreen(<ToolsScreen />);
+    await sharePdf();
+    expect(exportToolsRegisterPdf).toHaveBeenCalledWith(expect.objectContaining({ letterhead: false }));
+  });
+
+  it('today\'s sheet: the chosen project and day', async () => {
+    setCurrent(projectId(SCHOOL));
+    setRouteParams({ day: addDays(today(), -1) });
+    await renderScreen(<TodaysWorkScreen />);
+    await sharePdf();
+    expect(exportDaySheetPdf).toHaveBeenCalledWith(projectId(SCHOOL), addDays(today(), -1), expect.objectContaining({ letterhead: false }));
+  });
+
+  it('site notes: the notes of the project on screen', async () => {
+    setRouteParams({ projectId: projectId(SCHOOL) });
+    await renderScreen(<NotesScreen />);
+    await sharePdf();
+    expect(exportNotesPdf).toHaveBeenCalledWith(projectId(SCHOOL), expect.objectContaining({ letterhead: false }));
   });
 });

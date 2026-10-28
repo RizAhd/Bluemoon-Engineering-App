@@ -190,7 +190,8 @@ export function expenseWhere(f: ExpenseFilter, opts: { withPeriod?: boolean } = 
   return { sql: parts.join(' AND '), args };
 }
 
-const EXPENSE_ORDER: Record<ExpenseSort, string> = {
+/** ORDER BY (table alias `e`) for each order of the Expenses tab; shared with the expense list PDF. */
+export const EXPENSE_ORDER: Record<ExpenseSort, string> = {
   newest: 'e.day DESC, e.created_at DESC, e.id',
   oldest: 'e.day ASC, e.created_at ASC, e.id',
   highest: 'e.amount_cents DESC, e.day DESC, e.created_at DESC, e.id',

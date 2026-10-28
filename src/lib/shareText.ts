@@ -52,6 +52,8 @@ export const SHARE_LIMITS = {
   tools: 40,
   /** Notes in the project message. */
   notes: 3,
+  /** Notes in the notes-list message. */
+  notesList: 15,
   /** Worker lines in the work-and-pay message. */
   workers: 40,
   /** Expense categories in the project message. */
@@ -170,6 +172,30 @@ export interface NoteShareInput extends Dated {
   body: string;
   /** 'sunny' | 'cloudy' | 'rain'; anything else is not shown. */
   weather: string | null;
+}
+
+/** One row of the Workers tab: the balance on the project, or the worker's own with "All projects". */
+export interface WorkerListShareRow {
+  name: string;
+  trade: string | null;
+  balance_cents: number;
+  active: number;
+}
+
+export interface WorkersListShareInput extends Dated {
+  /** The project, or null for all projects. */
+  projectName: string | null;
+  /** Working first, then those who left; by name (the Workers tab's order). */
+  rows: WorkerListShareRow[];
+}
+
+export interface NotesListShareInput extends Dated {
+  /** The project, or null for all projects. */
+  projectName: string | null;
+  /** The newest notes, newest first. */
+  notes: { day: string; body: string; weather: string | null; project_name: string | null }[];
+  /** How many notes there are in all. */
+  noteCount: number;
 }
 
 // ---------------------------------------------------------------- cleaning typed text
@@ -701,6 +727,59 @@ export function noteMessage(input: NoteShareInput, lang: Lang): string {
     dashed(L.siteNote, singleLine(root.projectName)),
     [kv(L.date, dayText(root.day)), kv(L.weather, weatherText(L, root.weather))],
     body ? [[body]] : [],
+    root.today,
+  );
+}
+
+// ---------------------------------------------------------------- the workers list
+
+/** The Workers tab as a message: who is on the roster (or every worker), what each is owed, and the two totals. */
+export function workersListMessage(input: WorkersListShareInput, lang: Lang): string {
+  const L = shareLabels(lang);
+  const root = loose(input);
+  const projectName = singleLine(root.projectName);
+  const allProjects = projectName === '';
+
+  const rows = rowsOf(root.rows).map((r) => ({
+    name: singleLine(r.name, SHARE_LIMITS.item) || '—',
+    trade: singleLine(r.trade, SHARE_LIMITS.item),
+    balance: cents(r.balance_cents) ?? 0,
+    active: r.active !== 0 && r.active !== false,
+  }));
+  const weOwe = rows.reduce((s, r) => s + Math.max(0, r.balance), 0);
+  const paidAhead = rows.reduce((s, r) => s + Math.max(0, -r.balance), 0);
+
+  const lines = rows.map((r) => dashed(r.name, r.trade, balancePhrase(L, r.balance), r.active ? '' : L.left));
+  const totals = [kv(L.workers, String(rows.length)), kv(L.toPay, money(weOwe)), paidAhead > 0 ? kv(L.advanceOver, money(paidAhead)) : ''];
+
+  return assemble(
+    L,
+    dashed(L.workers, allProjects ? L.allProjects : projectName),
+    rows.length ? totals : [],
+    rows.length ? [listGroup(undefined, lines, lines.length, SHARE_LIMITS.workers)] : [[L.noWorkers]],
+    root.today,
+  );
+}
+
+// ---------------------------------------------------------------- the notes list
+
+/** A project's site notes (or every project's) as a message: the newest first, each cut to one line. */
+export function notesListMessage(input: NotesListShareInput, lang: Lang): string {
+  const L = shareLabels(lang);
+  const root = loose(input);
+  const projectName = singleLine(root.projectName);
+  const allProjects = projectName === '';
+
+  const notes = rowsOf(root.notes)
+    .map((n) => dashed(dayText(n.day), allProjects ? singleLine(n.project_name, SHARE_LIMITS.item) : '', weatherText(L, n.weather), singleLine(n.body, SHARE_LIMITS.note)))
+    .filter(Boolean);
+  const total = Math.max(count(root.noteCount), notes.length);
+
+  return assemble(
+    L,
+    dashed(L.siteNotes, allProjects ? L.allProjects : projectName),
+    total ? [kv(L.siteNotes, String(total))] : [],
+    total ? [listGroup(undefined, notes, total, SHARE_LIMITS.notesList)] : [[L.noNotes]],
     root.today,
   );
 }

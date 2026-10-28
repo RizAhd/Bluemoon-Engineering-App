@@ -24,9 +24,11 @@ import {
   estimateMessage,
   expensesMessage,
   noteMessage,
+  notesListMessage,
   projectMessage,
   SHARE_LIMITS,
   toolsOutMessage,
+  workersListMessage,
   workerStatementMessage,
   type DaySheetRow,
   type DaySheetShareInput,
@@ -34,9 +36,12 @@ import {
   type ExpenseRow,
   type ExpensesShareInput,
   type NoteShareInput,
+  type NotesListShareInput,
   type ProjectShareInput,
   type ToolOutRow,
   type ToolsOutShareInput,
+  type WorkerListShareRow,
+  type WorkersListShareInput,
   type WorkerStatementShareInput,
 } from './shareText';
 
@@ -229,9 +234,40 @@ export function loadNoteShare(noteId: string): NoteShareInput | null {
   return row ? { today: today(), projectName: row.project_name, day: row.day, body: row.body, weather: row.weather } : null;
 }
 
+// ---------------------------------------------------------------- the workers list
+
+/** The Workers tab's roster (v_project_worker_balance) or every worker (v_worker_balance), working first, then by name. null for a project that is gone. */
+export function loadWorkersListShare(projectId: string | null): WorkersListShareInput | null {
+  const projectName = projectId == null ? null : liveProjectName(projectId);
+  if (projectId != null && projectName == null) return null;
+  const rows = projectId
+    ? all<WorkerListShareRow>('SELECT name, trade, balance_cents, active FROM v_project_worker_balance WHERE project_id = ? ORDER BY active DESC, name COLLATE NOCASE, worker_id', [projectId])
+    : all<WorkerListShareRow>('SELECT name, trade, balance_cents, active FROM v_worker_balance ORDER BY active DESC, name COLLATE NOCASE, worker_id');
+  return { today: today(), projectName, rows };
+}
+
+// ---------------------------------------------------------------- the notes list
+
+/** The newest notes of a project (or of every live project), newest first, and how many there are. null for a project that is gone. */
+export function loadNotesListShare(projectId: string | null): NotesListShareInput | null {
+  const projectName = projectId == null ? null : liveProjectName(projectId);
+  if (projectId != null && projectName == null) return null;
+  const scope = projectId ? 'AND n.project_id = ?' : '';
+  const args = projectId ? [projectId] : [];
+  const notes = all<NotesListShareInput['notes'][number]>(
+    `SELECT n.day AS day, n.body AS body, n.weather AS weather, p.name AS project_name
+     FROM site_notes n JOIN projects p ON p.id = n.project_id AND p.deleted_at IS NULL
+     WHERE n.deleted_at IS NULL ${scope} ORDER BY n.day DESC, n.created_at DESC, n.id LIMIT ?`,
+    [...args, SHARE_LIMITS.notesList],
+  );
+  const noteCount =
+    first<{ n: number }>(`SELECT COUNT(*) AS n FROM site_notes n JOIN projects p ON p.id = n.project_id AND p.deleted_at IS NULL WHERE n.deleted_at IS NULL ${scope}`, args)?.n ?? 0;
+  return { today: today(), projectName, notes, noteCount };
+}
+
 // ---------------------------------------------------------------- load and build in one call
 
-export const SHARE_KINDS = ['project', 'estimate', 'daySheet', 'workerStatement', 'expenses', 'toolsOut', 'note'] as const;
+export const SHARE_KINDS = ['project', 'estimate', 'daySheet', 'workerStatement', 'expenses', 'toolsOut', 'note', 'workersList', 'notesList'] as const;
 export type ShareKind = (typeof SHARE_KINDS)[number];
 
 export interface ShareOptions {
@@ -249,6 +285,7 @@ export interface ShareOptions {
  *   project         the project's id            daySheet    the project's id (day in options, default today)
  *   estimate        the estimate's id           expenses    the project's id, or null for all projects
  *   note            the note's id               toolsOut    the project's id, or null for all projects
+ *   workersList     the project's id, or null   notesList   the project's id, or null for all projects
  *   workerStatement the worker's id (options.projectId limits it to one project)
  */
 export function buildShareMessage(kind: ShareKind, id: string | null, lang: Lang = currentLang(), options: ShareOptions = {}): string | null {
@@ -280,6 +317,14 @@ export function buildShareMessage(kind: ShareKind, id: string | null, lang: Lang
     case 'note': {
       const data = id == null ? null : loadNoteShare(id);
       return data && noteMessage(data, lang);
+    }
+    case 'workersList': {
+      const data = loadWorkersListShare(id);
+      return data && workersListMessage(data, lang);
+    }
+    case 'notesList': {
+      const data = loadNotesListShare(id);
+      return data && notesListMessage(data, lang);
     }
     default:
       return null;
