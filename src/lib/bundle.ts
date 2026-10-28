@@ -16,7 +16,12 @@ import { estimateSums } from './estimate';
 import { fileFor, isSafeFileName, writeAttachmentBytes } from './files';
 
 export const BUNDLE_FORMAT = 'bluemoon-bundle';
-export const BUNDLE_VERSION = 1;
+/**
+ * 1: the first format. 2: tools and movements carry counts (quantity_milli, unit, is_material, qty_milli). An app that only
+ * knows version 1 refuses a version-2 file instead of silently dropping the counts; this app still reads version 1, where
+ * every tool and movement is one piece (the columns' defaults).
+ */
+export const BUNDLE_VERSION = 2;
 
 type Row = Record<string, string | number | null>;
 

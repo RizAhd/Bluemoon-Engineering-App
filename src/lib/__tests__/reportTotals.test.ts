@@ -3,7 +3,7 @@
  * v_project_cost, its tables from the rows, and the two have to agree to the cent.
  */
 import { all, first } from '@/db';
-import { deleteRecord, payWages, recordWorkDay, saveExpense, saveWageEntry } from '@/db/repo';
+import { deleteRecord, moveTool, payWages, recordWorkDay, saveExpense, saveWageEntry } from '@/db/repo';
 import type { Project, ProjectCost } from '@/db/types';
 import { collectProject } from '@/lib/bundle';
 import { buildReportHtml } from '@/lib/reportHtml';
@@ -85,6 +85,66 @@ describe.each([false, true])('the report (letterhead: %p)', (letterhead) => {
     expect(cells).toHaveLength(10);
     expect(sum(cells.filter((_, i) => i % 2 === 0))).toBe(6_180_000);
     expect(sum(cells.filter((_, i) => i % 2 === 1))).toBe(2_900_000);
+  });
+});
+
+describe('the tools section', () => {
+  /** A few words in English, so the stock lines can be read as the owner reads them. */
+  const words: Record<string, string> = { inStoreOf: '{n} of {total} in store', leftCount: '{n} left', issue: 'Issue', return: 'Return' };
+  const english = (id: string) =>
+    buildReportHtml({
+      project: first<Project>('SELECT * FROM projects WHERE id = ?', [id]) as Project,
+      tables: collectProject(id),
+      cost: first<ProjectCost>('SELECT * FROM v_project_cost WHERE project_id = ?', [id]),
+      photoCount: 0,
+      skippedPhotos: 0,
+      letterhead: false,
+      t: (key) => words[key] ?? key,
+      day: '2026-10-22',
+    });
+
+  it('every movement line carries its quantity: 1 for a single piece, the count for several, the amount and unit for a material', () => {
+    const html = section(report(projectId('Welimada')), 'tools');
+    expect(html.match(/<tr><td/g)).toHaveLength(7); // drill, mixer, the ladder out and back, the wheelbarrows out and back, the cement
+    const qty = [...html.matchAll(/<td class="n">([^<]*)<\/td>/g)].map((m) => m[1]);
+    expect(qty).toHaveLength(7);
+    expect(qty.filter((q) => q === '1')).toHaveLength(5); // drill, mixer, ladder twice, one wheelbarrow back
+    expect(qty).toContain('3'); // three wheelbarrows out
+    expect(qty).toContain('20 bags');
+    expect(html).not.toMatch(/NaN|undefined|null/);
+  });
+
+  it('above the table, one line per tool with several pieces and per material says what is left; a single piece has no line', () => {
+    const html = section(english(projectId('Welimada')), 'tools');
+    expect(html).toContain('<div class="stock"><div>Cement: 80 bags left</div><div>Wheelbarrow: 2 of 4 in store</div></div>');
+    expect(html).not.toContain('Aluminium ladder 12 ft:');
+    expect(html).not.toContain('Hilti drill:');
+    expect(html.indexOf('class="stock"')).toBeLessThan(html.indexOf('<table'));
+  });
+
+  it('the stock lines follow the movements: a return raises what is in store; a deleted movement is left out of the table and the line', () => {
+    const id = projectId('Welimada');
+    const barrow = first<{ id: string }>("SELECT id FROM tools WHERE name = 'Wheelbarrow'")?.id as string;
+    const ruwan = first<{ id: string }>("SELECT id FROM workers WHERE name LIKE 'Ruwan%'")?.id as string;
+    moveTool({ tool_id: barrow, kind: 'return', project_id: id, worker_id: ruwan, day: '2026-10-22', qty_milli: 1000 });
+    expect(section(english(id), 'tools')).toContain('<div>Wheelbarrow: 3 of 4 in store</div>');
+    const cementIssue = first<{ id: string }>("SELECT m.id FROM tool_movements m JOIN tools t ON t.id = m.tool_id WHERE t.name = 'Cement'")?.id as string;
+    deleteRecord('tool_movements', cementIssue);
+    const html = section(english(id), 'tools');
+    // the cement has no live movement left, so it is neither a row nor a stock line (the deleted row travels in the bundle but is not printed)
+    expect(html).not.toContain('Cement');
+    expect(html).toContain('<div>Wheelbarrow: 3 of 4 in store</div>');
+    expect(html.match(/<tr><td/g)).toHaveLength(7 - 1 + 1); // the deleted issue is gone, the new return is in
+  });
+
+  it('a project whose tools were never counted (every one a single piece) prints no stock lines', () => {
+    const id = projectId('Badulla');
+    const saman = first<{ id: string }>("SELECT id FROM workers WHERE name LIKE 'Saman%'")?.id as string;
+    const station = first<{ id: string }>("SELECT id FROM tools WHERE name = 'Total station'")?.id as string;
+    moveTool({ tool_id: station, kind: 'issue', project_id: id, worker_id: saman, day: '2026-10-22' });
+    const html = section(english(id), 'tools');
+    expect(html).not.toContain('class="stock"');
+    expect([...html.matchAll(/<td class="n">([^<]*)<\/td>/g)].map((m) => m[1])).toEqual(['1']);
   });
 });
 

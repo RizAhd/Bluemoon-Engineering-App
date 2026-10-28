@@ -77,7 +77,7 @@ describe('dataSnapshot and verifyBackup', () => {
     expect(await a.backup.verifyBackup(bytes)).toBe(true);
 
     const { manifest, data } = await unzip(bytes);
-    expect(manifest).toMatchObject({ format: 'bluemoon-backup', version: 1, part: 1, parts: 1, created_at: '2026-10-22T06:30:45.000Z', device_id: a.db.deviceId() });
+    expect(manifest).toMatchObject({ format: 'bluemoon-backup', version: 2, part: 1, parts: 1, created_at: '2026-10-22T06:30:45.000Z', device_id: a.db.deviceId() });
     expect(manifest.data_sha256).toMatch(/^[0-9a-f]{64}$/);
     expect(await a.bundle.sha256Hex(data as Uint8Array)).toBe(manifest.data_sha256);
 
@@ -89,7 +89,7 @@ describe('dataSnapshot and verifyBackup', () => {
       projects: 3,
       workers: 6,
       expenses: 12,
-      tools: 5,
+      tools: 7,
       project_workers: 7,
       site_notes: 3,
     });
@@ -166,7 +166,7 @@ describe('restorePart', () => {
     const path = place(b, 'snap.zip', await a.backup.dataSnapshot());
     const res = await b.backup.restorePart(path);
     expect(res).toMatchObject({ part: 1, parts: 1, photos: 0 });
-    expect(res.plan.counts).toEqual({ inserted: 81, updated: 0, skipped: 0 }); // the 65 records of the site data and the 16 of the two demo estimates
+    expect(res.plan.counts).toEqual({ inserted: 86, updated: 0, skipped: 0 }); // the 70 records of the site data and the 16 of the two demo estimates
     expect(dump(b)).toEqual(dump(a));
     expect(b.db.all('SELECT * FROM v_project_cost ORDER BY project_id')).toEqual(a.db.all('SELECT * FROM v_project_cost ORDER BY project_id'));
     expect(b.db.all('SELECT * FROM v_worker_balance ORDER BY worker_id')).toEqual(a.db.all('SELECT * FROM v_worker_balance ORDER BY worker_id'));
@@ -179,8 +179,40 @@ describe('restorePart', () => {
     await b.backup.restorePart(path);
     const state = dump(b);
     const again = await b.backup.restorePart(path);
-    expect(again.plan.counts).toEqual({ inserted: 0, updated: 0, skipped: 81 });
+    expect(again.plan.counts).toEqual({ inserted: 0, updated: 0, skipped: 86 });
     expect(dump(b)).toEqual(state);
+  });
+
+  it('a version-1 backup (made before tools had counts) still restores: every tool and movement is one piece', async () => {
+    seedDemo();
+    const snapshot = await a.backup.dataSnapshot();
+    const { data } = await unzip(snapshot);
+    const bundle = JSON.parse(new TextDecoder().decode(data));
+    for (const t of bundle.tables.tools) for (const col of ['quantity_milli', 'unit', 'is_material']) delete t[col];
+    for (const m of bundle.tables.tool_movements) delete m.qty_milli;
+    const text = new TextEncoder().encode(JSON.stringify(bundle));
+    const old = await withManifest(await withData(snapshot, text), { version: 1, data_sha256: await a.bundle.sha256Hex(text) });
+
+    const res = await b.backup.restorePart(place(b, 'v1.zip', old));
+
+    expect(res.plan.counts).toEqual({ inserted: 86, updated: 0, skipped: 0 });
+    expect(b.db.all('SELECT DISTINCT quantity_milli, unit, is_material FROM tools')).toEqual([{ quantity_milli: 1000, unit: null, is_material: 0 }]);
+    expect(b.db.all('SELECT DISTINCT qty_milli FROM tool_movements')).toEqual([{ qty_milli: 1000 }]);
+    // one piece each: the drill, the mixer and the cement are held (the ladder and the wheelbarrow went out and came back)
+    expect(b.db.all('SELECT t.name, h.qty_milli FROM v_tool_holders h JOIN tools t ON t.id = h.tool_id ORDER BY t.name')).toEqual([
+      { name: 'Cement', qty_milli: 1000 },
+      { name: 'Concrete mixer', qty_milli: 1000 },
+      { name: 'Hilti drill', qty_milli: 1000 },
+    ]);
+  });
+
+  it('a backup of this version says version 2, and a file one version newer than the app is refused', async () => {
+    seedDemo();
+    const snapshot = await a.backup.dataSnapshot();
+    expect((await unzip(snapshot)).manifest.version).toBe(a.bundle.BUNDLE_VERSION);
+    expect(a.bundle.BUNDLE_VERSION).toBe(2);
+    await expect(b.backup.restorePart(place(b, 'next.zip', await withManifest(snapshot, { version: a.bundle.BUNDLE_VERSION + 1 })))).rejects.toThrow('newer');
+    expect(count(b, 'tools')).toBe(0);
   });
 
   describe('merges, and never deletes', () => {
@@ -225,7 +257,7 @@ describe('restorePart', () => {
 
       const res = await b.backup.restorePart(late);
 
-      expect(res.plan.counts).toEqual({ inserted: 0, updated: 1, skipped: 80 });
+      expect(res.plan.counts).toEqual({ inserted: 0, updated: 1, skipped: 85 });
       expect(b.db.first('SELECT deleted_at IS NOT NULL AS gone FROM expenses WHERE id = ?', [e])).toEqual({ gone: 1 });
       expect(count(b, 'expenses')).toBe(12);
     });

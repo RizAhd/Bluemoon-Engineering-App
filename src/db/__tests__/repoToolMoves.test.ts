@@ -160,14 +160,18 @@ describe('a record is not dated before the last one for the tool', () => {
 });
 
 describe('"latest" is the view\'s latest: newest day first, then the one entered last', () => {
-  it('goes by day, not by the order of entry', () => {
-    // the issue is dated the 10th but was entered first, the return is dated the 5th and entered after it:
-    // the view says the tool is out (newest day), so it can come back but cannot be issued again
+  it('the status view goes by day, not by the order of entry; the count of pieces out does not care about the order', () => {
+    // the issue is dated the 10th but was entered first, the return is dated the 5th and entered after it
+    // (merged from another phone, the way moveTool itself would not let it be entered): the view says the tool is
+    // out (newest day), while as a count one piece went out and one came back, so nothing is out
     raw('issue', '2026-10-10');
     raw('return', '2026-10-05');
     expect(isOut()).toBe(1);
-    expect(refused(() => move('issue', '2026-10-11', { worker_id: sunil })).key).toBe('errToolState');
-    expect(() => move('return', '2026-10-11')).not.toThrow();
+    expect(first('SELECT out_milli FROM v_tool_stock WHERE tool_id = ?', [drill])).toEqual({ out_milli: 0 });
+    // so it can be issued again, and then it is out for real: not twice, and it can come back
+    expect(() => move('issue', '2026-10-11', { worker_id: sunil })).not.toThrow();
+    expect(refused(() => move('issue', '2026-10-12')).key).toBe('errToolState');
+    expect(() => move('return', '2026-10-12')).not.toThrow();
     expect(isOut()).toBe(0);
   });
 

@@ -4,7 +4,7 @@
  * The numbers are the ones the screens show, taken from the same views and queries: v_project_cost and
  * the category query of the project screen, v_estimate_total (through loadEstimate), v_wage_day and
  * v_project_worker_balance of "Today's work & pay", v_worker_balance of the worker screen, the Expenses
- * tab's query, v_tool_status of the Tools tab. Nothing here adds up money that a view already adds up.
+ * tab's query, v_tool_holders and v_tool_stock of the Tools tab. Nothing here adds up money that a view already adds up.
  *
  * Live rows only: a deleted row is never read, and a loader returns null when the thing it was asked for
  * is missing or deleted (or, for a message about a project, when that project is). All reads are
@@ -71,7 +71,8 @@ export function loadProjectShare(projectId: string): ProjectShareInput | null {
          AND worker_id NOT IN (SELECT id FROM workers WHERE active = 0 AND deleted_at IS NULL)`,
       [projectId],
     )?.n ?? 0;
-  const toolsOutCount = first<{ n: number }>('SELECT COUNT(*) AS n FROM v_tool_status WHERE is_out = 1 AND project_id = ?', [projectId])?.n ?? 0;
+  // the project screen's "Out on this project" list: one row per tool and holder (a material counts too)
+  const toolsOutCount = first<{ n: number }>('SELECT COUNT(*) AS n FROM v_tool_holders WHERE project_id = ?', [projectId])?.n ?? 0;
   const notes = all<{ day: string; body: string }>(
     'SELECT day, body FROM site_notes WHERE project_id = ? AND deleted_at IS NULL ORDER BY day DESC, created_at DESC, id LIMIT ?',
     [projectId, SHARE_LIMITS.notes],
@@ -203,19 +204,29 @@ export function loadExpensesShare(projectId: string | null, limit: number = SHAR
 
 // ---------------------------------------------------------------- tools
 
-/** The tools that are out now (v_tool_status), in the Tools tab's order, for a project or (null) for all. null for a project that is gone. */
+/**
+ * What is out now (v_tool_holders: one row per tool and holder, with how much they have), in the Tools tab's
+ * order, for a project or (null) for all. "Since" is the day of the last issue to that holder. null for a
+ * project that is gone.
+ */
 export function loadToolsOutShare(projectId: string | null): ToolsOutShareInput | null {
   const projectName = projectId == null ? null : liveProjectName(projectId);
   if (projectId != null && projectName == null) return null;
 
-  const scope = projectId == null ? '' : 'AND s.project_id = ?';
+  const scope = projectId == null ? '' : 'WHERE h.project_id = ?';
   const tools = all<ToolOutRow>(
-    `SELECT s.name AS name, s.code AS code, COALESCE(w.name, s.taken_by) AS with_name, s.last_day AS since, p.name AS project_name
-     FROM v_tool_status s
-     LEFT JOIN workers w ON w.id = s.worker_id
-     LEFT JOIN projects p ON p.id = s.project_id
-     WHERE s.is_out = 1 ${scope}
-     ORDER BY s.name COLLATE NOCASE, s.tool_id`,
+    `SELECT s.name AS name, s.code AS code, COALESCE(w.name, h.taken_by) AS with_name,
+            (SELECT MAX(m.day) FROM tool_movements m
+             WHERE m.tool_id = h.tool_id AND m.kind = 'issue' AND m.deleted_at IS NULL
+               AND m.project_id IS h.project_id AND m.worker_id IS h.worker_id AND m.taken_by IS h.taken_by) AS since,
+            p.name AS project_name,
+            h.qty_milli AS qty_milli, s.quantity_milli AS quantity_milli, s.unit AS unit, s.is_material AS is_material
+     FROM v_tool_holders h
+     JOIN v_tool_stock s ON s.tool_id = h.tool_id
+     LEFT JOIN workers w ON w.id = h.worker_id
+     LEFT JOIN projects p ON p.id = h.project_id
+     ${scope}
+     ORDER BY s.name COLLATE NOCASE, h.tool_id, since, with_name COLLATE NOCASE`,
     projectId == null ? [] : [projectId],
   );
   return { today: today(), projectName, tools };

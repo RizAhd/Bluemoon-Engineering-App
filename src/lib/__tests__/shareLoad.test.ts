@@ -145,7 +145,7 @@ describe('the project message', () => {
     ]);
     expect(data.categories.reduce((s, c) => s + c.cents, 0)).toBe(data.cost.expense_cents);
     expect(data.workerCount).toBe(5);
-    expect(data.toolsOutCount).toBe(2); // the drill and the mixer; the ladder came back
+    expect(data.toolsOutCount).toBe(4); // the drill, the mixer, two wheelbarrows with Ruwan and the cement with Nimal; the ladder came back
     expect(data.noteCount).toBe(2);
     expect(data.notes.map((n) => n.day)).toEqual([d(0), d(1)]);
     expect(data.today).toBe(TODAY);
@@ -176,7 +176,7 @@ describe('the project message', () => {
         '… and 3 more',
         '',
         'Workers: 5',
-        'Tools out: 2',
+        'Tools out: 4',
         '',
         'Latest notes',
         `${'22 Oct 2026'} — First-floor slab shuttering completed on the east side. Waiting for the bar-bending inspection before pouring.`,
@@ -254,11 +254,11 @@ describe('the project message', () => {
     // the wages of the worker who left and of the one taken off still count in the cost of the project
     expect(count()?.cost.labour_cents).toBe(6_180_000);
 
-    expect(count()?.toolsOutCount).toBe(2);
+    expect(count()?.toolsOutCount).toBe(4);
     moveTool({ tool_id: idOf('tools', 'Hilti'), kind: 'return', project_id: school, worker_id: idOf('workers', 'Sunil'), day: d(0) });
-    expect(count()?.toolsOutCount).toBe(1);
+    expect(count()?.toolsOutCount).toBe(3);
     deleteRecord('tools', idOf('tools', 'Concrete mixer'));
-    expect(count()?.toolsOutCount).toBe(0);
+    expect(count()?.toolsOutCount).toBe(2); // the wheelbarrows and the cement are still out
 
     deleteRecord('site_notes', noteId('Rain after'));
     expect(count()?.noteCount).toBe(1);
@@ -806,14 +806,16 @@ describe('the expenses message', () => {
 describe('the tools-out message', () => {
   beforeEach(() => seedDemo());
 
-  it('lists what is out now with whom, since when and where (the demo: the drill and the mixer)', () => {
+  it('lists what is out now with how much, with whom, since when and where (the demo: the cement, the drill, the mixer and two wheelbarrows)', () => {
     expect(buildShareMessage('toolsOut', null, 'en')).toBe(
       lines(
         '*Tools out — All projects*',
-        'Tools out: 2',
+        'Tools out: 4',
         '',
+        `Cement — 20 bags issued — with Nimal Perera — since 22 Oct 2026 — ${SCHOOL}`,
         `Concrete mixer (BM-T-002) — with Nimal Perera — since 19 Oct 2026 — ${SCHOOL}`,
         `Hilti drill (BM-T-001) — with Sunil Fernando — since 20 Oct 2026 — ${SCHOOL}`,
+        `Wheelbarrow (BM-T-006) — 2 out — with Ruwan Jayasinghe — since 17 Oct 2026 — ${SCHOOL}`,
         '',
         FOOTER,
       ),
@@ -824,10 +826,12 @@ describe('the tools-out message', () => {
     expect(buildShareMessage('toolsOut', idOf('projects', 'Welimada'), 'en')).toBe(
       lines(
         `*Tools out — ${SCHOOL}*`,
-        'Tools out: 2',
+        'Tools out: 4',
         '',
+        'Cement — 20 bags issued — with Nimal Perera — since 22 Oct 2026',
         'Concrete mixer (BM-T-002) — with Nimal Perera — since 19 Oct 2026',
         'Hilti drill (BM-T-001) — with Sunil Fernando — since 20 Oct 2026',
+        'Wheelbarrow (BM-T-006) — 2 out — with Ruwan Jayasinghe — since 17 Oct 2026',
         '',
         FOOTER,
       ),
@@ -835,28 +839,55 @@ describe('the tools-out message', () => {
     expect(buildShareMessage('toolsOut', idOf('projects', 'Badulla'), 'en')).toBe(lines(`*Tools out — ${CULVERT}*`, 'No tools are out right now', '', FOOTER));
   });
 
-  it('agrees with v_tool_status', () => {
-    const out = all<{ name: string }>('SELECT name FROM v_tool_status WHERE is_out = 1 ORDER BY name COLLATE NOCASE');
-    expect(loadToolsOutShare(null)?.tools.map((t) => t.name)).toEqual(out.map((o) => o.name));
+  it('agrees with v_tool_holders: one line per tool and holder, with the amount they have', () => {
+    const out = all<{ name: string; qty_milli: number }>(
+      'SELECT t.name, h.qty_milli FROM v_tool_holders h JOIN tools t ON t.id = h.tool_id ORDER BY t.name COLLATE NOCASE, h.tool_id',
+    );
+    expect(loadToolsOutShare(null)?.tools.map((t) => [t.name, t.qty_milli])).toEqual(out.map((o) => [o.name, o.qty_milli]));
+    // a single piece (the old kind of tool) says nothing about its count; several pieces and materials do
+    expect(loadToolsOutShare(null)?.tools.map((t) => ({ name: t.name, quantity_milli: t.quantity_milli, is_material: t.is_material, unit: t.unit }))).toEqual([
+      { name: 'Cement', quantity_milli: 100_000, is_material: 1, unit: 'bags' },
+      { name: 'Concrete mixer', quantity_milli: 1000, is_material: 0, unit: null },
+      { name: 'Hilti drill', quantity_milli: 1000, is_material: 0, unit: null },
+      { name: 'Wheelbarrow', quantity_milli: 4000, is_material: 0, unit: null },
+    ]);
+  });
+
+  it('a tool held by two people on two projects is two lines, each with its own count and since-day', () => {
+    const barrow = idOf('tools', 'Wheelbarrow');
+    const culvert = idOf('projects', 'Badulla');
+    clock.tick(1);
+    moveTool({ tool_id: barrow, kind: 'issue', project_id: culvert, worker_id: idOf('workers', 'Saman'), day: d(0), qty_milli: 1000 });
+    const text = buildShareMessage('toolsOut', null, 'en') as string;
+    expect(text).toContain(`Wheelbarrow (BM-T-006) — 2 out — with Ruwan Jayasinghe — since 17 Oct 2026 — ${SCHOOL}\n`);
+    expect(text).toContain(`Wheelbarrow (BM-T-006) — 1 out — with Saman Kumara — since 22 Oct 2026 — ${CULVERT}\n`);
+    expect(text).toContain('Tools out: 5\n');
+    // per project, only that project's holder
+    expect(buildShareMessage('toolsOut', culvert, 'en')).toBe(lines(`*Tools out — ${CULVERT}*`, 'Tools out: 1', '', 'Wheelbarrow (BM-T-006) — 1 out — with Saman Kumara — since 22 Oct 2026', '', FOOTER));
   });
 
   it('a tool taken by someone outside the company shows his name; a returned tool, a deleted tool and a deleted movement are not out', () => {
     const station = idOf('tools', 'Total station');
     moveTool({ tool_id: station, kind: 'issue', taken_by: 'Contractor Silva', day: d(1) });
     let tools = loadToolsOutShare(null)?.tools ?? [];
-    expect(tools.map((t) => t.name)).toEqual(['Concrete mixer', 'Hilti drill', 'Total station']);
-    expect(tools[2]).toEqual({ name: 'Total station', code: 'BM-T-004', with_name: 'Contractor Silva', since: d(1), project_name: null });
+    expect(tools.map((t) => t.name)).toEqual(['Cement', 'Concrete mixer', 'Hilti drill', 'Total station', 'Wheelbarrow']);
+    expect(tools[3]).toEqual({ name: 'Total station', code: 'BM-T-004', with_name: 'Contractor Silva', since: d(1), project_name: null, qty_milli: 1000, quantity_milli: 1000, unit: null, is_material: 0 });
     expect(buildShareMessage('toolsOut', null, 'en')).toContain('Total station (BM-T-004) — with Contractor Silva — since 21 Oct 2026\n');
 
     clock.tick(1);
-    moveTool({ tool_id: station, kind: 'return', day: d(0) });
+    // he brings it back himself: a return is booked against the one who had it, as the return form fills in
+    moveTool({ tool_id: station, kind: 'return', taken_by: 'Contractor Silva', day: d(0) });
     deleteRecord('tools', idOf('tools', 'Concrete mixer'));
     tools = loadToolsOutShare(null)?.tools ?? [];
-    expect(tools.map((t) => t.name)).toEqual(['Hilti drill']);
+    expect(tools.map((t) => t.name)).toEqual(['Cement', 'Hilti drill', 'Wheelbarrow']);
 
     const issue = first<{ id: string }>("SELECT id FROM tool_movements WHERE kind = 'issue' AND tool_id = ?", [idOf('tools', 'Hilti')])?.id as string;
     deleteRecord('tool_movements', issue);
-    expect(loadToolsOutShare(null)?.tools).toEqual([]);
+    expect(loadToolsOutShare(null)?.tools.map((t) => t.name)).toEqual(['Cement', 'Wheelbarrow']);
+    // the wheelbarrows all come back: the line goes, the material stays until it is used up
+    clock.tick(1);
+    moveTool({ tool_id: idOf('tools', 'Wheelbarrow'), kind: 'return', project_id: idOf('projects', 'Welimada'), worker_id: idOf('workers', 'Ruwan'), day: d(0), qty_milli: 2000 });
+    expect(loadToolsOutShare(null)?.tools.map((t) => t.name)).toEqual(['Cement']);
   });
 
   it('a tool with no code is just its name', () => {

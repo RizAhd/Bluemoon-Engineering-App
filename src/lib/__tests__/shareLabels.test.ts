@@ -131,6 +131,8 @@ describe('the wording is the app\'s own', () => {
     ['wage_advance', 'wage_advance'],
     ['noExpenses', 'noExpenses'],
     ['noToolsOut', 'noToolsOut'],
+    ['outCount', 'outCount'],
+    ['issuedCount', 'issuedCount'],
     ['weather', 'weather'],
     ['weather_sunny', 'weather_sunny'],
     ['weather_cloudy', 'weather_cloudy'],

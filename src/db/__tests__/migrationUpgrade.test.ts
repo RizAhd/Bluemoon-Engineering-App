@@ -8,11 +8,11 @@
 import * as SQLite from 'expo-sqlite';
 
 import { all, closeDb, DB_NAME, first, getDb } from '@/db';
-import { assignWorker, payWages, recordWorkDay, saveExpense } from '@/db/repo';
+import { assignWorker, moveTool, payWages, recordWorkDay, saveExpense, saveTool } from '@/db/repo';
 import { DATA_TABLES, migrations } from '@/db/schema';
 import { Directory, File, mainPhone, openSecondPhone, Paths, resetDb, silenceConsoleError, transfer } from '@/test-utils';
 import { openLegacyDb, V1_TABLES } from '@/test-utils/dataKit';
-import { EXPECTED, fillVersion1, insertRow, L, V1_DATA_TABLES } from '@/test-utils/legacyData';
+import { EXPECTED, fillVersion1, insertRow, L, V1_DATA_TABLES, withoutCounts } from '@/test-utils/legacyData';
 
 jest.setTimeout(60_000);
 
@@ -25,7 +25,7 @@ const ORDER: Record<string, string> = { audit_log: 'seq', settings: 'key' };
 /** Every row of every version-1 table, in a stable order. */
 function dumpV1(db: { getAllSync: <T>(sql: string) => T[] }): Record<string, Rows> {
   const out: Record<string, Rows> = {};
-  for (const t of V1_DATA_TABLES) out[t] = db.getAllSync<Record<string, unknown>>(`SELECT * FROM ${t} ORDER BY ${ORDER[t] ?? 'id'}`);
+  for (const t of V1_DATA_TABLES) out[t] = withoutCounts(t, db.getAllSync<Record<string, unknown>>(`SELECT * FROM ${t} ORDER BY ${ORDER[t] ?? 'id'}`));
   return out;
 }
 
@@ -445,7 +445,7 @@ describe('upgrading a version-3 database (migration 4: a worker who left is inac
 
   type Reader = { getAllSync: <T>(sql: string) => T[] };
   const dumpAll = (db: Reader): Record<string, Rows> =>
-    Object.fromEntries(ALL_TABLES.map((t) => [t, db.getAllSync<Record<string, unknown>>(`SELECT * FROM ${t} ORDER BY ${ORDER[t] ?? 'id'}`)]));
+    Object.fromEntries(ALL_TABLES.map((t) => [t, withoutCounts(t, db.getAllSync<Record<string, unknown>>(`SELECT * FROM ${t} ORDER BY ${ORDER[t] ?? 'id'}`))]));
 
   /** A phone on schema version 3 that holds a worker who has left but is still assigned (the bug this fixes). */
   function installVersion3() {
@@ -561,6 +561,128 @@ describe('upgrading a version-3 database (migration 4: a worker who left is inac
       { project_id: 'P', active: 1 },
       { project_id: 'Q', active: 1 },
     ]);
+  });
+});
+
+describe('upgrading a version-5 database (migration 6: tools and materials by quantity)', () => {
+  const stamp = '2026-10-10T04:00:00.000Z';
+  const base = (id: string) => ({ id, created_at: stamp, updated_at: stamp, version: 1, device_id: 'dev' });
+  const STATUS = 'SELECT * FROM v_tool_status ORDER BY tool_id';
+  type Reader = { getAllSync: <T>(sql: string) => T[] };
+  const dumpTools = (db: Reader) => ({
+    tools: db.getAllSync<Record<string, unknown>>('SELECT * FROM tools ORDER BY id'),
+    tool_movements: db.getAllSync<Record<string, unknown>>('SELECT * FROM tool_movements ORDER BY id'),
+  });
+
+  /** A phone on schema version 5: tools with no counts, one out, one back, one never moved, one deleted while out. */
+  function installVersion5() {
+    resetDb();
+    const old = openLegacyDb(5);
+    insertRow(old, 'projects', { ...base('P'), name: 'School', status: 'active' });
+    insertRow(old, 'workers', { ...base('W'), name: 'Nimal', daily_rate_cents: 100_000, active: 1 });
+    insertRow(old, 'tools', { ...base('drill'), name: 'Hilti drill', code: 'BM-T-001', notes: null });
+    insertRow(old, 'tools', { ...base('mixer'), name: 'Concrete mixer', code: 'BM-T-002', notes: 'Check the belt' });
+    insertRow(old, 'tools', { ...base('ladder'), name: 'Ladder', code: null, notes: null });
+    insertRow(old, 'tools', { ...base('gone'), name: 'Lost saw', code: null, notes: null, deleted_at: '2026-10-11T00:00:00.000Z', version: 2 });
+    const mv = (id: string, tool: string, kind: string, day: string, over: Record<string, string | number | null> = {}) =>
+      insertRow(old, 'tool_movements', { ...base(id), tool_id: tool, kind, project_id: 'P', worker_id: 'W', taken_by: null, day, condition: null, note: null, ...over });
+    mv('mv-1', 'drill', 'issue', '2026-10-09', { condition: 'Good' });
+    mv('mv-2', 'mixer', 'issue', '2026-10-08');
+    mv('mv-3', 'mixer', 'return', '2026-10-09', { condition: 'Belt worn', note: 'needs a new belt' });
+    mv('mv-4', 'gone', 'issue', '2026-10-09', { worker_id: null, taken_by: 'Contractor Silva' });
+    mv('mv-5', 'drill', 'return', '2026-10-07', { deleted_at: '2026-10-07T10:00:00.000Z', version: 2 }); // a removed record
+    old.runSync("INSERT INTO audit_log(at, device_id, table_name, row_id, action, data) VALUES (?, 'dev', 'tools', 'drill', 'insert', NULL)", [stamp]);
+    expect(old.getFirstSync<{ user_version: number }>('PRAGMA user_version')?.user_version).toBe(5);
+    const status = old.getAllSync<Record<string, unknown>>(STATUS);
+    const rows = dumpTools(old);
+    old.closeSync();
+    return { status, rows };
+  }
+
+  it('has a newer schema than the data it is tested with (the test is not vacuous)', () => {
+    expect(LATEST()).toBeGreaterThan(5);
+  });
+
+  it('runs migration 6 and ends at the latest user_version, with the new views in place', () => {
+    installVersion5();
+    expect(userVersion()).toBe(LATEST());
+    expect(all("SELECT name FROM sqlite_master WHERE type = 'view' AND name IN ('v_tool_stock', 'v_tool_holders') ORDER BY name")).toEqual([{ name: 'v_tool_holders' }, { name: 'v_tool_stock' }]);
+    expect(all('PRAGMA foreign_key_check')).toEqual([]);
+  });
+
+  it('every tool and movement that existed is one piece: quantity_milli 1000, no unit, not a material; qty_milli 1000', () => {
+    installVersion5();
+    expect(all('SELECT id, quantity_milli, unit, is_material FROM tools ORDER BY id')).toEqual([
+      { id: 'drill', quantity_milli: 1000, unit: null, is_material: 0 },
+      { id: 'gone', quantity_milli: 1000, unit: null, is_material: 0 },
+      { id: 'ladder', quantity_milli: 1000, unit: null, is_material: 0 },
+      { id: 'mixer', quantity_milli: 1000, unit: null, is_material: 0 },
+    ]);
+    expect(all<{ qty_milli: number }>('SELECT qty_milli FROM tool_movements').map((m) => m.qty_milli)).toEqual([1000, 1000, 1000, 1000, 1000]);
+  });
+
+  it('changes no other column of any tool or movement, and leaves the audit log alone', () => {
+    const before = installVersion5();
+    getDb();
+    const after = dumpTools(getDb());
+    expect(withoutCounts('tools', after.tools)).toEqual(before.rows.tools);
+    expect(withoutCounts('tool_movements', after.tool_movements)).toEqual(before.rows.tool_movements);
+    expect(after.tools.find((t) => t.id === 'gone')).toMatchObject({ deleted_at: '2026-10-11T00:00:00.000Z', version: 2 });
+    expect(all('SELECT * FROM audit_log')).toHaveLength(1);
+  });
+
+  it('v_tool_status is row for row what it was before the upgrade, with the same columns in the same order', () => {
+    resetDb();
+    const probe = openLegacyDb(5);
+    const columns = probe.getAllSync<{ name: string }>('PRAGMA table_info(v_tool_status)').map((c) => c.name);
+    probe.closeSync();
+    const { status } = installVersion5();
+    expect(status.length).toBe(3); // the deleted saw is not listed
+    expect(all<Record<string, unknown>>(STATUS)).toEqual(status);
+    expect(all<{ name: string }>('PRAGMA table_info(v_tool_status)').map((c) => c.name)).toEqual(columns);
+    expect(columns).toEqual(['tool_id', 'name', 'code', 'last_kind', 'last_day', 'project_id', 'worker_id', 'taken_by', 'is_out']);
+    expect(first('SELECT is_out, last_kind FROM v_tool_status WHERE tool_id = ?', ['drill'])).toEqual({ is_out: 1, last_kind: 'issue' });
+    expect(first('SELECT is_out, last_kind FROM v_tool_status WHERE tool_id = ?', ['mixer'])).toEqual({ is_out: 0, last_kind: 'return' });
+    expect(first('SELECT is_out, last_kind FROM v_tool_status WHERE tool_id = ?', ['ladder'])).toEqual({ is_out: 0, last_kind: null });
+  });
+
+  it('the new views read the old data as single pieces: the drill is 1 out with Nimal, the rest in store', () => {
+    installVersion5();
+    expect(all('SELECT tool_id, quantity_milli, out_milli, in_store_milli FROM v_tool_stock ORDER BY tool_id')).toEqual([
+      { tool_id: 'drill', quantity_milli: 1000, out_milli: 1000, in_store_milli: 0 },
+      { tool_id: 'ladder', quantity_milli: 1000, out_milli: 0, in_store_milli: 1000 },
+      { tool_id: 'mixer', quantity_milli: 1000, out_milli: 0, in_store_milli: 1000 },
+    ]);
+    expect(all('SELECT * FROM v_tool_holders ORDER BY tool_id')).toEqual([{ tool_id: 'drill', project_id: 'P', worker_id: 'W', taken_by: null, qty_milli: 1000 }]);
+  });
+
+  it('the old tools keep their old rules: the drill cannot go out again, the ladder cannot come back', () => {
+    installVersion5();
+    expect(() => moveTool({ tool_id: 'drill', kind: 'issue', worker_id: 'W', day: '2026-10-12' })).toThrow(expect.objectContaining({ key: 'errToolState' }));
+    expect(() => moveTool({ tool_id: 'ladder', kind: 'return', worker_id: 'W', day: '2026-10-12' })).toThrow(expect.objectContaining({ key: 'errToolState' }));
+    expect(() => moveTool({ tool_id: 'ladder', kind: 'issue', worker_id: 'W', day: '2026-10-12' })).not.toThrow();
+    expect(first('SELECT qty_milli FROM tool_movements WHERE tool_id = ? AND day = ?', ['ladder', '2026-10-12'])).toEqual({ qty_milli: 1000 });
+    // and they can now be given a count
+    saveTool({ id: 'ladder', name: 'Ladder', quantity_milli: 4000 });
+    expect(first('SELECT out_milli, in_store_milli FROM v_tool_stock WHERE tool_id = ?', ['ladder'])).toEqual({ out_milli: 1000, in_store_milli: 3000 });
+  });
+
+  it('a fresh install and the upgraded install have the same tool tables and views, and a restart changes nothing', () => {
+    installVersion5();
+    getDb();
+    const describe6 = () =>
+      schemaObjects()
+        .filter((o) => o.name.includes('tool'))
+        .map((o) => ({ ...o, columns: all<{ name: string; dflt_value: string | null }>(`PRAGMA table_info(${o.name})`).map((c) => `${c.name}=${c.dflt_value}`) }));
+    const upgraded = describe6();
+    const snapshot = () => ({ schema: schemaObjects(), version: userVersion(), data: dumpTools(getDb()) });
+    const first1 = snapshot();
+    closeDb();
+    getDb();
+    expect(snapshot()).toEqual(first1);
+    resetDb();
+    getDb();
+    expect(describe6()).toEqual(upgraded);
   });
 });
 

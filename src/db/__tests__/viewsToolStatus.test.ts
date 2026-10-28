@@ -22,7 +22,7 @@ const status = (tool: string) => first<ToolStatus>('SELECT * FROM v_tool_status 
 const isOut = (tool: string) => status(tool)?.is_out;
 
 describe('the demo data', () => {
-  it('has the drill and the mixer out, everything else in', () => {
+  it('has the drill and the mixer out, everything else in (by the latest movement; the counted tools are judged by v_tool_holders)', () => {
     seedDemo();
     const today = '2026-10-22';
     const rows = all<ToolStatus & { worker_name: string | null }>(
@@ -30,10 +30,12 @@ describe('the demo data', () => {
     );
     expect(rows.map((r) => [r.name, r.is_out])).toEqual([
       ['Aluminium ladder 12 ft', 0],
+      ['Cement', 1], // a material: its latest movement is the issue of 20 bags
       ['Concrete mixer', 1],
       ['Hilti drill', 1],
       ['Total station', 0],
       ['Vibrator poker', 0],
+      ['Wheelbarrow', 0], // four pieces, two still out; the latest movement is the return of one
     ]);
     const by = Object.fromEntries(rows.map((r) => [r.name, r]));
     // drill issued to Sunil two days ago, mixer to Nimal three days ago

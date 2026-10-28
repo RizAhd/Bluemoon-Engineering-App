@@ -55,15 +55,15 @@ describe('handing one project over', () => {
     const plan = await transfer(a, b, { projectId: school });
 
     expect(plan.badFiles).toEqual([]);
-    expect(plan.counts).toEqual({ inserted: 50, updated: 0, skipped: 0 });
+    expect(plan.counts).toEqual({ inserted: 55, updated: 0, skipped: 0 });
     expect(Object.fromEntries(Object.entries(plan.perTable).map(([t, c]) => [t, c.inserted]))).toEqual({
       projects: 1,
       workers: 5, // the five who worked or were assigned; Saman works on another project
-      tools: 3, // drill, mixer, ladder
+      tools: 5, // drill, mixer, ladder, wheelbarrows, cement
       project_workers: 5,
       expenses: 9,
       wage_entries: 21, // 18 days of work + 2 payments + 1 advance
-      tool_movements: 4,
+      tool_movements: 7, // the ladder and the wheelbarrows went out and (partly) came back
       site_notes: 2,
     });
     // what B now has is exactly the school's rows, and nothing of the culvert
@@ -106,7 +106,7 @@ describe('handing one project over', () => {
   it('is recorded in the other phone\'s audit log as an import', async () => {
     seedDemo();
     await transfer(a, b, { projectId: idOf(a, SCHOOL) });
-    expect(b.db.all('SELECT action, COUNT(*) AS n FROM audit_log GROUP BY action')).toEqual([{ action: 'import-insert', n: 50 }]);
+    expect(b.db.all('SELECT action, COUNT(*) AS n FROM audit_log GROUP BY action')).toEqual([{ action: 'import-insert', n: 55 }]);
     expect(b.db.all("SELECT device_id FROM audit_log GROUP BY device_id")).toEqual([{ device_id: b.db.deviceId() }]);
   });
 
@@ -115,7 +115,7 @@ describe('handing one project over', () => {
     const tables = a.bundle.collectProject(idOf(a, SCHOOL));
     const preview = b.bundle.planImport(JSON.parse(JSON.stringify(tables)));
     expect(count(b, 'projects')).toBe(0);
-    expect(preview.counts).toEqual({ inserted: 50, updated: 0, skipped: 0 });
+    expect(preview.counts).toEqual({ inserted: 55, updated: 0, skipped: 0 });
     const plan = await transfer(a, b, { projectId: idOf(a, SCHOOL) });
     expect(plan.counts).toEqual(preview.counts);
   });
@@ -149,7 +149,7 @@ describe('handing it over again', () => {
 
     const again = await transfer(a, b, { projectId: school });
 
-    expect(again.counts).toEqual({ inserted: 0, updated: 0, skipped: 50 });
+    expect(again.counts).toEqual({ inserted: 0, updated: 0, skipped: 55 });
     expect(dump(b)).toEqual(state);
     expect(count(b, 'audit_log')).toBe(audit);
   });
@@ -157,7 +157,7 @@ describe('handing it over again', () => {
   it('a whole-phone transfer twice is also a no-op the second time', async () => {
     seedDemo();
     const first = await transfer(a, b);
-    expect(first.counts.inserted).toBe(81); // 3 projects, 6 workers, 5 tools, 7 assignments, 12 expenses, 25 wages, 4 movements, 3 notes, and 2 estimates with 9 lines and 5 stages
+    expect(first.counts.inserted).toBe(86); // 3 projects, 6 workers, 7 tools, 7 assignments, 12 expenses, 25 wages, 7 movements, 3 notes, and 2 estimates with 9 lines and 5 stages
     const state = dump(b);
     const second = await transfer(a, b);
     expect(second.counts.inserted + second.counts.updated).toBe(0);
@@ -187,7 +187,7 @@ describe('newer versions win', () => {
   it('an edit made on the sender reaches the other phone as one updated row', async () => {
     edit(a, 777_700);
     const plan = await transfer(a, b, { projectId: school });
-    expect(plan.counts).toEqual({ inserted: 0, updated: 1, skipped: 49 });
+    expect(plan.counts).toEqual({ inserted: 0, updated: 1, skipped: 54 });
     expect(plan.perTable.expenses).toEqual({ inserted: 0, updated: 1, skipped: 8 });
     expect(amount(b)).toEqual({ amount_cents: 777_700, version: 2 });
     expect(b.db.first('SELECT expense_cents FROM v_project_cost WHERE project_id = ?', [school])).toEqual({ expense_cents: 49_555_000 - oldCents + 777_700 });
@@ -196,7 +196,7 @@ describe('newer versions win', () => {
   it('an older copy never overwrites a newer one', async () => {
     edit(b, 123_400); // B edited it (version 2); A still has version 1
     const plan = await transfer(a, b, { projectId: school });
-    expect(plan.counts).toEqual({ inserted: 0, updated: 0, skipped: 50 });
+    expect(plan.counts).toEqual({ inserted: 0, updated: 0, skipped: 55 });
     expect(amount(b)).toEqual({ amount_cents: 123_400, version: 2 });
   });
 
@@ -242,7 +242,7 @@ describe('newer versions win', () => {
   it('a new row added on the sender arrives as inserted; the rest is skipped', async () => {
     a.repo.saveExpense({ project_id: school, day: '2026-10-22', category: 'other', amount_cents: 4_200, method: 'cash' });
     const plan = await transfer(a, b, { projectId: school });
-    expect(plan.counts).toEqual({ inserted: 1, updated: 0, skipped: 50 });
+    expect(plan.counts).toEqual({ inserted: 1, updated: 0, skipped: 55 });
     expect(count(b, 'expenses')).toBe(10);
   });
 });
@@ -270,7 +270,7 @@ describe('deletions travel too', () => {
     a.repo.deleteRecord('projects', school);
     const plan = await transfer(a, b, { projectId: school });
     expect(plan.counts.inserted).toBe(0);
-    expect(plan.counts.updated).toBe(1 + 9 + 2 + 21 + 4 + 5); // project, expenses, notes, wages, movements, assignments
+    expect(plan.counts.updated).toBe(1 + 9 + 2 + 21 + 7 + 5); // project, expenses, notes, wages, movements, assignments
     expect(b.db.all('SELECT * FROM v_project_cost')).toEqual([]);
     expect(count(b, 'expenses', 'deleted_at IS NULL')).toBe(0);
     expect(count(b, 'wage_entries', 'deleted_at IS NULL')).toBe(0);
@@ -282,7 +282,7 @@ describe('deletions travel too', () => {
     a.repo.deleteRecord('expenses', e); // version 2, deleted, on A only
     // B still has the live version 1 and sends its copy to A
     const plan = await transfer(b, a, { projectId: school });
-    expect(plan.counts).toEqual({ inserted: 0, updated: 0, skipped: 50 });
+    expect(plan.counts).toEqual({ inserted: 0, updated: 0, skipped: 55 });
     expect(a.db.first('SELECT deleted_at IS NOT NULL AS gone FROM expenses WHERE id = ?', [e])).toEqual({ gone: 1 });
     // and when A's copy reaches B the deletion arrives
     await transfer(a, b, { projectId: school });
@@ -310,7 +310,7 @@ describe('parents before children', () => {
     );
     expect(Object.keys(reversed)[0]).toBe('attachments');
     const plan = await b.bundle.applyBundle(reversed as never, new Map());
-    expect(plan.counts.inserted).toBe(50);
+    expect(plan.counts.inserted).toBe(55);
     expect(b.db.all('PRAGMA foreign_key_check')).toEqual([]);
     expect(b.db.first<{ foreign_keys: number }>('PRAGMA foreign_keys')?.foreign_keys).toBe(1);
   });
@@ -346,7 +346,7 @@ describe('parents before children', () => {
     expect(count(b, 'audit_log')).toBe(0);
     // and a corrected bundle imports fine afterwards
     tables.site_notes[1].body = 'Rain stopped work';
-    expect((await b.bundle.applyBundle(tables as never, new Map())).counts.inserted).toBe(50);
+    expect((await b.bundle.applyBundle(tables as never, new Map())).counts.inserted).toBe(55);
   });
 });
 
@@ -401,6 +401,99 @@ describe('a tool that was used on two projects', () => {
     const w = b.db.first<{ id: string }>('SELECT id FROM workers')?.id as string;
     b.repo.moveTool({ tool_id: tool, kind: 'return', worker_id: w, day: '2026-10-22' });
     expect(b.db.first('SELECT is_out FROM v_tool_status WHERE tool_id = ?', [tool])).toEqual({ is_out: 0 });
+  });
+});
+
+describe('tools counted by quantity', () => {
+  let p1: string;
+  let p2: string;
+  let nimal: string;
+  let sunil: string;
+  let ladders: string;
+
+  beforeEach(() => {
+    p1 = a.repo.saveProject({ name: 'Project one' });
+    p2 = a.repo.saveProject({ name: 'Project two' });
+    nimal = a.repo.saveWorker({ name: 'Nimal', daily_rate_cents: 350_000 });
+    sunil = a.repo.saveWorker({ name: 'Sunil', daily_rate_cents: 380_000 });
+    ladders = a.repo.saveTool({ name: 'Aluminium ladder', quantity_milli: 10_000 });
+    clock.tick(1);
+    a.repo.moveTool({ tool_id: ladders, kind: 'issue', project_id: p1, worker_id: nimal, day: '2026-10-20', qty_milli: 3000 });
+    clock.tick(1);
+    a.repo.moveTool({ tool_id: ladders, kind: 'issue', project_id: p2, worker_id: sunil, day: '2026-10-21', qty_milli: 2000 });
+  });
+
+  const holders = (phone: Phone) => phone.db.all('SELECT project_id, worker_id, qty_milli FROM v_tool_holders WHERE tool_id = ? ORDER BY qty_milli DESC', [ladders]);
+  const stock = (phone: Phone) => phone.db.first('SELECT quantity_milli, out_milli, in_store_milli FROM v_tool_stock WHERE tool_id = ?', [ladders]);
+
+  it('two projects holding pieces of one tool: after the hand-over the other phone sees the same holders and the same stock', async () => {
+    const plan = await transfer(a, b, { projectId: p1 }); // carries the tool with its whole history, as before
+    expect(plan.perTable.tool_movements).toEqual({ inserted: 2, updated: 0, skipped: 0 });
+    expect(b.db.first('SELECT quantity_milli, unit, is_material FROM tools WHERE id = ?', [ladders])).toEqual({ quantity_milli: 10_000, unit: null, is_material: 0 });
+    expect(holders(b)).toEqual(holders(a));
+    expect(holders(b)).toEqual([
+      { project_id: p1, worker_id: nimal, qty_milli: 3000 },
+      { project_id: p2, worker_id: sunil, qty_milli: 2000 },
+    ]);
+    expect(stock(b)).toEqual({ quantity_milli: 10_000, out_milli: 5000, in_store_milli: 5000 });
+    // the other phone keeps the count honest: it can take 3 back, not 6
+    await expect(async () => b.repo.moveTool({ tool_id: ladders, kind: 'return', project_id: p1, worker_id: nimal, day: '2026-10-22', qty_milli: 6000 })).rejects.toMatchObject({ key: 'errReturnTooMany' });
+    b.repo.moveTool({ tool_id: ladders, kind: 'return', project_id: p1, worker_id: nimal, day: '2026-10-22', qty_milli: 3000 });
+    expect(holders(b)).toEqual([{ project_id: p2, worker_id: sunil, qty_milli: 2000 }]);
+    // and the return travels back: the sender ends with the same picture
+    await transfer(b, a, { projectId: p1 });
+    expect(holders(a)).toEqual(holders(b));
+    expect(stock(a)).toEqual({ quantity_milli: 10_000, out_milli: 2000, in_store_milli: 8000 });
+  });
+
+  it('a raised total travels as the newer version of the tool row', async () => {
+    await transfer(a, b, { projectId: p1 });
+    clock.tick(1_000);
+    a.repo.saveTool({ id: ladders, name: 'Aluminium ladder', quantity_milli: 12_000 });
+    const plan = await transfer(a, b, { projectId: p1 });
+    expect(plan.perTable.tools).toEqual({ inserted: 0, updated: 1, skipped: 0 });
+    expect(stock(b)).toEqual({ quantity_milli: 12_000, out_milli: 5000, in_store_milli: 7000 });
+  });
+
+  it('a version-1 bundle (made before quantities existed) imports every tool and movement as one piece', async () => {
+    const p = a.repo.saveProject({ name: 'Old phone job' });
+    const drill = a.repo.saveTool({ name: 'Hilti drill', code: 'BM-T-001' });
+    clock.tick(1);
+    a.repo.moveTool({ tool_id: drill, kind: 'issue', project_id: p, worker_id: nimal, day: '2026-10-20' });
+    const tables = JSON.parse(JSON.stringify(a.bundle.collectProject(p))) as Record<string, Record<string, unknown>[]>;
+    // what an app that only knows version 1 writes: no count columns at all
+    for (const t of tables.tools) for (const col of ['quantity_milli', 'unit', 'is_material']) delete t[col];
+    for (const m of tables.tool_movements) delete m.qty_milli;
+    expect(Object.keys(tables.tools[0])).not.toContain('quantity_milli');
+
+    const plan = await b.bundle.applyBundle(tables as never, new Map());
+
+    expect(plan.counts).toEqual({ inserted: 4, updated: 0, skipped: 0 }); // the project, the worker, the drill, its issue
+    expect(b.db.first('SELECT quantity_milli, unit, is_material FROM tools WHERE id = ?', [drill])).toEqual({ quantity_milli: 1000, unit: null, is_material: 0 });
+    expect(b.db.all('SELECT qty_milli FROM tool_movements WHERE tool_id = ?', [drill])).toEqual([{ qty_milli: 1000 }]);
+    expect(b.db.first('SELECT out_milli, in_store_milli FROM v_tool_stock WHERE tool_id = ?', [drill])).toEqual({ out_milli: 1000, in_store_milli: 0 });
+    expect(b.db.first('SELECT is_out FROM v_tool_status WHERE tool_id = ?', [drill])).toEqual({ is_out: 1 });
+    expect(b.db.all('SELECT qty_milli FROM v_tool_holders WHERE tool_id = ?', [drill])).toEqual([{ qty_milli: 1000 }]);
+  });
+
+  it('a version-1 edit of a tool that has a count here keeps the count (an old phone cannot blank it)', async () => {
+    await transfer(a, b, { projectId: p1 }); // b has the ten ladders
+    clock.tick(1_000);
+    a.repo.saveTool({ id: ladders, name: 'Aluminium ladder 12 ft' }); // version 2 on a
+    const tables = JSON.parse(JSON.stringify(a.bundle.collectProject(p1))) as Record<string, Record<string, unknown>[]>;
+    for (const t of tables.tools) for (const col of ['quantity_milli', 'unit', 'is_material']) delete t[col];
+    for (const m of tables.tool_movements) delete m.qty_milli;
+
+    const plan = await b.bundle.applyBundle(tables as never, new Map());
+
+    expect(plan.perTable.tools).toEqual({ inserted: 0, updated: 1, skipped: 0 });
+    expect(b.db.first('SELECT name, quantity_milli, version FROM tools WHERE id = ?', [ladders])).toEqual({ name: 'Aluminium ladder 12 ft', quantity_milli: 10_000, version: 2 });
+    expect(stock(b)).toEqual({ quantity_milli: 10_000, out_milli: 5000, in_store_milli: 5000 });
+  });
+
+  it('the bundle version is 2, so an app that only knows version 1 refuses it instead of dropping the counts', () => {
+    expect(a.bundle.BUNDLE_VERSION).toBe(2);
+    expect(b.bundle.BUNDLE_VERSION).toBe(2);
   });
 });
 
