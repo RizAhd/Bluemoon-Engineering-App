@@ -80,7 +80,8 @@ export default function ToolsScreen() {
   const { out, inStore, outHere, outElsewhere } = useMemo(() => {
     const tag = (list: Row[], bucket: Bucket): Bucketed[] => list.map((r) => ({ ...r, bucket }));
     const out = found.filter((r) => r.out_milli > 0);
-    const inStore = found.filter((r) => r.in_store_milli > 0);
+    // A material with nothing in store and nothing out ("Out of stock", e.g. a new one at 0) still has its row, so its page can be opened to add stock.
+    const inStore = found.filter((r) => r.in_store_milli > 0 || r.out_milli <= 0);
     return {
       out,
       inStore: tag(inStore, 'in'),

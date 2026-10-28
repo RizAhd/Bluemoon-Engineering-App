@@ -257,6 +257,74 @@ describe('a single piece keeps the words it always had', () => {
   });
 });
 
+describe('a single piece is judged by its latest movement everywhere', () => {
+  /** A movement written the way an import writes rows: no checks, any day. */
+  function raw(tool: string, kind: 'issue' | 'return', day: string, over: Record<string, unknown> = {}) {
+    clock.tick(10);
+    return save('tool_movements', { tool_id: tool, kind, day, worker_id: nimal, project_id: school, qty_milli: 1000, ...over });
+  }
+  const out = (tool: string) => stock(tool)?.out_milli;
+  const isOut = (tool: string) => status(tool)?.is_out;
+
+  it('two phones both recorded the same return: the tool still comes back out and in, and every view agrees', () => {
+    const drill = saveTool({ name: 'Hilti drill' });
+    raw(drill, 'issue', '2026-10-01');
+    raw(drill, 'return', '2026-10-03');
+    raw(drill, 'return', '2026-10-03'); // the same return, merged in twice
+    expect([out(drill), isOut(drill)]).toEqual([0, 0]);
+    expect(() => move(drill, 'issue', null, { day: '2026-10-06', worker_id: sunil })).not.toThrow();
+    expect([out(drill), isOut(drill)]).toEqual([1000, 1]);
+    expect(held(drill)).toEqual([['Welimada school', 'Sunil Fernando', 1000]]);
+    // returning is allowed (it is out), and the tool is back in store
+    expect(() => move(drill, 'return', null, { day: '2026-10-07', worker_id: sunil })).not.toThrow();
+    expect([out(drill), isOut(drill)]).toEqual([0, 0]);
+    expect(held(drill)).toEqual([]);
+  });
+
+  it('a return that was deleted in the middle (issued twice in a row), then returned: it is in store and can be issued', () => {
+    const drill = saveTool({ name: 'Hilti drill' });
+    raw(drill, 'issue', '2026-10-01');
+    raw(drill, 'issue', '2026-10-05', { worker_id: sunil });
+    raw(drill, 'return', '2026-10-07');
+    expect([out(drill), isOut(drill)]).toEqual([0, 0]);
+    expect(() => move(drill, 'issue', null, { day: '2026-10-08' })).not.toThrow();
+    expect([out(drill), isOut(drill)]).toEqual([1000, 1]);
+  });
+
+  it('every single piece agrees with v_tool_status: out_milli is 1000 exactly when is_out', () => {
+    const a = saveTool({ name: 'A' });
+    const b = saveTool({ name: 'B' });
+    saveTool({ name: 'C' });
+    raw(a, 'issue', '2026-10-01');
+    raw(a, 'issue', '2026-10-02');
+    raw(b, 'issue', '2026-10-01');
+    raw(b, 'return', '2026-10-02');
+    raw(b, 'return', '2026-10-02');
+    for (const r of all<{ tool_id: string; out_milli: number; is_out: number }>('SELECT s.tool_id, s.out_milli, t.is_out FROM v_tool_stock s JOIN v_tool_status t ON t.tool_id = s.tool_id')) {
+      expect([r.tool_id, r.out_milli]).toEqual([r.tool_id, r.is_out * 1000]);
+    }
+  });
+
+  it('taking an old issue out of the history is allowed for a single piece (it always was)', () => {
+    const drill = saveTool({ name: 'Hilti drill' });
+    const wrong = move(drill, 'issue', null, { day: '2026-10-01' });
+    move(drill, 'return', null, { day: '2026-10-03' });
+    expect(() => deleteRecord('tool_movements', wrong)).not.toThrow();
+    expect(first('SELECT COUNT(*) AS n FROM tool_movements WHERE tool_id = ? AND deleted_at IS NULL', [drill])).toEqual({ n: 1 });
+  });
+
+  it('lowering a counted tool to one piece is refused while the history disagrees with the single-piece rule', () => {
+    const tool = saveTool({ name: 'Ladder', quantity_milli: 3000 });
+    move(tool, 'issue', 2000);
+    move(tool, 'return', 1000); // 1 out by count, but the latest movement is a return
+    expect(refused(() => saveTool({ id: tool, name: 'Ladder', quantity_milli: 1000 }))).toEqual({ field: 'qty', key: 'errStockInvalid' });
+    expect(first('SELECT quantity_milli FROM tools WHERE id = ?', [tool])).toEqual({ quantity_milli: 3000 });
+    move(tool, 'return', 1000); // all back
+    expect(() => saveTool({ id: tool, name: 'Ladder', quantity_milli: 1000 })).not.toThrow();
+    expect(counts(tool)).toEqual({ out: 0, inStore: 1000 });
+  });
+});
+
 describe('v_tool_holders', () => {
   it('one row per tool, project and person with what each still has; a holder who gave everything back is gone', () => {
     const tool = ladders();

@@ -9,7 +9,7 @@ import { toast } from '@/components/ui/feedback';
 import { Field, Segmented } from '@/components/ui/form';
 import { Screen } from '@/components/ui/layout';
 import { useFirst } from '@/db';
-import { deleteRecord, saveTool } from '@/db/repo';
+import { deleteRecord, saveTool, ValidationError } from '@/db/repo';
 import type { Tool } from '@/db/types';
 import { useRecordForm } from '@/hooks/form';
 import { useT } from '@/i18n';
@@ -38,9 +38,12 @@ function Inner({ existing }: { existing: Tool | null }) {
   form.useLeaveGuard([name, code, notes, kind, qty, unit]);
 
   const save = () =>
-    form.submit(() =>
-      saveTool({ id: form.id, name, code, notes, quantity_milli: parseQty(qty), is_material: kind === 'material', unit: kind === 'material' ? unit : existing?.unit ?? null }),
-    );
+    form.submit(() => {
+      // a count that is not a number is an error under the box, never quietly one piece or the old total
+      const quantity = parseQty(qty);
+      if (quantity == null) throw new ValidationError('qty', 'errQty');
+      return saveTool({ id: form.id, name, code, notes, quantity_milli: quantity, is_material: kind === 'material', unit: kind === 'material' ? unit : existing?.unit ?? null });
+    });
 
   // Not form.confirmDelete: that goes back one screen, which is this tool's own page, and it has nothing left to show.
   // Edit is only reachable from that page, so leave both and land where the user came from.

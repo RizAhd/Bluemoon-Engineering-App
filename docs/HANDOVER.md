@@ -102,12 +102,18 @@ scripts/                 embed-letterhead.py, device/phone.py (phone testing)
   `confirmPayments` (`src/lib/confirmPay.ts`): one dialog with names and amounts.
 - Tools and materials are counted: `tools.quantity_milli` (the total; 1000 = one piece), `tools.unit`,
   `tools.is_material` (used up, not lent), `tool_movements.qty_milli`. `v_tool_stock` = total, out, in store;
-  `v_tool_holders` = who has how much (several pieces: issued − returned per project and person; a single piece:
-  whoever the last movement says, as before). `moveTool` refuses an issue above what is in store
-  (`errStockShort`) or a return above what is out (`errReturnTooMany`) through `assertStockNotWorse`: a change is
-  refused only if it makes the count more impossible than it was, so old odd data can still be corrected.
-  A single piece (total 1, not a material) keeps the old wording and rules (`errToolState`). Adding stock = raising
-  the total on the tool form. Today's *Tools out* counts pieces of tools (materials excluded).
+  `v_tool_holders` = who has how much. **One rule per kind of tool, the same in every view and in `repo.ts`:**
+  a *single piece* (total 1, not a material) is out when its latest movement is an issue (what `v_tool_status`
+  says), whoever brings it back, with the old wording (`errToolState`, on the tool field); a tool with *several
+  pieces* or a *material* is issued minus returned, and its holders are issued minus returned per project and
+  person (pieces returned under a name that never took them come off the oldest holder first, so the holders always
+  add up to what is out). `moveTool` refuses an issue above what is in store (`errStockShort`) or a return above
+  what is out (`errReturnTooMany`) through `assertStockNotWorse`: a change is refused only if it makes the count
+  more impossible than it was, so old odd data can still be corrected. Lowering a counted tool to one piece is
+  refused while its history disagrees with the single-piece rule. Adding stock = raising the total on the tool
+  form. A "How many?" that is not a number is an error under the box, never one piece. Today's *Tools out* counts
+  pieces of tools (materials excluded); the Tools tab chips and the WhatsApp project message count lines, as the
+  lists do.
 - User preferences live in `settings` (e.g. `theme`, `lang`, `text_size`, `current_project`,
   `backup_folder_uri`, `drive_email`, `auto_backup_at`, list filters `list_*`).
 
@@ -168,7 +174,7 @@ full backup first, then restore after installing. Local Gradle builds on the Win
 
 ```bash
 npm run check        # tsc --noEmit && eslint src   (must be clean)
-npx jest             # 74 suites, ~2,855 tests, ~15 minutes
+npx jest             # 80 suites, ~3,020 tests, ~15 minutes on a quiet PC (an hour when other programs are busy)
 npx jest path/to/file.test.tsx -t "name"   # one file / one test
 ```
 

@@ -333,6 +333,7 @@ export const en = {
   noneAvailable: 'No one else to add — create a new worker',
   rateRequired: 'Enter the daily rate',
   payMore: 'You are paying more than today\'s wage',
+  payMoreThanOwed: 'More than is owed: the rest is counted as paid ahead',
   reportsHint: 'Totals come from the records on this phone.',
   undo: 'Undo',
 
@@ -716,7 +717,7 @@ export const en = {
   errQtyWhole: 'A tool is counted in whole pieces',
   errStockShort: 'Not enough in store. Add stock first.',
   errReturnTooMany: 'That is more than is out.',
-  errStockInvalid: 'That would leave the count wrong (more out than there is).',
+  errStockInvalid: 'That would leave the count of this tool wrong. Check its issues and returns.',
   howMany: 'How many?',
   howManyTotalHint: 'The total you have. Raise it when more arrive.',
   kindTool: 'Tool',

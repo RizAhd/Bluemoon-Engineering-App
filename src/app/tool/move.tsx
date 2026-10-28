@@ -155,7 +155,11 @@ function Inner({ params }: { params: Params }) {
     form.submit(() => {
       if (!toolId) throw new ValidationError('tool_id', 'errTool');
       if (kind === 'issue' && !projectId) throw new ValidationError('project_id', 'errProject');
-      moveTool({ id: form.id, tool_id: toolId, kind, qty_milli: parseQty(qty), worker_id: workerId, taken_by: workerId ? null : takenBy, project_id: projectId, day, condition, note });
+      // the box is only there for several pieces or a material; a count that is not a number is an error under it, never one piece
+      const counted = !!status && !isSinglePiece(status);
+      const quantity = counted ? parseQty(qty) : null;
+      if (counted && quantity == null) throw new ValidationError('qty', 'errQty');
+      moveTool({ id: form.id, tool_id: toolId, kind, qty_milli: quantity, worker_id: workerId, taken_by: workerId ? null : takenBy, project_id: projectId, day, condition, note });
     });
 
   return (

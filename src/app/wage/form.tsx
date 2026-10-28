@@ -105,7 +105,7 @@ function Inner({ existing, params }: { existing: WageEntry | null; params: { wor
   const owedAfter = before + (parseCents(shownAmount) ?? 0);
   const payingCents = pay.trim() === '' ? 0 : (parseCents(pay) ?? Number.NaN);
   const overpay = Number.isFinite(payingCents) && payingCents > Math.max(0, owedAfter);
-  const payNowHint = overpay ? t('payMore') : owedAfter > 0 && workerValue ? `${t('weOwe')} ${formatLKR(owedAfter)}` : undefined;
+  const payNowHint = overpay ? t('payMoreThanOwed') : owedAfter > 0 && workerValue ? `${t('weOwe')} ${formatLKR(owedAfter)}` : undefined;
 
   function onSave() {
     const save = () =>

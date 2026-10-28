@@ -121,6 +121,7 @@ export function saveWorker(w: {
 }): string {
   const rate = w.daily_rate_cents ?? 0;
   if (!Number.isSafeInteger(rate) || rate < 0) throw new ValidationError('daily_rate', 'errAmount');
+  if (rate > MAX_ENTRY_CENTS) throw new ValidationError('daily_rate', 'errAmountTooBig');
   return save('workers', {
     id: w.id,
     name: req(w.name, 'name', 'errName'),
@@ -182,6 +183,7 @@ export function saveWageEntry(e: {
 function nonNegCents(value: number | null | undefined, field: string): number {
   const v = value ?? 0;
   if (!Number.isSafeInteger(v) || v < 0) throw new ValidationError(field, 'errAmount');
+  if (v > MAX_ENTRY_CENTS) throw new ValidationError(field, 'errAmountTooBig');
   return v;
 }
 
@@ -277,7 +279,7 @@ export function recordWorkDay(p: {
     } else {
       const rate = projectRate(p.project_id, p.worker_id);
       if (rate <= 0) throw new ValidationError('rate', 'rateRequired');
-      amount = dayWage(days, rate);
+      amount = cents(dayWage(days, rate)); // the same limit as a typed wage
     }
     const [keep, ...extra] = findWorkEntries(p.project_id, p.worker_id, d);
     const id = save('wage_entries', {
@@ -324,6 +326,7 @@ export function recordWorkAndPay(
   payCents: number,
 ): string {
   if (!Number.isSafeInteger(payCents) || payCents < 0) throw new ValidationError('pay', 'errAmount');
+  if (payCents > MAX_ENTRY_CENTS) throw new ValidationError('pay', 'errAmountTooBig'); // under Pay now, not under the wage
   return tx(() => {
     const id = saveWageEntry({ ...work, kind: 'work' });
     // saveWageEntry has already refused a missing worker or project
@@ -354,15 +357,15 @@ interface StockRow {
   mat: number;
 }
 
-/** Quantity and units out of one tool, as the movements add up. */
+/** A tool kept as one piece (every tool from before quantities): it is out when its latest movement is an issue. */
+const isSingle = (r: { q: number; mat: number } | null): boolean => !!r && r.q === 1000 && !r.mat;
+
+/**
+ * Quantity and units out of one tool: the same numbers every screen shows (v_tool_stock), which counts a single
+ * piece by its latest movement and anything else as issued minus returned.
+ */
 function stockOf(toolId: string): StockRow | null {
-  return first<StockRow>(
-    `SELECT t.quantity_milli AS q, t.is_material AS mat,
-            COALESCE((SELECT SUM(CASE WHEN m.kind = 'issue' THEN m.qty_milli ELSE -m.qty_milli END)
-                      FROM tool_movements m WHERE m.tool_id = t.id AND m.deleted_at IS NULL), 0) AS o
-     FROM tools t WHERE t.id = ?`,
-    [toolId],
-  );
+  return first<StockRow>('SELECT quantity_milli AS q, is_material AS mat, out_milli AS o FROM v_tool_stock WHERE tool_id = ?', [toolId]);
 }
 
 /** How far a count is from being possible: more out than there is, or a negative number out. 0 = fine. */
@@ -372,17 +375,16 @@ function stockViolation(r: StockRow | null): number {
 }
 
 /**
- * Throws (so the transaction rolls back) when a change leaves the count of a tool worse than it was: more out than
- * there is in store, or more returned than was ever issued. A count that was already wrong (two phones merged) can
- * still be repaired step by step, because only getting worse is refused.
+ * Throws (so the transaction rolls back) when a change leaves the count of a tool with several pieces, or of a
+ * material, worse than it was: more out than there is in store, or more returned than was ever issued. A count that
+ * was already wrong (two phones merged) can still be repaired step by step, because only getting worse is refused.
+ * A single piece has no count to check: its own rule is "out when the latest movement is an issue".
  */
 export function assertStockNotWorse(toolId: string, before: StockRow | null, tooLittleKey: 'errStockShort' | 'errReturnTooMany' | 'errStockInvalid') {
   const after = stockOf(toolId);
+  if (isSingle(after) && isSingle(before)) return;
   if (stockViolation(after) <= stockViolation(before)) return;
-  // A single piece keeps the plain "already out / already back" wording it always had, on the field it always had: the
-  // form shows no "How many?" box for one piece, so the message belongs under the tool.
-  const single = after?.q === 1000 && !after.mat && tooLittleKey !== 'errStockInvalid';
-  throw single ? new ValidationError('tool_id', 'errToolState') : new ValidationError('qty', tooLittleKey);
+  throw new ValidationError('qty', tooLittleKey);
 }
 
 export function saveTool(t: {
@@ -399,6 +401,13 @@ export function saveTool(t: {
   const quantity = qtyMilli(t.quantity_milli ?? current?.quantity_milli ?? 1000, isMaterial, isMaterial);
   return tx(() => {
     const before = t.id ? stockOf(t.id) : null;
+    if (t.id && current && quantity === 1000 && !isMaterial && !isSingle({ q: current.quantity_milli, mat: current.is_material })) {
+      // Becoming a single piece: it is then out when its latest movement is an issue, so that must agree with what the
+      // history adds up to, or the tool would read one way here and another there.
+      const counted = before?.o ?? 0;
+      const lastKind = first<{ kind: string }>('SELECT kind FROM tool_movements WHERE tool_id = ? AND deleted_at IS NULL ORDER BY day DESC, created_at DESC LIMIT 1', [t.id])?.kind;
+      if (counted !== (lastKind === 'issue' ? 1000 : 0)) throw new ValidationError('qty', 'errStockInvalid');
+    }
     const id = save('tools', {
       id: t.id,
       name: req(t.name, 'name', 'errName'),
@@ -428,8 +437,12 @@ export function moveTool(m: {
   note?: string | null;
 }): string {
   if (!exists('tools', m.tool_id)) throw new ValidationError('tool_id', 'errTool');
-  const material = !!first<{ m: number }>('SELECT is_material AS m FROM tools WHERE id = ?', [m.tool_id])?.m;
-  const qty = qtyMilli(m.qty_milli ?? 1000, material);
+  const kindOf = first<{ q: number; mat: number }>('SELECT quantity_milli AS q, is_material AS mat FROM tools WHERE id = ?', [m.tool_id]);
+  const material = !!kindOf?.mat;
+  // A single piece is always one: the form has no "How many?" box for it, so another count is refused under the tool.
+  const single = isSingle(kindOf);
+  if (single && m.qty_milli != null && m.qty_milli !== 1000) throw new ValidationError('tool_id', 'errToolState');
+  const qty = single ? 1000 : qtyMilli(m.qty_milli ?? 1000, material);
   if (m.kind === 'issue' && !m.worker_id && !opt(m.taken_by)) throw new ValidationError('taken_by', 'errWorker');
   const d = day(m.day);
   return tx(() => {
@@ -444,6 +457,12 @@ export function moveTool(m: {
     // A record dated before the last one would not change where the tool is (the view goes by day),
     // so the history would say one thing and the tool status another.
     if (last && d < last.day) throw new ValidationError('day', 'errDateBeforeLast');
+    // A single piece is out when its latest movement is an issue (what v_tool_status says), whoever brings it back:
+    // issued twice or returned twice in a row is refused, in the words it always had.
+    if (single) {
+      if (m.kind === 'issue' && last?.kind === 'issue') throw new ValidationError('tool_id', 'errToolState');
+      if (m.kind === 'return' && (!last || last.kind === 'return')) throw new ValidationError('tool_id', 'errToolState');
+    }
     const before = stockOf(m.tool_id);
     const id = save('tool_movements', {
       id: m.id, // the form's id, so photos attached before saving belong to this row
@@ -457,9 +476,9 @@ export function moveTool(m: {
       condition: opt(m.condition),
       note: opt(m.note),
     });
-    // Out can never be more than there is, nor less than nothing: you cannot issue more than is in store (a single
-    // piece: it is already out) or return more than is out (a single piece: it is already back).
-    assertStockNotWorse(m.tool_id, before, m.kind === 'issue' ? 'errStockShort' : 'errReturnTooMany');
+    // Out can never be more than there is, nor less than nothing: you cannot issue more than is in store or return
+    // more than is out (a single piece was judged above).
+    if (!single) assertStockNotWorse(m.tool_id, before, m.kind === 'issue' ? 'errStockShort' : 'errReturnTooMany');
     return id;
   });
 }

@@ -707,6 +707,17 @@ describe('the worker statement', () => {
 // ================================================================ expenses
 
 describe('the expenses message', () => {
+  it('an expense merged in for a project this phone deleted is in no row and no total (like the Expenses tab)', () => {
+    const live = saveProject({ name: 'Live site' });
+    const gone = saveProject({ name: 'Deleted site' });
+    saveExpense({ project_id: live, day: '2026-10-20', category: 'fuel', amount_cents: 100_000, paid_to: 'Pump', method: 'cash' });
+    deleteRecord('projects', gone);
+    const at = new Date().toISOString();
+    mergeRow('expenses', { id: newId(), created_at: at, updated_at: at, deleted_at: null, version: 1, device_id: 'other-phone', project_id: gone, day: '2026-10-20', category: 'other', amount_cents: 777_000, paid_to: 'Late', method: 'cash', note: null });
+    expect(loadExpensesShare(null)).toMatchObject({ totalCents: 100_000, totalCount: 1 });
+    expect(loadExpensesShare(null)?.rows.map((r) => r.paid_to)).toEqual(['Pump']);
+  });
+
   it('carries the total and the number of all expenses, and the newest rows (the demo)', () => {
     seedDemo();
     const data = loadExpensesShare(null, 3);

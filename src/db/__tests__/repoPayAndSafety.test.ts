@@ -84,6 +84,33 @@ describe('the limit on one amount', () => {
   });
 });
 
+describe('the limit is reported under the box that is too big', () => {
+  it('a Pay now above the limit is a Pay now error, not an error on the wage', () => {
+    let error: ValidationError | undefined;
+    try {
+      recordWorkAndPay({ ...work, worker_id: nimal, project_id: school }, MAX_ENTRY_CENTS + 1);
+    } catch (e) {
+      error = e as ValidationError;
+    }
+    expect([error?.field, error?.key]).toEqual(['pay', 'errAmountTooBig']);
+    expect(live('work')).toHaveLength(0);
+  });
+
+  it('a daily rate above the limit is refused where it is typed, so a tick on the day sheet can never exceed it', () => {
+    const key = (fn: () => unknown) => {
+      try {
+        fn();
+      } catch (e) {
+        return [(e as ValidationError).field, (e as ValidationError).key];
+      }
+      return null;
+    };
+    expect(key(() => saveWorker({ name: 'Rich', daily_rate_cents: MAX_ENTRY_CENTS + 1 }))).toEqual(['daily_rate', 'errAmountTooBig']);
+    expect(key(() => assignWorker({ project_id: school, worker_id: nimal, rate_cents: MAX_ENTRY_CENTS + 1 }))).toEqual(['rate', 'errAmountTooBig']);
+    expect(key(() => saveWorker({ name: 'Fine', daily_rate_cents: MAX_ENTRY_CENTS }))).toBeNull();
+  });
+});
+
 describe('dayWage: days x rate, half up, in whole numbers', () => {
   it('has no float error and rounds half up', () => {
     expect(dayWage(0.29, 100_050)).toBe(29_015); // 0.29 x Rs 1,000.50 = Rs 290.145

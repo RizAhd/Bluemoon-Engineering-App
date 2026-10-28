@@ -431,7 +431,8 @@ export const migrations: string[] = [
   ALTER TABLE tools ADD COLUMN is_material INTEGER NOT NULL DEFAULT 0;
   ALTER TABLE tool_movements ADD COLUMN qty_milli INTEGER NOT NULL DEFAULT 1000;
 
-  -- How much of each tool or material is out (issued minus returned) and how much is left in store.
+  -- How much of each tool or material is out and how much is left in store. A single piece (one, not a material) is
+  -- out when its latest movement is an issue, exactly what v_tool_status says; anything else is issued minus returned.
   CREATE VIEW v_tool_stock AS
   SELECT s.*, s.quantity_milli - s.out_milli AS in_store_milli
   FROM (
@@ -441,11 +442,17 @@ export const migrations: string[] = [
            t.unit,
            t.is_material,
            t.quantity_milli,
-           COALESCE(SUM(CASE WHEN m.kind = 'issue' THEN m.qty_milli WHEN m.kind = 'return' THEN -m.qty_milli END), 0) AS out_milli
+           CASE WHEN t.quantity_milli = 1000 AND t.is_material = 0
+                THEN COALESCE((SELECT CASE WHEN mm.kind = 'issue' THEN 1000 ELSE 0 END
+                               FROM tool_movements mm
+                               WHERE mm.tool_id = t.id AND mm.deleted_at IS NULL
+                               ORDER BY mm.day DESC, mm.created_at DESC LIMIT 1), 0)
+                ELSE COALESCE((SELECT SUM(CASE WHEN m.kind = 'issue' THEN m.qty_milli ELSE -m.qty_milli END)
+                               FROM tool_movements m
+                               WHERE m.tool_id = t.id AND m.deleted_at IS NULL), 0)
+           END AS out_milli
     FROM tools t
-    LEFT JOIN tool_movements m ON m.tool_id = t.id AND m.deleted_at IS NULL
     WHERE t.deleted_at IS NULL
-    GROUP BY t.id
   ) s;
 
   -- Who holds how much, only where something is still out. A single piece reads as it always did: whoever the last

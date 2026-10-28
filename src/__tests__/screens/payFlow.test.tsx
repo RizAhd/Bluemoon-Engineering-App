@@ -105,7 +105,7 @@ describe('work form: the days and the payment in one save', () => {
     setRouteParams({ projectId: project, workerId: asanka, kind: 'work' });
     await renderScreen(<WageForm />);
     await typeInto(E('payNow'), '9,000');
-    expect(visibleText()).toContain(E('payMore'));
+    expect(visibleText()).toContain(E('payMoreThanOwed'));
     expect(hasLabel(`${E('weOwe')} Rs 3,000`)).toBe(false);
   });
 
@@ -150,6 +150,23 @@ describe('the Pay button on a worker\'s balance', () => {
     await renderScreen(<WorkerDetail />);
     expect(screen.queryByText(/^Pay Rs/)).toBeNull();
     expect(hasLabel(E('payNow'))).toBe(false);
+  });
+
+  it('owed on two projects with one chosen: the button names the project it pays', async () => {
+    const a = saveProject({ name: 'Alpha Site' });
+    const b = saveProject({ name: 'Beta Site' });
+    const w = saveWorker({ name: 'Asanka Perera', daily_rate_cents: 300_000 });
+    assignWorker({ project_id: a, worker_id: w, rate_cents: 300_000 });
+    assignWorker({ project_id: b, worker_id: w, rate_cents: 300_000 });
+    recordWorkDay({ project_id: a, worker_id: w, day: today(), days: 1 });
+    recordWorkDay({ project_id: b, worker_id: w, day: today(), days: 2 });
+    setCurrent(b);
+    setRouteParams({ id: w });
+    const alert = mockAlert();
+    await renderScreen(<WorkerDetail />);
+    // the card adds up both projects (Rs 9,000), the button pays the one in front of the owner
+    await pressLabel(`${E('payAmount', { amount: 'Rs 6,000' })} · Beta Site`);
+    expect(lastAlert(alert).message).toBe('Asanka Perera · Beta Site — Rs 6,000');
   });
 
   it('owed on two projects and none chosen: asks which project, then confirms that one', async () => {

@@ -192,12 +192,12 @@ export function loadExpensesShare(projectId: string | null, limit: number = SHAR
   const scopeArgs = projectId == null ? [] : [projectId];
   const rows = all<ExpenseRow>(
     `SELECT e.day AS day, e.category AS category, e.amount_cents AS amount_cents, e.paid_to AS paid_to, p.name AS project_name
-     FROM expenses e JOIN projects p ON p.id = e.project_id
+     FROM expenses e JOIN projects p ON p.id = e.project_id AND p.deleted_at IS NULL
      WHERE e.deleted_at IS NULL ${scope}
      ORDER BY e.day DESC, e.created_at DESC, e.id LIMIT ?`,
     [...scopeArgs, rowLimit],
   );
-  const sum = first<{ s: number; n: number }>(`SELECT COALESCE(SUM(e.amount_cents), 0) AS s, COUNT(*) AS n FROM expenses e WHERE e.deleted_at IS NULL ${scope}`, scopeArgs);
+  const sum = first<{ s: number; n: number }>(`SELECT COALESCE(SUM(e.amount_cents), 0) AS s, COUNT(*) AS n FROM expenses e JOIN projects p ON p.id = e.project_id AND p.deleted_at IS NULL WHERE e.deleted_at IS NULL ${scope}`, scopeArgs);
 
   return { today: today(), projectName, rows, totalCents: sum?.s ?? 0, totalCount: sum?.n ?? 0 };
 }

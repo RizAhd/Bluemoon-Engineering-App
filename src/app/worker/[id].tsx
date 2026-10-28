@@ -317,7 +317,8 @@ export default function WorkerDetail() {
                 {owing.length ? (
                   <Button
                     icon={Banknote}
-                    label={quickTarget ? t('payAmount', { amount: formatLKR(quickTarget.balance_cents) }) : t('payNow')}
+                    // The card adds up every project, but money is paid per project: with more than one the button says which.
+                    label={quickTarget ? `${t('payAmount', { amount: formatLKR(quickTarget.balance_cents) })}${wp.length > 1 ? ` · ${quickTarget.project_name}` : ''}` : t('payNow')}
                     onPress={() => (quickTarget ? quickPay(quickTarget.project_id) : setPicking('quickpay'))}
                     full
                   />

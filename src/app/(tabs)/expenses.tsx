@@ -139,7 +139,7 @@ export default function ExpensesScreen() {
     useFirst<{ n: number; everything: number; month: number }>(
       `SELECT COUNT(*) AS n, COALESCE(SUM(amount_cents), 0) AS everything,
               COALESCE(SUM(CASE WHEN substr(day, 1, 7) = ? THEN amount_cents END), 0) AS month
-       FROM expenses e WHERE deleted_at IS NULL ${where}`,
+       FROM expenses e WHERE deleted_at IS NULL AND EXISTS (SELECT 1 FROM projects px WHERE px.id = e.project_id AND px.deleted_at IS NULL) ${where}`,
       [month, ...args],
     ) ?? { n: 0, everything: 0, month: 0 };
   const photos = useAttachmentCounts('expenses');
