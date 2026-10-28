@@ -68,7 +68,10 @@ describe('work form: the days and the payment in one save', () => {
     await renderScreen(<WageForm />);
     await typeInto(E('payNow'), '1,000');
     await pressLabel(E('save'));
-    await pressAlertButton(alert, E('cancel'));
+    // the Cancel button has no action of its own: tapping it only closes the dialog
+    const cancel = lastAlert(alert).buttons.find((b) => b.text === E('cancel'));
+    expect(cancel).toBeDefined();
+    expect(cancel?.onPress).toBeUndefined();
     expect(wage('work')).toHaveLength(0);
     expect(wage('payment')).toHaveLength(0);
     expect(router.back).not.toHaveBeenCalled();

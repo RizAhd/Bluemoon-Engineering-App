@@ -14,6 +14,9 @@ One app for every site. Everything is saved **on the phone**, so it works with n
 | Mark who worked today and pay them | **Workers** tab → *Today's work & pay* |
 | Give an advance, pay wages, see what is owed | **Workers** tab → tap a worker |
 | Hand out or take back a tool, with a photo | **Tools** tab |
+| Count tools and materials (10 ladders, 100 bags of cement) | **Tools** tab → *New tool* → **How many?** (see "Tools and materials by number" below) |
+| Find a record, worker, tool or note | The **Search** box at the top of Projects, Expenses, Workers, Tools, Site notes and Estimates |
+| Send or print a list as a PDF | The **Share** button on Expenses, Workers, Tools, Site notes, *Today's work & pay* and a worker's page → **PDF** |
 | Write what happened on site today | **+ Add** button → *New site note* |
 | See today's, this week's or this month's spending | **Today** tab → *Summary* → Day / Week / Month (‹ › for earlier) |
 | See what needs paying | **Today** tab → *Wages to pay* |
@@ -42,6 +45,21 @@ Tap it to change site. "All projects" shows everything together.
 4. Tap **Save today** when you are done. You can open the sheet again later today, or pick yesterday, and fix a mistake. Nothing is entered twice. A worker you have marked as *left* is not ticked automatically.
 
 Receipts: **+ Add → New expense** → take the photo → type the amount → pick the category → Save.
+
+**Paying a worker** can be done where it is quickest. Each way asks you **once**, showing the name and the amount, before any money is recorded:
+- On *Today's work & pay* as above. Tap the line *Unpaid for today's work Rs …* to fill the *Pay now* box with that amount.
+- On a worker's page, tap **Pay Rs …** on the balance card. It pays exactly what is owed on that project (if the worker is owed on more than one project it asks which first).
+- In **Record work** (Workers tab → worker → *Record work*) fill the optional **Pay now** box: one **Save** records the days *and* the payment. The line *To pay Rs …* under the box fills the amount for you.
+
+The buttons *Record work*, *Give advance* and *Pay wages* are all still there. Typing a comma on the number keypad works as a decimal point ("12,50" is Rs 12.50).
+
+**Tools and materials by number.** Every tool has a **How many?** box (it starts at 1, so one drill works exactly as before).
+For 10 ladders enter 10: after you issue 3 the Tools tab shows *7 of 10 in store*, and *Return* asks how many are coming back.
+For things that are used up (cement, bolts, pipes) choose **Material** on the tool form and type the unit (bags, kg …): issuing reduces what is *left*.
+The app does not let you issue more than is in store (*Add stock first*: open the tool, tap edit and raise the total) or take back more than is out.
+*Tools out* on the Today screen counts pieces that are out; materials are not counted there.
+
+**Search and PDF.** Every list has a small **Search** box at the top: type a name, shop, note or amount (for Expenses and Workers it looks through *all* records, not only the ones on screen). Tap the **Share** button on a list and choose **PDF** to print or send it. Tick *On company letterhead* if you print on the Bluemoon paper. A worker's page makes a **statement** (days, wages, advances, payments and the balance) for one project or all, in English, Sinhala or Tamil. *Today's work & pay* makes a day sheet with signature lines.
 
 ## 4. Your data is safe — what happens automatically
 
