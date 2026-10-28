@@ -43,7 +43,7 @@ export function Label({ text, optional, onPress }: { text: string; optional?: bo
 }
 
 /** Error (danger + AlertCircle, live region) or hint (textMuted) under a field. */
-export function HelperText({ error, hint, tone = 'textMuted' }: { error?: string | null; hint?: string; tone?: 'textMuted' | 'warning' }) {
+export function HelperText({ error, hint, tone = 'textMuted', onPress }: { error?: string | null; hint?: string; tone?: 'textMuted' | 'warning'; onPress?: () => void }) {
   const c = useColors();
   if (error)
     return (
@@ -54,12 +54,21 @@ export function HelperText({ error, hint, tone = 'textMuted' }: { error?: string
         </Txt>
       </View>
     );
-  if (hint)
-    return (
-      <Txt variant="caption" color={tone}>
+  if (hint) {
+    // a tappable hint ("Unpaid Rs 2,700") is a button that fills the box above it
+    const text = (
+      <Txt variant="caption" color={onPress ? 'primary' : tone} weight={onPress ? 'semibold' : undefined}>
         {hint}
       </Txt>
     );
+    return onPress ? (
+      <Pressable accessibilityRole="button" accessibilityLabel={hint} hitSlop={10} onPress={onPress}>
+        {text}
+      </Pressable>
+    ) : (
+      text
+    );
+  }
   return null;
 }
 
@@ -241,6 +250,8 @@ export interface AmountFieldProps {
   hint?: string;
   /** Hint in warning colour (e.g. "paying more than owed"). */
   hintTone?: 'textMuted' | 'warning';
+  /** Makes the hint a button (e.g. tap "Unpaid Rs 2,700" to fill the box with it). */
+  onHintPress?: () => void;
   /** 48 tall, no label, smaller digits — for the work & pay rows. */
   compact?: boolean;
   disabled?: boolean;
@@ -267,7 +278,7 @@ export function groupTyped(s: string): string {
 }
 
 /** Amount input with an Rs prefix and a number keypad, grouped with thousands separators as it is typed. */
-export function AmountField({ label, value, onChangeText, error, autoFocus, optional, hint, hintTone, compact, disabled, onFocus, onBlur, onSubmitEditing, returnKeyType, placeholder = '0' }: AmountFieldProps) {
+export function AmountField({ label, value, onChangeText, error, autoFocus, optional, hint, hintTone, onHintPress, compact, disabled, onFocus, onBlur, onSubmitEditing, returnKeyType, placeholder = '0' }: AmountFieldProps) {
   const c = useColors();
   const k = useTextScale();
   const t = useT();
@@ -295,8 +306,12 @@ export function AmountField({ label, value, onChangeText, error, autoFocus, opti
           })()}
           editable={!disabled}
           onChangeText={(s) => {
-            // Android echoes back the grouped text it was given ("2500000" → "2,500,000"): only commas differ, nothing was typed
-            if (s.replace(/,/g, '') === (value ?? '').replace(/,/g, '')) return;
+            if (s.replace(/,/g, '') === (value ?? '').replace(/,/g, '')) {
+              // The keypad's comma key typed at the end is a decimal point ("12,50" is 12.50): the app's own grouping
+              // commas never come last. Anything else is Android echoing back the grouped text it was given, not an edit.
+              if (s.endsWith(',') && value && !value.includes('.') && s.length === groupTyped(value).length + 1) onChangeText(groupTyped(`${value}.`));
+              return;
+            }
             onChangeText(groupTyped(s));
           }}
           keyboardType="decimal-pad"
@@ -337,7 +352,7 @@ export function AmountField({ label, value, onChangeText, error, autoFocus, opti
           }}
         />
       </InputBox>
-      <HelperText error={error} hint={hint} tone={hintTone} />
+      <HelperText error={error} hint={hint} tone={hintTone} onPress={onHintPress} />
     </View>
   );
 }

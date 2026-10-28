@@ -78,11 +78,19 @@ export interface Tool extends Base {
   name: string;
   code: string | null;
   notes: string | null;
+  /** How many there are (thousandths: 1000 = one piece). A material's is its stock. */
+  quantity_milli: number;
+  /** "pcs", "bags", "kg"... shown after a count; null = just a number. */
+  unit: string | null;
+  /** 1 = a material (cement, bolts): issued and used, not borrowed. */
+  is_material: number;
 }
 
 export interface ToolMovement extends Base {
   tool_id: string;
   kind: 'issue' | 'return';
+  /** How many went out or came back (thousandths: 1000 = one piece). */
+  qty_milli: number;
   project_id: string | null;
   worker_id: string | null;
   taken_by: string | null;
@@ -155,6 +163,27 @@ export interface WageDay {
   work_cents: number;
   paid_cents: number;
   advance_cents: number;
+}
+
+/** v_tool_stock: what there is of a tool or material, how much is out and how much is left in store. */
+export interface ToolStock {
+  tool_id: string;
+  name: string;
+  code: string | null;
+  unit: string | null;
+  is_material: number;
+  quantity_milli: number;
+  out_milli: number;
+  in_store_milli: number;
+}
+
+/** v_tool_holders: how much of a tool one project / person still has. */
+export interface ToolHolder {
+  tool_id: string;
+  project_id: string | null;
+  worker_id: string | null;
+  taken_by: string | null;
+  qty_milli: number;
 }
 
 export interface ToolStatus {

@@ -27,8 +27,8 @@ import {
   type WorkerSort,
   type WorkerStatusFilter,
 } from '@/hooks/data';
+import { useToday } from '@/hooks/today';
 import { useT, type TKey } from '@/i18n';
-import { today } from '@/lib/dates';
 import { formatLKR } from '@/lib/money';
 import { unpaidForDay } from '@/lib/wages';
 import { space, useColors } from '@/theme';
@@ -104,7 +104,7 @@ export default function WorkersScreen() {
   const t = useT();
   const c = useColors();
   const pid = useCurrentProjectId();
-  const td = today();
+  const td = useToday();
   const projects = useProjects();
   const roster = useProjectWorkers(pid);
   const dayRows = useWageDay(pid, td);
@@ -119,8 +119,10 @@ export default function WorkersScreen() {
 
   const active = rows.filter((r) => !!r.active);
   const inactive = rows.filter((r) => !r.active);
-  const weOwe = rows.reduce((s, r) => s + Math.max(0, r.balance), 0);
-  const workerOwes = rows.reduce((s, r) => s + Math.max(0, -r.balance), 0);
+  // The two tiles total the whole roster, whatever the chips below are filtered to (and so match Today's "Wages to pay").
+  const everyone = useWorkerList(pid, { sort: 'name', balance: 'all', status: 'all' });
+  const weOwe = everyone.rows.reduce((s, r) => s + Math.max(0, r.balance), 0);
+  const workerOwes = everyone.rows.reduce((s, r) => s + Math.max(0, -r.balance), 0);
 
   // Same population as the wage sheet: only workers on the roster (a removed worker's day rows stay in v_wage_day).
   const onRoster = new Set(roster.map((r) => r.worker_id));
@@ -244,7 +246,7 @@ export default function WorkersScreen() {
                       <Stat
                         label={t('workerOwes')}
                         value={formatLKR(workerOwes)}
-                        caption={list.counts.advance > 0 ? t('workersCount', { n: list.counts.advance }) : t('noAdvancesOver')}
+                        caption={everyone.counts.advance > 0 ? t('workersCount', { n: everyone.counts.advance }) : t('noAdvancesOver')}
                       />
                     </Tiles>
 

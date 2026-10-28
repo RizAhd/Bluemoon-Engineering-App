@@ -87,9 +87,11 @@ export function useRecordForm(table: string, existingId?: string) {
   }
 
   /** Asks first, then runs `fn` and leaves the screen: `pop` is how many screens to close (a form opened from a detail screen that is gone too needs 2). */
-  function confirmDelete(fn: () => void, pop = 1) {
-    Alert.alert(t('confirmDelete'), t('confirmDeleteBody'), [
+  function confirmDelete(fn: () => void, pop = 1, warn?: { body: string; alt?: { text: string; run: () => void } }) {
+    // `warn` replaces the usual sentence (e.g. "this worker is owed Rs 7,200") and may offer a gentler button beside Delete.
+    Alert.alert(t('confirmDelete'), warn?.body ?? t('confirmDeleteBody'), [
       { text: t('cancel'), style: 'cancel' },
+      ...(warn?.alt ? [{ text: warn.alt.text, onPress: warn.alt.run }] : []),
       {
         text: t('delete'),
         style: 'destructive',

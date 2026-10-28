@@ -14,8 +14,10 @@ import type { ProjectWorkerBalance, WageDay } from '@/db/types';
 import { recordWorkDay, removeWorkDay, payWages } from '@/db/repo';
 import { useLeaveGuard } from '@/hooks/form';
 import { setCurrentProject, useCurrentProjectId, useProjects, useProjectWorkers, useWageDay, useWorkers } from '@/hooks/data';
+import { useToday } from '@/hooks/today';
 import { useT, type TKey } from '@/i18n';
-import { isValidDay, today } from '@/lib/dates';
+import { isValidDay } from '@/lib/dates';
+import { confirmPayments } from '@/lib/confirmPay';
 import { guard } from '@/lib/errors';
 import { centsToInput, formatLKR, parseCents } from '@/lib/money';
 import { hairline, listTuning, radius, space, useColors, useLayout } from '@/theme';
@@ -81,7 +83,7 @@ function without(m: Record<string, TKey>, id: string): Record<string, TKey> {
 export default function TodaysWorkScreen() {
   const params = useLocalSearchParams<{ day?: string }>();
   const t = useT();
-  const td = today();
+  const td = useToday();
   const pid = useCurrentProjectId();
   const projects = useProjects();
   const activeWorkers = useWorkers(true);
@@ -355,11 +357,12 @@ export default function TodaysWorkScreen() {
 
   /** Money moves only after the names and amounts have been shown and confirmed. */
   function confirmPay(lines: PayLine[], title: TKey) {
-    const total = lines.reduce((s, l) => s + l.cents, 0);
-    Alert.alert(t(title), lines.map((l) => `${l.v.row.name} — ${formatLKR(l.cents)}`).join('\n'), [
-      { text: t('cancel'), style: 'cancel' },
-      { text: `${t(title)} · ${formatLKR(total)}`, onPress: () => void save(lines) },
-    ]);
+    confirmPayments(
+      t,
+      lines.map((l) => ({ name: l.v.row.name, cents: l.cents })),
+      title,
+      () => void save(lines),
+    );
   }
 
   /** Save today: the work is saved; only amounts typed into Pay now are paid, and those are confirmed first. */
@@ -644,6 +647,8 @@ const WorkerRow = memo(function WorkerRow({
                 onFocus={() => onFocusRow(row.worker_id)}
                 hint={payHint}
                 hintTone={overpay ? 'warning' : 'textMuted'}
+                // the owed amount is never put in the box for the supervisor, but one tap on it does (no retyping)
+                onHintPress={!overpay && vm.remaining > 0 && vm.payStr.trim() === '' ? () => onPatch(row.worker_id, { pay: centsToInput(vm.remaining) }) : undefined}
                 error={vm.payError ? t(vm.payError) : null}
               />
             </View>

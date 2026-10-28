@@ -46,7 +46,7 @@ function client() {
 
 /** Why a Drive step failed, in words the screen can show. */
 export class DriveError extends Error {
-  constructor(public reason: 'unavailable' | 'notSetUp' | 'cancelled' | 'noPlayServices' | 'offline' | 'denied' | 'failed', detail?: string) {
+  constructor(public reason: 'unavailable' | 'notSetUp' | 'cancelled' | 'noPlayServices' | 'offline' | 'denied' | 'quota' | 'failed', detail?: string) {
     super(detail ? `${reason}: ${detail}` : reason);
   }
 }
@@ -122,6 +122,11 @@ async function call(url: string, init: RequestInit, auth: string): Promise<Respo
   } catch (e) {
     throw new DriveError('offline', e instanceof Error ? e.message : String(e));
   }
+  if (res.status === 403) {
+    // 403 is also how Drive says "full" or "slow down": that is not a reason to sign in again
+    const body = await res.text().catch(() => '');
+    if (/storageQuotaExceeded|quotaExceeded|rateLimitExceeded|userRateLimitExceeded/i.test(body)) throw new DriveError('quota', body.slice(0, 120));
+  }
   if (res.status === 401 || res.status === 403) {
     // an expired token: let Google mint a new one next time
     try {
@@ -162,36 +167,47 @@ async function folderId(auth: string): Promise<string> {
  */
 export async function uploadToDrive(name: string, bytes: Uint8Array, mime = 'application/zip'): Promise<void> {
   try {
-    const auth = await token();
-    const parent = await folderId(auth);
-    const existing = (await (
-      await call(`${API}/files?q=${q(`name='${name}' and '${parent}' in parents and trashed=false`)}&fields=files(id)`, { method: 'GET' }, auth)
-    ).json()) as { files: { id: string }[] };
-
-    const session = await call(
-      `${UPLOAD}?uploadType=resumable`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json; charset=UTF-8', 'X-Upload-Content-Type': mime, 'X-Upload-Content-Length': String(bytes.byteLength) },
-        body: JSON.stringify({ name, parents: [parent] }),
-      },
-      auth,
-    );
-    const where = session.headers.get('location') ?? session.headers.get('Location');
-    if (!where) throw new DriveError('failed', 'no upload session');
-    const body = bytes.byteOffset === 0 && bytes.byteLength === bytes.buffer.byteLength ? bytes.buffer : bytes.slice().buffer;
-    await call(where, { method: 'PUT', headers: { 'Content-Type': mime }, body: body as ArrayBuffer }, auth);
-
-    // the new copy is safely up: only now remove the older one of the same name
-    for (const f of existing.files) await call(`${API}/files/${f.id}`, { method: 'DELETE' }, auth).catch(() => undefined);
+    await uploadOnce(name, bytes, mime).catch(async (e) => {
+      // The remembered Drive folder was deleted (Drive answers 404): forget it, so it is found or made again, and try once more.
+      if (e instanceof DriveError && e.reason === 'failed' && /404/.test(e.message) && getSetting('drive_folder_id')) {
+        setSetting('drive_folder_id', null);
+        return uploadOnce(name, bytes, mime);
+      }
+      throw e;
+    });
     setSetting('drive_last_at', nowIso());
     setSetting('drive_error', null);
-    if (name.startsWith(AUTO_PREFIX)) await trimDrive(auth, parent).catch(() => undefined);
   } catch (e) {
     const err = translate(e);
     setSetting('drive_error', `${nowIso()} ${err.reason}`);
     throw err;
   }
+}
+
+async function uploadOnce(name: string, bytes: Uint8Array, mime: string): Promise<void> {
+  const auth = await token();
+  const parent = await folderId(auth);
+  const existing = (await (
+    await call(`${API}/files?q=${q(`name='${name}' and '${parent}' in parents and trashed=false`)}&fields=files(id)`, { method: 'GET' }, auth)
+  ).json()) as { files: { id: string }[] };
+
+  const session = await call(
+    `${UPLOAD}?uploadType=resumable`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json; charset=UTF-8', 'X-Upload-Content-Type': mime, 'X-Upload-Content-Length': String(bytes.byteLength) },
+      body: JSON.stringify({ name, parents: [parent] }),
+    },
+    auth,
+  );
+  const where = session.headers.get('location') ?? session.headers.get('Location');
+  if (!where) throw new DriveError('failed', 'no upload session');
+  const body = bytes.byteOffset === 0 && bytes.byteLength === bytes.buffer.byteLength ? bytes.buffer : bytes.slice().buffer;
+  await call(where, { method: 'PUT', headers: { 'Content-Type': mime }, body: body as ArrayBuffer }, auth);
+
+  // the new copy is safely up: only now remove the older one of the same name
+  for (const f of existing.files) await call(`${API}/files/${f.id}`, { method: 'DELETE' }, auth).catch(() => undefined);
+  if (name.startsWith(AUTO_PREFIX)) await trimDrive(auth, parent).catch(() => undefined);
 }
 
 /** Keeps the newest DRIVE_KEEP snapshots in the folder. */

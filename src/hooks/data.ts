@@ -161,7 +161,8 @@ export interface ExpenseFilter {
 
 /** The WHERE clause (table alias `e`) and its bound values for an expense filter. Nothing from the filter is pasted into the SQL. */
 export function expenseWhere(f: ExpenseFilter, opts: { withPeriod?: boolean } = {}): { sql: string; args: Bind[] } {
-  const parts = ['e.deleted_at IS NULL'];
+  // an expense that arrived (from a merge) for a project that is deleted shows nowhere, rows and totals alike
+  const parts = ['e.deleted_at IS NULL', 'EXISTS (SELECT 1 FROM projects px WHERE px.id = e.project_id AND px.deleted_at IS NULL)'];
   const args: Bind[] = [];
   if (f.projectId) {
     parts.push('e.project_id = ?');

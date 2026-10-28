@@ -1,5 +1,5 @@
 import { router } from 'expo-router';
-import { Hammer, PackagePlus, Plus } from 'lucide-react-native';
+import { Hammer, Package, PackagePlus, Plus } from 'lucide-react-native';
 import { memo, useMemo, useState } from 'react';
 import { View } from 'react-native';
 
@@ -11,18 +11,33 @@ import { Badge, EmptyState } from '@/components/ui/feedback';
 import { Chips } from '@/components/ui/form';
 import { ListRow, Screen } from '@/components/ui/layout';
 import { useQuery } from '@/db';
-import type { ToolStatus } from '@/db/types';
+import type { ToolStock } from '@/db/types';
 import { useCurrentProjectId } from '@/hooks/data';
 import { useT } from '@/i18n';
 import { formatDay } from '@/lib/dates';
+import { isSinglePiece, qtyText } from '@/lib/toolStock';
 import { useColors } from '@/theme';
 
-type Row = ToolStatus & { worker_name: string | null; project_name: string | null };
+/** One tool or material with its counts, and (for a single piece) where it is, as the tab has always shown. */
+type Row = ToolStock & {
+  last_day: string | null;
+  project_id: string | null;
+  worker_id: string | null;
+  taken_by: string | null;
+  is_out: number;
+  worker_name: string | null;
+  project_name: string | null;
+  /** How much of it the current project has (thousandths). */
+  here_milli: number;
+};
+type Bucket = 'out' | 'in' | 'elsewhere';
+type Bucketed = Row & { bucket: Bucket };
 type Filter = 'all' | 'out' | 'in';
 
 /**
  * Tools tab. With a current project: "Out on this project" · "In store — available" ·
  * a collapsed "Other projects" group (out elsewhere). With "All projects": Out · In store.
+ * A tool with several pieces can be in two groups at once (3 out, 7 in store); a material counts what is left.
  */
 export default function ToolsScreen() {
   const t = useT();
@@ -33,19 +48,24 @@ export default function ToolsScreen() {
   // The tools that are out now, on the current project (or on all projects), as a message.
   const share = useShareSheet({ kind: 'toolsOut', id: pid });
   const rows = useQuery<Row>(
-    `SELECT s.*, w.name AS worker_name, p.name AS project_name FROM v_tool_status s
-     LEFT JOIN workers w ON w.id = s.worker_id LEFT JOIN projects p ON p.id = s.project_id
-     ORDER BY s.is_out DESC, s.name COLLATE NOCASE`,
+    `SELECT s.*, st.last_day, st.project_id, st.worker_id, st.taken_by, st.is_out, w.name AS worker_name, p.name AS project_name,
+            COALESCE((SELECT SUM(h.qty_milli) FROM v_tool_holders h WHERE h.tool_id = s.tool_id AND h.project_id IS ?), 0) AS here_milli
+     FROM v_tool_stock s
+     JOIN v_tool_status st ON st.tool_id = s.tool_id
+     LEFT JOIN workers w ON w.id = st.worker_id LEFT JOIN projects p ON p.id = st.project_id
+     ORDER BY (s.out_milli > 0) DESC, s.name COLLATE NOCASE`,
+    [pid],
   );
 
   const { out, inStore, outHere, outElsewhere } = useMemo(() => {
-    const out = rows.filter((r) => r.is_out);
-    const inStore = rows.filter((r) => !r.is_out);
+    const tag = (list: Row[], bucket: Bucket): Bucketed[] => list.map((r) => ({ ...r, bucket }));
+    const out = rows.filter((r) => r.out_milli > 0);
+    const inStore = rows.filter((r) => r.in_store_milli > 0);
     return {
       out,
-      inStore,
-      outHere: pid ? out.filter((r) => r.project_id === pid) : out,
-      outElsewhere: pid ? out.filter((r) => r.project_id !== pid) : [],
+      inStore: tag(inStore, 'in'),
+      outHere: tag(pid ? rows.filter((r) => r.here_milli > 0) : out, 'out'),
+      outElsewhere: tag(pid ? rows.filter((r) => r.out_milli - r.here_milli > 0) : [], 'elsewhere'),
     };
   }, [rows, pid]);
 
@@ -55,12 +75,12 @@ export default function ToolsScreen() {
   const goNew = () => router.push('/tool/form');
 
   // Tools out on another project are drawn muted, under the collapsible "Other projects" row.
-  const renderRow = (item: Row) => <ToolRow item={item} pid={pid} muted={!!pid && !!item.is_out && item.project_id !== pid} />;
+  const renderRow = (item: Bucketed) => <ToolRow item={item} pid={pid} muted={item.bucket === 'elsewhere'} />;
 
   const showOut = active !== 'in';
   const showIn = active !== 'out';
 
-  const sections: CardSection<Row>[] = [
+  const sections: CardSection<Bucketed>[] = [
     { key: 'out', label: `${t(pid ? 'outHere' : 'out')} (${outHere.length})`, rows: showOut ? outHere : [] },
     { key: 'in', label: `${t(pid ? 'availableToIssue' : 'inStore')} (${inStore.length})`, rows: showIn ? inStore : [] },
     {
@@ -132,26 +152,46 @@ export default function ToolsScreen() {
   );
 }
 
-const toolKey = (r: Row) => r.tool_id;
+// a tool with several pieces sits in the "out" and the "in store" group at the same time: one key per group
+const toolKey = (r: Bucketed) => `${r.bucket}-${r.tool_id}`;
 
-/** One tool: name and code, who has it and where, out / in store badge. */
-const ToolRow = memo(function ToolRow({ item, pid, muted }: { item: Row; pid: string | null; muted: boolean }) {
+/** One tool or material: name and code, its counts, and for a single piece who has it and where. */
+const ToolRow = memo(function ToolRow({ item, pid, muted }: { item: Bucketed; pid: string | null; muted: boolean }) {
   const t = useT();
+  const single = isSinglePiece(item);
+  const out = item.out_milli > 0;
+  const material = !!item.is_material;
+
+  let subtitle: string | undefined;
+  let badge: { tone: 'success' | 'warning' | 'danger'; label: string };
+  if (single) {
+    subtitle = out
+      ? // The project name only says something when the tool is on another project than the one chosen.
+        [`${t('outWith')} ${item.worker_name ?? item.taken_by ?? ''}`.trim(), item.project_id !== pid ? item.project_name : null, item.last_day ? formatDay(item.last_day) : null]
+          .filter(Boolean)
+          .join(' · ')
+      : undefined;
+    badge = { tone: out ? 'warning' : 'success', label: t(out ? 'out' : 'inStore') };
+  } else if (material) {
+    subtitle = [t('leftCount', { n: qtyText(item.in_store_milli, item.unit) }), out ? t('issuedCount', { n: qtyText(item.out_milli, item.unit) }) : null].filter(Boolean).join(' · ');
+    badge = item.in_store_milli > 0 ? { tone: 'success', label: t('leftCount', { n: qtyText(item.in_store_milli, item.unit) }) } : { tone: 'danger', label: t('outOfStock') };
+  } else {
+    subtitle = [out ? t('outCount', { n: qtyText(item.out_milli, item.unit) }) : null, t('inStoreCount', { n: qtyText(item.in_store_milli, item.unit) })].filter(Boolean).join(' · ');
+    badge = !out
+      ? { tone: 'success', label: t('inStore') }
+      : item.in_store_milli <= 0
+        ? { tone: 'warning', label: t('out') }
+        : { tone: 'warning', label: t('outCount', { n: qtyText(item.out_milli, item.unit) }) };
+  }
+
   return (
     <ListRow
-      icon={Hammer}
-      iconTone={item.is_out ? 'warning' : undefined}
+      icon={material ? Package : Hammer}
+      iconTone={out && item.bucket !== 'in' ? 'warning' : undefined}
       muted={muted}
       title={item.code ? `${item.name} · ${item.code}` : item.name}
-      subtitle={
-        item.is_out
-          ? // The project name only says something when the tool is on another project than the one chosen.
-            [`${t('outWith')} ${item.worker_name ?? item.taken_by ?? ''}`.trim(), item.project_id !== pid ? item.project_name : null, item.last_day ? formatDay(item.last_day) : null]
-              .filter(Boolean)
-              .join(' · ')
-          : undefined
-      }
-      badge={<Badge tone={item.is_out ? 'warning' : 'success'} label={item.is_out ? t('out') : t('inStore')} />}
+      subtitle={subtitle}
+      badge={<Badge tone={badge.tone} label={badge.label} />}
       onPress={() => router.push(`/tool/${item.tool_id}`)}
     />
   );

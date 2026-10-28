@@ -3,6 +3,7 @@
  * record is validated the same way before it reaches the database.
  */
 import { isValidDay } from '@/lib/dates';
+import { dayWage } from '@/lib/wages';
 
 import { all, first, getDb, notify, remove, save, tx } from './index';
 import type { ExpenseCategory, PayMethod, ProjectStatus, ProjectWorker, WageKind } from './types';
@@ -29,8 +30,12 @@ export function day(value: string, field = 'day'): string {
   return value;
 }
 
+/** One expense or wage above Rs 100,000,000 is a slipped finger, not a real bill: refuse it and say to check. */
+export const MAX_ENTRY_CENTS = 10_000_000_000;
+
 function cents(value: number | null, field = 'amount'): number {
   if (value == null || !Number.isSafeInteger(value) || value <= 0) throw new ValidationError(field, 'errAmount');
+  if (value > MAX_ENTRY_CENTS) throw new ValidationError(field, 'errAmountTooBig');
   return value;
 }
 
@@ -272,7 +277,7 @@ export function recordWorkDay(p: {
     } else {
       const rate = projectRate(p.project_id, p.worker_id);
       if (rate <= 0) throw new ValidationError('rate', 'rateRequired');
-      amount = Math.round(days * rate);
+      amount = dayWage(days, rate);
     }
     const [keep, ...extra] = findWorkEntries(p.project_id, p.worker_id, d);
     const id = save('wage_entries', {
@@ -310,14 +315,99 @@ export function payWages(p: { project_id: string; worker_id: string; day: string
   });
 }
 
+/**
+ * A day's work and the payment handed over with it, saved together: both or neither.
+ * `payCents` 0 records only the work (the same as saveWageEntry with kind 'work').
+ */
+export function recordWorkAndPay(
+  work: { id?: string; worker_id: string | null; project_id: string | null; day: string; days: number; amount_cents: number | null; note?: string | null },
+  payCents: number,
+): string {
+  if (!Number.isSafeInteger(payCents) || payCents < 0) throw new ValidationError('pay', 'errAmount');
+  return tx(() => {
+    const id = saveWageEntry({ ...work, kind: 'work' });
+    // saveWageEntry has already refused a missing worker or project
+    if (payCents > 0) payWages({ project_id: work.project_id as string, worker_id: work.worker_id as string, day: work.day, amount_cents: payCents });
+    return id;
+  });
+}
+
 // ---------------------------------------------------------------- tools
 
-export function saveTool(t: { id?: string; name: string; code?: string | null; notes?: string | null }): string {
-  return save('tools', {
-    id: t.id,
-    name: req(t.name, 'name', 'errName'),
-    code: opt(t.code),
-    notes: opt(t.notes),
+/** One tool or material is at most a million units. */
+const MAX_QTY_MILLI = 1_000_000_000;
+
+/**
+ * A count in thousandths. A tool is counted in whole pieces and has at least one; a material may have decimals
+ * ("2.5 bags") and may be at 0 (stock not bought yet) when `allowZero`.
+ */
+function qtyMilli(value: number | null | undefined, isMaterial: boolean, allowZero = false, field = 'qty'): number {
+  if (value == null || !Number.isSafeInteger(value) || value < 0 || value > MAX_QTY_MILLI || (value === 0 && !allowZero)) throw new ValidationError(field, 'errQty');
+  if (!isMaterial && value % 1000 !== 0) throw new ValidationError(field, 'errQtyWhole');
+  return value;
+}
+
+interface StockRow {
+  q: number;
+  o: number;
+}
+
+/** Quantity and units out of one tool, as the movements add up. */
+function stockOf(toolId: string): StockRow | null {
+  return first<StockRow>(
+    `SELECT t.quantity_milli AS q,
+            COALESCE((SELECT SUM(CASE WHEN m.kind = 'issue' THEN m.qty_milli ELSE -m.qty_milli END)
+                      FROM tool_movements m WHERE m.tool_id = t.id AND m.deleted_at IS NULL), 0) AS o
+     FROM tools t WHERE t.id = ?`,
+    [toolId],
+  );
+}
+
+/** How far a count is from being possible: more out than there is, or a negative number out. 0 = fine. */
+function stockViolation(r: StockRow | null): number {
+  if (!r) return 0;
+  return r.o < 0 ? -r.o : r.o > r.q ? r.o - r.q : 0;
+}
+
+/**
+ * Throws (so the transaction rolls back) when a change leaves the count of a tool worse than it was: more out than
+ * there is in store, or more returned than was ever issued. A count that was already wrong (two phones merged) can
+ * still be repaired step by step, because only getting worse is refused.
+ */
+export function assertStockNotWorse(toolId: string, before: StockRow | null, tooLittleKey: 'errStockShort' | 'errReturnTooMany' | 'errStockInvalid') {
+  const after = stockOf(toolId);
+  if (stockViolation(after) <= stockViolation(before)) return;
+  // a single piece keeps the plain "already out / already back" wording it always had
+  const single = after?.q === 1000 && tooLittleKey !== 'errStockInvalid';
+  throw new ValidationError('qty', single ? 'errToolState' : tooLittleKey);
+}
+
+export function saveTool(t: {
+  id?: string;
+  name: string;
+  code?: string | null;
+  notes?: string | null;
+  quantity_milli?: number | null;
+  unit?: string | null;
+  is_material?: boolean;
+}): string {
+  const current = t.id ? first<{ quantity_milli: number; is_material: number; unit: string | null }>('SELECT quantity_milli, is_material, unit FROM tools WHERE id = ?', [t.id]) : null;
+  const isMaterial = t.is_material ?? !!current?.is_material;
+  const quantity = qtyMilli(t.quantity_milli ?? current?.quantity_milli ?? 1000, isMaterial, isMaterial);
+  return tx(() => {
+    const before = t.id ? stockOf(t.id) : null;
+    const id = save('tools', {
+      id: t.id,
+      name: req(t.name, 'name', 'errName'),
+      code: opt(t.code),
+      notes: opt(t.notes),
+      quantity_milli: quantity,
+      unit: t.unit === undefined ? (current?.unit ?? null) : opt(t.unit),
+      is_material: isMaterial ? 1 : 0,
+    });
+    // the total can go up any time, and down only as far as what is still out
+    assertStockNotWorse(id, before, 'errStockInvalid');
+    return id;
   });
 }
 
@@ -328,11 +418,15 @@ export function moveTool(m: {
   project_id?: string | null;
   worker_id?: string | null;
   taken_by?: string | null;
+  /** How many (thousandths); 1000 = one piece, the default. */
+  qty_milli?: number | null;
   day: string;
   condition?: string | null;
   note?: string | null;
 }): string {
   if (!exists('tools', m.tool_id)) throw new ValidationError('tool_id', 'errTool');
+  const material = !!first<{ m: number }>('SELECT is_material AS m FROM tools WHERE id = ?', [m.tool_id])?.m;
+  const qty = qtyMilli(m.qty_milli ?? 1000, material);
   if (m.kind === 'issue' && !m.worker_id && !opt(m.taken_by)) throw new ValidationError('taken_by', 'errWorker');
   const d = day(m.day);
   return tx(() => {
@@ -344,16 +438,15 @@ export function moveTool(m: {
        ORDER BY day DESC, created_at DESC LIMIT 1`,
       [m.tool_id, m.id ?? null],
     );
-    // A tool can only go out when it is in, and only come back when it is out (never moved = in).
-    const isOut = last?.kind === 'issue';
-    if (m.kind === 'issue' ? isOut : !isOut) throw new ValidationError('tool_id', 'errToolState');
     // A record dated before the last one would not change where the tool is (the view goes by day),
     // so the history would say one thing and the tool status another.
     if (last && d < last.day) throw new ValidationError('day', 'errDateBeforeLast');
-    return save('tool_movements', {
+    const before = stockOf(m.tool_id);
+    const id = save('tool_movements', {
       id: m.id, // the form's id, so photos attached before saving belong to this row
       tool_id: m.tool_id,
       kind: m.kind,
+      qty_milli: qty,
       project_id: m.project_id ?? null,
       worker_id: m.worker_id ?? null,
       taken_by: opt(m.taken_by),
@@ -361,6 +454,10 @@ export function moveTool(m: {
       condition: opt(m.condition),
       note: opt(m.note),
     });
+    // Out can never be more than there is, nor less than nothing: you cannot issue more than is in store (a single
+    // piece: it is already out) or return more than is out (a single piece: it is already back).
+    assertStockNotWorse(m.tool_id, before, m.kind === 'issue' ? 'errStockShort' : 'errReturnTooMany');
+    return id;
   });
 }
 
@@ -404,7 +501,11 @@ export function deleteRecord(
       // movement is left pointing at a tool that no longer exists.
       d.getAllSync<{ id: string }>('SELECT id FROM tool_movements WHERE tool_id = ? AND deleted_at IS NULL', [id]).forEach((r) => removeWithFiles('tool_movements', r.id));
     }
+    // Taking out one issue (or return) must not leave the count impossible, e.g. returns with nothing issued before them.
+    const movementTool = table === 'tool_movements' ? first<{ tool_id: string }>('SELECT tool_id FROM tool_movements WHERE id = ?', [id])?.tool_id : undefined;
+    const before = movementTool ? stockOf(movementTool) : null;
     removeWithFiles(table, id);
+    if (movementTool) assertStockNotWorse(movementTool, before, 'errStockInvalid');
   });
   notify();
 }

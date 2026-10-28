@@ -23,7 +23,7 @@ import type { Attachment } from '@/db/types';
 import { nowIso } from '@/lib/dates';
 import { reportError } from '@/lib/errors';
 
-import { applyBundle, BUNDLE_FORMAT, BUNDLE_VERSION, collectAll, filesOf, readFileBytes, sha256Hex, type Bundle, type ImportPlan } from './bundle';
+import { applyBundle, applySettings, BUNDLE_FORMAT, BUNDLE_VERSION, collectAll, collectSettings, filesOf, readFileBytes, sha256Hex, type Bundle, type ImportPlan } from './bundle';
 import { decryptBytes, encryptBytes, isEncrypted, WrongPasswordError } from './crypto';
 import { fileFor, sha256 } from './files';
 import { decodeUtf8, encodeUtf8 } from './utf8';
@@ -59,6 +59,7 @@ export async function makeBackup(onProgress?: (part: number, parts: number) => v
     exported_at: nowIso(),
     device_id: deviceId(),
     tables,
+    settings: collectSettings(),
   };
   const data = encodeUtf8(JSON.stringify(bundle));
   const dataHash = await sha256Hex(data);
@@ -124,6 +125,7 @@ export async function dataSnapshot(): Promise<Uint8Array> {
     exported_at: nowIso(),
     device_id: deviceId(),
     tables: collectAll(),
+    settings: collectSettings(),
   };
   const data = encodeUtf8(JSON.stringify(bundle));
   const manifest: Manifest = {
@@ -214,6 +216,7 @@ export async function restorePart(uri: string, password?: string): Promise<{ pla
   if ((await sha256Hex(data)) !== manifest.data_sha256) throw new BackupError('damaged');
   const bundle: Bundle = JSON.parse(decodeUtf8(data));
   const plan = await applyBundle(bundle.tables, files);
+  applySettings(bundle.settings);
   return { plan, photos: files.size, part: manifest.part, parts: manifest.parts };
 }
 

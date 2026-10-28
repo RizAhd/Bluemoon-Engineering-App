@@ -6,13 +6,15 @@ import { Button, HeaderButton } from '@/components/ui/Button';
 import { AmountField, Chips, DateField, Field, SelectField } from '@/components/ui/form';
 import { Screen } from '@/components/ui/layout';
 import { useFirst } from '@/db';
-import { deleteRecord, saveWageEntry } from '@/db/repo';
+import { deleteRecord, recordWorkAndPay, saveWageEntry } from '@/db/repo';
 import type { WageEntry, WageKind } from '@/db/types';
 import { useCurrentProjectId, useProjects, useProjectWorkers, useWorkers } from '@/hooks/data';
 import { useRecordForm } from '@/hooks/form';
 import { useT, type TKey } from '@/i18n';
+import { confirmPayments } from '@/lib/confirmPay';
 import { today } from '@/lib/dates';
 import { centsToInput, formatLKR, parseCents } from '@/lib/money';
+import { dayWage } from '@/lib/wages';
 
 const DAY_CHOICES: { value: string; label: string; a11y: TKey }[] = [
   { value: '0.5', label: '½', a11y: 'halfDay' },
@@ -47,8 +49,10 @@ function Inner({ existing, params }: { existing: WageEntry | null; params: { wor
     existing ? centsToInput(existing.amount_cents) : params.amount ? centsToInput(Number(params.amount)) : '',
   );
   const [note, setNote] = useState(existing?.note ?? '');
+  // Work being recorded can be paid in the same Save (a new work entry only).
+  const [pay, setPay] = useState('');
   // Back with typed values not saved asks before throwing them away.
-  form.useLeaveGuard([workerId, projectId, day, days, amount, note]);
+  form.useLeaveGuard([workerId, projectId, day, days, amount, note, pay]);
 
   // Completed projects are not offered for new work, but the one this form opened on always is,
   // so the field shows what will be saved.
@@ -94,22 +98,36 @@ function Inner({ existing, params }: { existing: WageEntry | null; params: { wor
       : before > 0
         ? `${t('weOwe')} ${formatLKR(before)}`
         : `${t('workerOwes')} ${formatLKR(-before)}`;
-  const autoAmount = kind === 'work' && rate > 0 && nDays > 0 ? Math.round(rate * nDays) : null;
+  const autoAmount = kind === 'work' && rate > 0 && nDays > 0 ? dayWage(nDays, rate) : null;
   const shownAmount = kind === 'work' && !amountTouched && autoAmount != null ? centsToInput(autoAmount) : amount;
+  // What the worker is owed once this work is in: the hint under Pay now, and what one tap on it fills in.
+  const canPayNow = kind === 'work' && form.isNew;
+  const owedAfter = before + (parseCents(shownAmount) ?? 0);
+  const payingCents = pay.trim() === '' ? 0 : (parseCents(pay) ?? Number.NaN);
+  const overpay = Number.isFinite(payingCents) && payingCents > Math.max(0, owedAfter);
+  const payNowHint = overpay ? t('payMore') : owedAfter > 0 && workerValue ? `${t('weOwe')} ${formatLKR(owedAfter)}` : undefined;
 
   function onSave() {
-    form.submit(() =>
-      saveWageEntry({
-        id: form.id,
-        worker_id: workerValue,
-        project_id: projectValue,
-        day,
-        kind,
-        days: kind === 'work' ? nDays : null,
-        amount_cents: parseCents(shownAmount),
-        note,
-      }),
-    );
+    const save = () =>
+      form.submit(() =>
+        canPayNow
+          ? recordWorkAndPay({ id: form.id, worker_id: workerValue, project_id: projectValue, day, days: nDays, amount_cents: parseCents(shownAmount), note }, payingCents)
+          : saveWageEntry({
+              id: form.id,
+              worker_id: workerValue,
+              project_id: projectValue,
+              day,
+              kind,
+              days: kind === 'work' ? nDays : null,
+              amount_cents: parseCents(shownAmount),
+              note,
+            }),
+      );
+    // Money is confirmed first (name and amount) once everything else is filled in; a missing field is
+    // reported straight away by the save itself, before any dialog.
+    const ready = !!workerValue && !!projectValue && nDays > 0 && parseCents(shownAmount) !== null;
+    if (canPayNow && payingCents > 0 && ready) confirmPayments(t, [{ name: worker?.name ?? '', cents: payingCents }], 'payNow', save);
+    else save();
   }
 
   const title: TKey = kind === 'work' ? 'recordWork' : kind === 'advance' ? 'giveAdvance' : 'payWages';
@@ -194,6 +212,22 @@ function Inner({ existing, params }: { existing: WageEntry | null; params: { wor
           // an advance or a payment is just an amount: the keypad opens at once (work starts from days × rate)
           autoFocus={form.isNew && kind !== 'work'}
         />
+        {canPayNow ? (
+          <AmountField
+            label={t('payNow')}
+            optional
+            value={pay}
+            onChangeText={(s) => {
+              setPay(s);
+              form.clearError('pay');
+            }}
+            hint={payNowHint}
+            hintTone={overpay ? 'warning' : 'textMuted'}
+            // one tap on the owed amount fills the box (nothing is ever pre-filled)
+            onHintPress={!overpay && owedAfter > 0 && workerValue && pay.trim() === '' ? () => setPay(centsToInput(owedAfter)) : undefined}
+            error={form.err('pay')}
+          />
+        ) : null}
         <DateField label={t('date')} value={day} onChange={setDay} maxDay={today()} error={form.err('day')} />
         <Field label={t('note')} optional placeholder={t(kind === 'advance' ? 'phWageNote' : kind === 'work' ? 'phWorkNote' : 'phPayNote')} value={note} onChangeText={setNote} />
       </Screen>

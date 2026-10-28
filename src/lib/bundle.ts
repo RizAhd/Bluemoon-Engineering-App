@@ -7,7 +7,7 @@
 import * as Crypto from 'expo-crypto';
 import { File } from 'expo-file-system';
 
-import { all, classifyRow, getDb, mergeRow, notify, tx, type MergeResult } from '@/db';
+import { all, classifyRow, getDb, getSetting, mergeRow, notify, remove, setSetting, tx, type MergeResult } from '@/db';
 import { DATA_TABLES, type DataTable } from '@/db/schema';
 import type { Attachment, Estimate, EstimateItem } from '@/db/types';
 
@@ -32,6 +32,35 @@ export interface Bundle {
   estimate_id?: string;
   estimate_number?: string;
   tables: Partial<Record<DataTable, Row[]>>;
+  /** Backups only: the business's own settings (company and bank details, estimate counters, language). */
+  settings?: Record<string, string>;
+}
+
+/** Settings that belong to the owner's business and not to one phone: they travel inside backups. */
+const BACKUP_SETTINGS = /^(company_[a-z_]+|estimate_seq_\d{4}|estimate_lang|estimate_letterhead|lang|theme|text_size)$/;
+
+export function collectSettings(): Record<string, string> {
+  const rows = all<{ key: string; value: string | null }>('SELECT key, value FROM settings ORDER BY key');
+  return Object.fromEntries(rows.filter((r) => r.value != null && r.value !== '' && BACKUP_SETTINGS.test(r.key)).map((r) => [r.key, r.value as string]));
+}
+
+/**
+ * Brings a backup's settings back: a value this phone has not set is filled in; one it has is kept. Estimate counters
+ * keep the higher number, so a restored phone never reuses the number of an estimate that already exists.
+ */
+export function applySettings(incoming: Record<string, string> | undefined) {
+  if (!incoming || typeof incoming !== 'object') return;
+  for (const [key, value] of Object.entries(incoming)) {
+    if (!BACKUP_SETTINGS.test(key) || typeof value !== 'string' || value === '') continue;
+    const have = getSetting(key);
+    if (key.startsWith('estimate_seq_')) {
+      const a = Number(have ?? 0);
+      const b = Number(value);
+      if (Number.isFinite(b) && b > (Number.isFinite(a) ? a : 0)) setSetting(key, String(b));
+    } else if (have == null || have === '') {
+      setSetting(key, value);
+    }
+  }
 }
 
 export async function sha256Hex(bytes: Uint8Array): Promise<string> {
@@ -250,6 +279,7 @@ export async function applyBundle(tables: Bundle['tables'], files: Map<string, U
   try {
     tx(() => {
       for (const t of DATA_TABLES) for (const r of tables[t] ?? []) mergeRow(t, r);
+      dedupeWorkDays();
       assertReferences(d);
     });
   } finally {
@@ -257,6 +287,26 @@ export async function applyBundle(tables: Bundle['tables'], files: Map<string, U
   }
   notify();
   return plan;
+}
+
+/**
+ * After a merge, one worker can have two live 'work' rows for the same project and day (each phone recorded the day on its
+ * own, with its own id). The day was worked once, so the newest edit is kept and the other is removed; left alone, every
+ * total would count the day twice.
+ */
+function dedupeWorkDays() {
+  const dup = all<{ worker_id: string; project_id: string | null; day: string }>(
+    `SELECT worker_id, project_id, day FROM wage_entries WHERE kind = 'work' AND deleted_at IS NULL
+     GROUP BY worker_id, project_id, day HAVING COUNT(*) > 1`,
+  );
+  for (const d of dup) {
+    const rows = all<{ id: string }>(
+      `SELECT id FROM wage_entries WHERE worker_id = ? AND project_id IS ? AND day = ? AND kind = 'work' AND deleted_at IS NULL
+       ORDER BY updated_at DESC, version DESC, id`,
+      [d.worker_id, d.project_id, d.day],
+    );
+    rows.slice(1).forEach((r) => remove('wage_entries', r.id));
+  }
 }
 
 /** Every reference must point at a row, except a tool movement's or an estimate's project. Throws (and so rolls the import back) otherwise. */

@@ -1,18 +1,19 @@
 import { router, Stack, useLocalSearchParams } from 'expo-router';
-import { Hammer, Hash, Trash2 } from 'lucide-react-native';
+import { Hammer, Hash, Ruler, Trash2 } from 'lucide-react-native';
 import { useState } from 'react';
 import { Alert } from 'react-native';
 
 import { PhotoStrip } from '@/components/PhotoStrip';
 import { Button, IconButton } from '@/components/ui/Button';
 import { toast } from '@/components/ui/feedback';
-import { Field } from '@/components/ui/form';
+import { Field, Segmented } from '@/components/ui/form';
 import { Screen } from '@/components/ui/layout';
 import { useFirst } from '@/db';
 import { deleteRecord, saveTool } from '@/db/repo';
 import type { Tool } from '@/db/types';
 import { useRecordForm } from '@/hooks/form';
 import { useT } from '@/i18n';
+import { formatQty, parseQty } from '@/lib/estimate';
 import { showError } from '@/lib/errors';
 import { space } from '@/theme';
 
@@ -29,10 +30,17 @@ function Inner({ existing }: { existing: Tool | null }) {
   const [name, setName] = useState(existing?.name ?? '');
   const [code, setCode] = useState(existing?.code ?? '');
   const [notes, setNotes] = useState(existing?.notes ?? '');
+  // A tool is borrowed and comes back; a material (cement, bolts) is issued and used up. Same list, same forms.
+  const [kind, setKind] = useState<'tool' | 'material'>(existing?.is_material ? 'material' : 'tool');
+  const [qty, setQty] = useState(existing ? formatQty(existing.quantity_milli) : '1');
+  const [unit, setUnit] = useState(existing?.unit ?? '');
   // Back with typed values not saved asks before throwing them away.
-  form.useLeaveGuard([name, code, notes]);
+  form.useLeaveGuard([name, code, notes, kind, qty, unit]);
 
-  const save = () => form.submit(() => saveTool({ id: form.id, name, code, notes }));
+  const save = () =>
+    form.submit(() =>
+      saveTool({ id: form.id, name, code, notes, quantity_milli: parseQty(qty), is_material: kind === 'material', unit: kind === 'material' ? unit : existing?.unit ?? null }),
+    );
 
   // Not form.confirmDelete: that goes back one screen, which is this tool's own page, and it has nothing left to show.
   // Edit is only reachable from that page, so leave both and land where the user came from.
@@ -81,6 +89,28 @@ function Inner({ existing }: { existing: Tool | null }) {
           autoFocus={form.isNew}
           returnKeyType="next"
         />
+        <Segmented
+          options={[
+            { value: 'tool', label: t('kindTool') },
+            { value: 'material', label: t('kindMaterial') },
+          ]}
+          value={kind}
+          onChange={setKind}
+        />
+        <Field
+          label={t('howMany')}
+          icon={Ruler}
+          placeholder={t('phHowManyTotal')}
+          value={qty}
+          onChangeText={(s) => {
+            setQty(s);
+            form.clearError('qty');
+          }}
+          keyboardType={kind === 'material' ? 'decimal-pad' : 'number-pad'}
+          hint={t('howManyTotalHint')}
+          error={form.err('qty')}
+        />
+        {kind === 'material' ? <Field label={t('unit')} optional placeholder={t('phUnitTool')} value={unit} onChangeText={setUnit} autoCorrect={false} /> : null}
         <Field label={t('toolCode')} optional icon={Hash} placeholder={t('phToolCode')} value={code} onChangeText={setCode} autoCapitalize="characters" autoCorrect={false} />
         {/* PhotoStrip already wraps capture in try/catch + showError (camera-off → settings / gallery). */}
         <PhotoStrip ownerTable="tools" ownerId={form.id} label={t('photoProof')} />

@@ -1,5 +1,5 @@
 import { Stack, useLocalSearchParams } from 'expo-router';
-import { ArrowDownToLine, ArrowUpFromLine, Building2, Calendar, ClipboardCheck, Hammer, Trash2, User } from 'lucide-react-native';
+import { ArrowDownToLine, ArrowUpFromLine, Building2, Calendar, ClipboardCheck, Hammer, Ruler, Trash2, User } from 'lucide-react-native';
 import { useMemo, useState } from 'react';
 
 import { PhotoStrip } from '@/components/PhotoStrip';
@@ -7,13 +7,15 @@ import { Button, IconButton } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/feedback';
 import { DateField, Field, SelectField } from '@/components/ui/form';
 import { ListCard, ListRow, Screen } from '@/components/ui/layout';
-import { useFirst, useQuery } from '@/db';
+import { all, useFirst, useQuery } from '@/db';
 import { deleteRecord, moveTool, ValidationError } from '@/db/repo';
-import type { ToolMovement, ToolStatus, Worker } from '@/db/types';
+import type { ToolHolder, ToolMovement, ToolStock, Worker } from '@/db/types';
 import { useCurrentProjectId, useProjects, useProjectWorkers, useTools, useWorkers } from '@/hooks/data';
 import { useRecordForm } from '@/hooks/form';
 import { useT } from '@/i18n';
 import { formatDay, today } from '@/lib/dates';
+import { formatQty, parseQty } from '@/lib/estimate';
+import { isSinglePiece, qtyText } from '@/lib/toolStock';
 
 type Kind = 'issue' | 'return';
 type Params = { id?: string; toolId?: string; kind?: Kind; projectId?: string };
@@ -31,8 +33,8 @@ export default function ToolMove() {
 function Existing({ move }: { move: ToolMovement }) {
   const t = useT();
   const form = useRecordForm('tool_movements', move.id);
-  const row = useFirst<{ tool_name: string; tool_code: string | null; worker_name: string | null; project_name: string | null }>(
-    `SELECT tl.name AS tool_name, tl.code AS tool_code, w.name AS worker_name, p.name AS project_name
+  const row = useFirst<{ tool_name: string; tool_code: string | null; unit: string | null; worker_name: string | null; project_name: string | null }>(
+    `SELECT tl.name AS tool_name, tl.code AS tool_code, tl.unit AS unit, w.name AS worker_name, p.name AS project_name
      FROM tool_movements m JOIN tools tl ON tl.id = m.tool_id
      LEFT JOIN workers w ON w.id = m.worker_id LEFT JOIN projects p ON p.id = m.project_id WHERE m.id = ?`,
     [move.id],
@@ -57,6 +59,7 @@ function Existing({ move }: { move: ToolMovement }) {
             badge={<Badge tone={isIssue ? 'warning' : 'success'} label={t(isIssue ? 'out' : 'inStore')} />}
           />
           <ListRow icon={Hammer} title={row ? (row.tool_code ? `${row.tool_name} · ${row.tool_code}` : row.tool_name) : t('tool')} subtitle={t('tool')} />
+          {move.qty_milli !== 1000 ? <ListRow icon={Ruler} title={qtyText(move.qty_milli, row?.unit)} subtitle={t('howMany')} /> : null}
           <ListRow icon={User} title={row?.worker_name ?? move.taken_by ?? '—'} subtitle={t('takenBy')} />
           <ListRow icon={Building2} title={row?.project_name ?? t('allProjects')} subtitle={t('project')} />
           <ListRow icon={Calendar} title={formatDay(move.day)} subtitle={t('date')} />
@@ -79,29 +82,38 @@ function Inner({ params }: { params: Params }) {
   const allWorkers = useWorkers(true);
   const toolCount = useTools().length;
   const kind: Kind = params.kind === 'return' ? 'return' : 'issue';
-  const tools = useQuery<ToolStatus>('SELECT * FROM v_tool_status WHERE is_out = ? ORDER BY name COLLATE NOCASE', [kind === 'issue' ? 0 : 1]);
+  // what can be issued is what has some in store, what can be returned is what has some out
+  const tools = useQuery<ToolStock>(
+    `SELECT * FROM v_tool_stock WHERE ${kind === 'issue' ? 'in_store_milli' : 'out_milli'} > 0 ORDER BY name COLLATE NOCASE`,
+  );
 
   const [toolId, setToolId] = useState<string | null>(params.toolId ?? null);
-  const status = useFirst<ToolStatus>('SELECT * FROM v_tool_status WHERE tool_id = ?', [toolId ?? '']);
-  const [projectId, setProjectId] = useState<string | null>(kind === 'return' ? (status?.project_id ?? params.projectId ?? current) : (params.projectId ?? current));
-  const [workerId, setWorkerId] = useState<string | null>(kind === 'return' ? (status?.worker_id ?? null) : null);
-  const [takenBy, setTakenBy] = useState(kind === 'return' ? (status?.taken_by ?? '') : '');
+  const status = useFirst<ToolStock>('SELECT * FROM v_tool_stock WHERE tool_id = ?', [toolId ?? '']);
+  // Returning: the one who has most of it is the usual one coming back, so the form starts with them and their count.
+  const holder = useFirst<ToolHolder>('SELECT * FROM v_tool_holders WHERE tool_id = ? ORDER BY qty_milli DESC LIMIT 1', [toolId ?? '']);
+  const [projectId, setProjectId] = useState<string | null>(kind === 'return' ? (holder?.project_id ?? params.projectId ?? current) : (params.projectId ?? current));
+  const [workerId, setWorkerId] = useState<string | null>(kind === 'return' ? (holder?.worker_id ?? null) : null);
+  const [takenBy, setTakenBy] = useState(kind === 'return' ? (holder?.taken_by ?? '') : '');
+  const [qty, setQty] = useState(kind === 'return' && holder ? formatQty(holder.qty_milli) : '1');
   const [day, setDay] = useState(today());
   const [condition, setCondition] = useState('');
   const [note, setNote] = useState('');
   // Back with typed values not saved asks before throwing them away.
-  form.useLeaveGuard([toolId, projectId, workerId, takenBy, day, condition, note]);
+  form.useLeaveGuard([toolId, projectId, workerId, takenBy, qty, day, condition, note]);
 
   // Returning: when the tool changes, follow where it actually is (the list already carries its status).
   function pickTool(id: string | null) {
     setToolId(id);
     form.clearError('tool_id');
-    if (kind !== 'return') return;
-    const s = tools.find((x) => x.tool_id === id);
-    if (!s) return;
-    setProjectId(s.project_id ?? current);
-    setWorkerId(s.worker_id ?? null);
-    setTakenBy(s.taken_by ?? '');
+    setQty('1');
+    form.clearError('qty');
+    if (kind !== 'return' || !id) return;
+    const h = all<ToolHolder>('SELECT * FROM v_tool_holders WHERE tool_id = ? ORDER BY qty_milli DESC LIMIT 1', [id])[0];
+    if (!h) return;
+    setProjectId(h.project_id ?? current);
+    setWorkerId(h.worker_id ?? null);
+    setTakenBy(h.taken_by ?? '');
+    setQty(formatQty(h.qty_milli));
   }
 
   // Project picker: completed projects are not offered for new movements, but the one this form opened on
@@ -110,9 +122,9 @@ function Inner({ params }: { params: Params }) {
   const projectItems = useMemo(
     () =>
       allProjects
-        .filter((p) => p.status !== 'completed' || p.id === openedOn || p.id === projectId || p.id === status?.project_id)
+        .filter((p) => p.status !== 'completed' || p.id === openedOn || p.id === projectId || p.id === holder?.project_id)
         .map((p) => ({ id: p.id, title: p.name, icon: Building2, subtitle: p.location ?? undefined })),
-    [allProjects, openedOn, projectId, status?.project_id],
+    [allProjects, openedOn, projectId, holder?.project_id],
   );
 
   // Worker picker: the project's roster when a project is chosen and has one, else every active worker.
@@ -143,12 +155,12 @@ function Inner({ params }: { params: Params }) {
     form.submit(() => {
       if (!toolId) throw new ValidationError('tool_id', 'errTool');
       if (kind === 'issue' && !projectId) throw new ValidationError('project_id', 'errProject');
-      moveTool({ id: form.id, tool_id: toolId, kind, worker_id: workerId, taken_by: workerId ? null : takenBy, project_id: projectId, day, condition, note });
+      moveTool({ id: form.id, tool_id: toolId, kind, qty_milli: parseQty(qty), worker_id: workerId, taken_by: workerId ? null : takenBy, project_id: projectId, day, condition, note });
     });
 
   return (
     <>
-      <Stack.Screen options={{ title: t(kind === 'issue' ? 'issueTool' : 'returnTool') }} />
+      <Stack.Screen options={{ title: t(kind === 'issue' ? (status?.is_material ? 'issueMaterial' : 'issueTool') : 'returnTool') }} />
       <Screen footer={<Button icon={kind === 'issue' ? ArrowUpFromLine : ArrowDownToLine} label={t('save')} onPress={save} full />} gap={20}>
         <SelectField
           label={t('tool')}
@@ -200,6 +212,21 @@ function Inner({ params }: { params: Params }) {
             }}
             error={form.err('taken_by')}
             hint={t('otherPersonHint')}
+          />
+        ) : null}
+        {/* only for a tool with several pieces or a material: a single piece reads as it always did */}
+        {status && !isSinglePiece(status) ? (
+          <Field
+            label={t('howMany')}
+            icon={Ruler}
+            value={qty}
+            onChangeText={(s) => {
+              setQty(s);
+              form.clearError('qty');
+            }}
+            keyboardType={status.is_material ? 'decimal-pad' : 'number-pad'}
+            hint={t(kind === 'issue' ? 'inStoreCount' : 'outCount', { n: qtyText(kind === 'issue' ? status.in_store_milli : status.out_milli, status.unit) })}
+            error={form.err('qty')}
           />
         ) : null}
         <DateField label={t('date')} value={day} onChange={setDay} maxDay={today()} error={form.err('day')} />

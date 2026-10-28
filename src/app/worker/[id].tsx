@@ -12,12 +12,13 @@ import { Chips, PickerSheet } from '@/components/ui/form';
 import { Card, ListCard, ListRow, Screen, SectionTitle } from '@/components/ui/layout';
 import { Txt } from '@/components/ui/Txt';
 import { useFirst, useQuery } from '@/db';
-import { deleteRecord, saveWorker, unassignWorker } from '@/db/repo';
+import { deleteRecord, payWages, saveWorker, unassignWorker } from '@/db/repo';
 import type { WageEntry, WageKind, Worker, WorkerBalance } from '@/db/types';
 import { useCurrentProjectId, useProjects, useWorkerProjects } from '@/hooks/data';
 import { formatPhone } from '@/lib/names';
 import { useT } from '@/i18n';
-import { formatDay } from '@/lib/dates';
+import { confirmPayments } from '@/lib/confirmPay';
+import { formatDay, today } from '@/lib/dates';
 import { showError } from '@/lib/errors';
 import { formatLKR } from '@/lib/money';
 import { space, useColors } from '@/theme';
@@ -66,7 +67,8 @@ export default function WorkerDetail() {
     [id ?? ''],
   );
   const [filter, setFilter] = useState<string | null>(null);
-  const [picking, setPicking] = useState<WageKind | null>(null);
+  // 'quickpay' = the Pay button on the balance card asking which project to pay
+  const [picking, setPicking] = useState<WageKind | 'quickpay' | null>(null);
 
   // Projects that appear in the history, for the filter chips.
   const historyProjects = useMemo(() => {
@@ -121,6 +123,28 @@ export default function WorkerDetail() {
     const owed = wp.find((p) => p.project_id === projectId)?.balance_cents ?? 0;
     const amount = kind === 'payment' && owed > 0 ? `&amount=${owed}` : '';
     router.push(`/wage/form?workerId=${worker!.id}&kind=${kind}&projectId=${projectId}${amount}`);
+  }
+
+  // Projects this worker is owed money on; the balance card's Pay button pays one of them in full, after one confirmation.
+  const owing = wp.filter((p) => p.balance_cents > 0);
+  const quickTarget = (() => {
+    const chosen = actionProject();
+    const row = chosen ? wp.find((p) => p.project_id === chosen) : undefined;
+    if (row && row.balance_cents > 0) return row;
+    return owing.length === 1 ? owing[0] : null;
+  })();
+
+  function quickPay(projectId: string) {
+    const row = wp.find((p) => p.project_id === projectId);
+    if (!row || row.balance_cents <= 0) return;
+    confirmPayments(t, [{ name: `${worker!.name} · ${row.project_name}`, cents: row.balance_cents }], 'payNow', () => {
+      try {
+        payWages({ project_id: projectId, worker_id: worker!.id, day: today(), amount_cents: row.balance_cents });
+        toast(t('savedOnPhone'));
+      } catch (e) {
+        showError(e, 'worker.quickPay', t, { projectId, workerId: worker!.id });
+      }
+    });
   }
 
   function act(kind: WageKind) {
@@ -194,10 +218,13 @@ export default function WorkerDetail() {
     ]);
   }
 
-  const pickerItems = (wp.length ? wp.map((p) => ({ id: p.project_id, title: p.project_name })) : allProjects.map((p) => ({ id: p.id, title: p.name }))).map((p) => ({
-    ...p,
-    icon: Building2,
-  }));
+  const pickable: { id: string; title: string; subtitle?: string }[] =
+    picking === 'quickpay'
+      ? owing.map((p) => ({ id: p.project_id, title: p.project_name, subtitle: formatLKR(p.balance_cents) }))
+      : wp.length
+        ? wp.map((p) => ({ id: p.project_id, title: p.project_name }))
+        : allProjects.map((p) => ({ id: p.id, title: p.name }));
+  const pickerItems = pickable.map((p) => ({ ...p, icon: Building2 }));
 
   return (
     <>
@@ -248,6 +275,14 @@ export default function WorkerDetail() {
                   <Txt variant="caption" color="textMuted">
                     {[worker.trade, worker.daily_rate_cents ? `${t('dailyRate')} ${formatLKR(worker.daily_rate_cents)}` : null].filter(Boolean).join(' · ')}
                   </Txt>
+                ) : null}
+                {owing.length ? (
+                  <Button
+                    icon={Banknote}
+                    label={quickTarget ? t('payAmount', { amount: formatLKR(quickTarget.balance_cents) }) : t('payNow')}
+                    onPress={() => (quickTarget ? quickPay(quickTarget.project_id) : setPicking('quickpay'))}
+                    full
+                  />
                 ) : null}
                 {worker.phone ? <Button kind="ghost" compact icon={Phone} label={formatPhone(worker.phone)} onPress={() => Linking.openURL(`tel:${worker.phone}`).catch((e) => showError(e, 'worker.call', t))} style={{ alignSelf: 'flex-start' }} /> : null}
               </Card>
@@ -307,7 +342,9 @@ export default function WorkerDetail() {
         onPick={(projectId) => {
           const kind = picking;
           setPicking(null);
-          if (kind && projectId) go(kind, projectId);
+          if (!kind || !projectId) return;
+          if (kind === 'quickpay') quickPay(projectId);
+          else go(kind, projectId);
         }}
       />
       {share.sheet}

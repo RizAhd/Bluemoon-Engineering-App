@@ -198,7 +198,8 @@ export default function TodayScreen() {
             ) : null
           ) : (
             <Txt variant="caption" color="textMuted">
-              {cost.length} {t('projects')}
+              {/* completed projects are not in this total: say so */}
+              {t('runningProjectsCount', { n: cost.length })}
             </Txt>
           )}
           <Divider />

@@ -21,6 +21,7 @@ import { DATA_TABLES } from '@/db/schema';
 import { nowIso, today } from '@/lib/dates';
 
 import { dataSnapshot, restorePart, verifyBackup } from './backup';
+import { collectSettings } from './bundle';
 import { uploadSnapshotIfDue } from './drive';
 import { copyToPhoneFolder } from './phoneFolder';
 
@@ -102,10 +103,32 @@ export async function restoreNewestAutoBackup(): Promise<boolean> {
  * added, edited or deleted, so today's snapshot can be redone after new work instead of waiting for tomorrow.
  */
 export function dataMark(): string {
-  return DATA_TABLES.map((t) => {
+  const rows = DATA_TABLES.map((t) => {
     const r = all<{ n: number; u: string | null }>(`SELECT COUNT(*) AS n, MAX(updated_at) AS u FROM ${t}`)[0];
     return `${r?.n ?? 0}:${r?.u ?? ''}`;
   }).join('|');
+  // the business settings are in the snapshot too (bank details, estimate counters): changing one redoes it
+  const text = JSON.stringify(collectSettings());
+  let h = 5381;
+  for (let i = 0; i < text.length; i++) h = ((h * 33) ^ text.charCodeAt(i)) >>> 0;
+  return `${rows}|s${text.length}:${h}`;
+}
+
+/** True when there is not one record: nothing worth copying out of the app, and an empty copy must never replace a good one. */
+export function dataIsEmpty(): boolean {
+  return DATA_TABLES.every((t) => (all<{ n: number }>(`SELECT COUNT(*) AS n FROM ${t}`)[0]?.n ?? 0) === 0);
+}
+
+/**
+ * Folds the database's write-ahead log into the main file. Android's own cloud backup copies the main file but not the
+ * log, so without this a restored phone could come back with yesterday's records.
+ */
+export function checkpointDb() {
+  try {
+    getDb().execSync('PRAGMA wal_checkpoint(TRUNCATE)');
+  } catch {
+    // best effort: the data itself is already safe in the log
+  }
 }
 
 let running: Promise<'done' | 'skipped' | 'failed'> | null = null;
@@ -177,7 +200,7 @@ export async function mirrorTodaysSnapshot(): Promise<{ folder: 'done' | 'skippe
   const day = today();
   const name = `${PREFIX}${day}.zip`;
   const file = new File(backupsDir(), name);
-  if (!file.exists) return { folder: 'skipped', drive: 'skipped' };
+  if (!file.exists || dataIsEmpty()) return { folder: 'skipped', drive: 'skipped' };
   // which version of today's snapshot this is: a copy is redone when the snapshot was redone
   const stamp = getSetting('auto_backup_at') ?? day;
   let folder: 'done' | 'skipped' | 'failed' = 'skipped';
@@ -199,6 +222,7 @@ export async function mirrorTodaysSnapshot(): Promise<{ folder: 'done' | 'skippe
 export async function runDailyBackup(): Promise<void> {
   const res = await runAutoBackupIfDue();
   if (res !== 'failed') await mirrorTodaysSnapshot().catch(() => undefined);
+  checkpointDb();
 }
 
 // The task must be defined at module top level so Android can start it with the app closed.

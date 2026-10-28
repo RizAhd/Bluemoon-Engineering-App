@@ -79,9 +79,11 @@ export function Tiles({ children, style }: { children: ReactNode; style?: StyleP
 export function ContractBar({ spent, contract }: { spent: number; contract: number }) {
   const t = useT();
   const c = useColors();
-  const pct = contract > 0 ? Math.round((spent / contract) * 100) : 0;
-  const over = pct >= 100;
-  const fill = over ? c.danger : pct > 85 ? c.warning : c.slate;
+  const ratio = contract > 0 ? spent / contract : 0;
+  // 99.5 % is not "100 %" and red: the figure only reaches 100 when the contract really is used up
+  const over = ratio >= 1;
+  const pct = over ? Math.round(ratio * 100) : Math.min(99, Math.round(ratio * 100));
+  const fill = over ? c.danger : ratio > 0.85 ? c.warning : c.slate;
   return (
     <View style={{ gap: space.xs }} accessibilityLabel={`${pct}% ${t('contract')}`}>
       <View style={{ height: 10, borderRadius: 5, backgroundColor: c.border, overflow: 'hidden' }}>

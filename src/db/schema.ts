@@ -421,6 +421,46 @@ export const migrations: string[] = [
     ) b
   ) c;
   `,
+
+  // 6 — tools and materials by quantity. Counts are thousandths of a unit (1000 = one piece), like estimate
+  // quantities, so a material can be 2.5 bags while the maths stays whole numbers. Every tool and movement that
+  // existed is one piece (the column defaults), so nothing changes until a count is raised.
+  `
+  ALTER TABLE tools ADD COLUMN quantity_milli INTEGER NOT NULL DEFAULT 1000;
+  ALTER TABLE tools ADD COLUMN unit TEXT;
+  ALTER TABLE tools ADD COLUMN is_material INTEGER NOT NULL DEFAULT 0;
+  ALTER TABLE tool_movements ADD COLUMN qty_milli INTEGER NOT NULL DEFAULT 1000;
+
+  -- How much of each tool or material is out (issued minus returned) and how much is left in store.
+  CREATE VIEW v_tool_stock AS
+  SELECT s.*, s.quantity_milli - s.out_milli AS in_store_milli
+  FROM (
+    SELECT t.id AS tool_id,
+           t.name,
+           t.code,
+           t.unit,
+           t.is_material,
+           t.quantity_milli,
+           COALESCE(SUM(CASE WHEN m.kind = 'issue' THEN m.qty_milli WHEN m.kind = 'return' THEN -m.qty_milli END), 0) AS out_milli
+    FROM tools t
+    LEFT JOIN tool_movements m ON m.tool_id = t.id AND m.deleted_at IS NULL
+    WHERE t.deleted_at IS NULL
+    GROUP BY t.id
+  ) s;
+
+  -- Who holds how much: issued minus returned per tool, project and person, only where something is still out.
+  CREATE VIEW v_tool_holders AS
+  SELECT m.tool_id,
+         m.project_id,
+         m.worker_id,
+         m.taken_by,
+         SUM(CASE WHEN m.kind = 'issue' THEN m.qty_milli ELSE -m.qty_milli END) AS qty_milli
+  FROM tool_movements m
+  JOIN tools t ON t.id = m.tool_id AND t.deleted_at IS NULL
+  WHERE m.deleted_at IS NULL
+  GROUP BY m.tool_id, m.project_id, m.worker_id, m.taken_by
+  HAVING SUM(CASE WHEN m.kind = 'issue' THEN m.qty_milli ELSE -m.qty_milli END) > 0;
+  `,
 ];
 
 /** Tables that hold business data, in an order where parents come before children. */

@@ -127,15 +127,30 @@ export default function BackupScreen() {
         }
       }
       setProgress(null);
-      if (!kept) {
+      if (kept) {
+        markBackedUp();
+      } else {
         // nowhere set up: hand the files to the share sheet (Drive app, WhatsApp, a computer…)
         toast(t('backupReady'));
         for (const f of files) {
           const locked = f.uri.endsWith(ENCRYPTED_EXT);
           await Sharing.shareAsync(f.uri, { mimeType: locked ? 'application/octet-stream' : 'application/zip', dialogTitle: t('backup') });
         }
+        // The share sheet cannot say whether the file was saved or the sheet was just closed: ask, so a cancelled
+        // share is never counted as a backup (and the "photos overdue" reminder stays until one really is).
+        await new Promise<void>((resolve) =>
+          Alert.alert(t('backupSavedQ'), t('backupSavedQBody'), [
+            { text: t('savedNo'), style: 'cancel', onPress: () => resolve() },
+            {
+              text: t('savedYes'),
+              onPress: () => {
+                markBackedUp();
+                resolve();
+              },
+            },
+          ]),
+        );
       }
-      markBackedUp();
     });
     setProgress(null);
     setBusy(null);

@@ -1,5 +1,7 @@
 import type { ProjectWorkerBalance, WageDay } from '@/db/types';
 
+import { lineAmount } from './estimate';
+
 /**
  * What is still unpaid for one day's work on a project: per worker the day's wage minus what was paid that
  * day, but never more than the worker is owed on the project overall, since an advance (that day or earlier)
@@ -12,4 +14,12 @@ export function unpaidForDay(dayRows: WageDay[], roster: ProjectWorkerBalance[])
     if (!owed.has(r.worker_id)) return sum;
     return sum + Math.max(0, Math.min((r.work_cents ?? 0) - (r.paid_cents ?? 0), owed.get(r.worker_id) ?? 0));
   }, 0);
+}
+
+/**
+ * A day's wage in cents: days x the daily rate, rounded half up in exact integer arithmetic (days as thousandths, the
+ * way estimate lines are priced), so 0.29 days at Rs 1,000.50 is Rs 290.15 and no float error can move a cent.
+ */
+export function dayWage(days: number, rateCents: number): number {
+  return lineAmount(Math.round(days * 1000), rateCents);
 }

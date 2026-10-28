@@ -32,6 +32,8 @@ export function driveErrorKey(e: unknown): TKey {
       return 'driveOffline';
     case 'denied':
       return 'driveDenied';
+    case 'quota':
+      return 'driveQuota';
     case 'noPlayServices':
       return 'driveNoPlayServices';
     case 'unavailable':
@@ -61,9 +63,12 @@ export function BackupPlaces() {
     setWorking('folder');
     try {
       if (await pickPhoneFolder()) {
+        // today's snapshot first (if the day has none yet), then a copy into the new folder
+        await runAutoBackupIfDue();
         const r = await mirrorTodaysSnapshot();
+        // "Saved" only when a copy really went in: with no records yet, or backup switched off, nothing was copied
         if (r.folder === 'failed') toast(t('phoneFolderFailed'), { tone: 'danger' });
-        else toast(t('folderSaved'));
+        else toast(t(r.folder === 'done' ? 'folderSaved' : 'folderChosen'));
       }
     } catch (e) {
       reportError(e, 'backup.folder');
@@ -89,6 +94,7 @@ export function BackupPlaces() {
       setSetting('drive_auto_of', null);
       const r = await mirrorTodaysSnapshot();
       if (r.drive === 'done') toast(t('driveUploaded'));
+      else if (r.drive === 'skipped') toast(t('nothingToCopy'));
       else toast(t(driveErrorKey(new DriveError((getSetting('drive_error') ?? '').split(' ')[1] as DriveError['reason']))), { tone: 'danger' });
     } finally {
       setWorking(null);

@@ -53,6 +53,8 @@ export async function pickPhoneFolder(): Promise<boolean> {
   }
   if (!dir?.uri) return false;
   setSetting(KEY, dir.uri);
+  // a new folder has none of today's copies yet, so today's snapshot must be copied again
+  setSetting('backup_folder_of', null);
   setSetting('backup_folder_error', null);
   return true;
 }
@@ -72,17 +74,33 @@ export function forgetPhoneFolder() {
 export function copyToPhoneFolder(name: string, bytes: Uint8Array, mime = 'application/zip'): boolean {
   const uri = getSetting(KEY);
   if (!uri) return false;
+  // What was in the folder under this name is kept in memory until the new copy is complete and checked: a write that
+  // fails half way must not cost the good copy that was there.
+  let before: Uint8Array | null = null;
+  let created: File | null = null;
   try {
     const dir = new Directory(uri);
-    const entries = dir.list();
-    for (const e of entries) if (e instanceof File && e.name === name) e.delete();
-    const file = dir.createFile(name, mime);
-    file.writeSync(bytes);
+    const old = dir.list().filter((e): e is File => e instanceof File && e.name === name);
+    before = old.length ? old[0].bytesSync() : null;
+    old.forEach((f) => f.delete());
+    created = dir.createFile(name, mime);
+    created.writeSync(bytes);
+    if (typeof created.size === 'number' && created.size !== bytes.length) throw new Error('The copy in the folder is incomplete');
     setSetting('backup_folder_at', nowIso());
     setSetting('backup_folder_error', null);
     trimFolder(dir);
     return true;
   } catch (e) {
+    try {
+      created?.delete();
+    } catch {
+      // nothing half written to remove
+    }
+    try {
+      if (before) new Directory(uri).createFile(name, mime).writeSync(before);
+    } catch {
+      // the folder cannot be written at all: the error below says so
+    }
     setSetting('backup_folder_error', `${nowIso()} ${e instanceof Error ? e.message : String(e)}`);
     throw e;
   }
