@@ -253,15 +253,31 @@ describe('backup: actions', () => {
     expect(takeConsole()).toEqual([]);
   });
 
-  it('Back up now builds the zip and opens the share sheet', async () => {
+  it('Back up now builds the zip and opens the share sheet; only "Yes, I saved it" counts as a backup', async () => {
+    const alert = mockAlert();
     await renderScreen(<BackupScreen />);
     await pressLabel(E('backupNow'));
     await waitFor(() => expect(Sharing.shareAsync).toHaveBeenCalled());
     const [uri, options] = (Sharing.shareAsync as jest.Mock).mock.calls[0];
     expect(String(uri)).toMatch(/\.zip$/);
     expect(options).toMatchObject({ mimeType: 'application/zip' });
+    // the share sheet cannot say whether the file was saved or only closed: the app asks, and counts nothing until the answer
+    await waitFor(() => expect(alert).toHaveBeenCalled());
+    expect(alert.mock.calls[0][0]).toBe(E('backupSavedQ'));
+    expect(getSetting('last_backup_at')).toBeNull();
+    await pressAlertButton(alert, E('savedYes'));
     await waitFor(() => expect(getSetting('last_backup_at')).not.toBeNull());
     expectClean('backup after full backup');
+  });
+
+  it('a closed share sheet ("No") is not counted as a backup, so the reminder stays', async () => {
+    const alert = mockAlert();
+    await renderScreen(<BackupScreen />);
+    await pressLabel(E('backupNow'));
+    await waitFor(() => expect(alert).toHaveBeenCalled());
+    expect(alert.mock.calls[0][0]).toBe(E('backupSavedQ'));
+    await pressAlertButton(alert, E('savedNo'));
+    expect(getSetting('last_backup_at')).toBeNull();
   });
 
   it('the automatic backup switch is saved', async () => {

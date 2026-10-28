@@ -26,9 +26,13 @@ export function unpaidForDay(dayRows: WageDay[], roster: ProjectWorkerBalance[])
 }
 
 /**
- * A day's wage in cents: days x the daily rate, rounded half up in exact integer arithmetic (days as thousandths, the
- * way estimate lines are priced), so 0.29 days at Rs 1,000.50 is Rs 290.15 and no float error can move a cent.
+ * A day's wage in cents: days x the daily rate, rounded half up. Days typed as a number (½, 1½, 0.29) are exact
+ * thousandths and are priced in integer arithmetic, the way estimate lines are, so 0.29 days at Rs 1,000.50 is
+ * Rs 290.15 and no float error can move a cent. Anything finer (a third of a day, 0.3333...) is a plain product,
+ * rounded to the nearest cent, so a third of Rs 3,000 is Rs 1,000.00 and not Rs 999.00.
  */
 export function dayWage(days: number, rateCents: number): number {
-  return lineAmount(Math.round(days * 1000), rateCents);
+  const milli = Math.round(days * 1000);
+  if (Math.abs(days * 1000 - milli) < 1e-6) return lineAmount(milli, rateCents);
+  return Math.round(days * rateCents + 1e-6);
 }

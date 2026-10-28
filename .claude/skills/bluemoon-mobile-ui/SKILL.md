@@ -49,6 +49,7 @@ Use `<Txt variant=…>`; it already applies size, line height and tracking.
 
 - Primary actions, inputs, FAB: 56. Everything else tappable: 48 minimum. Header icon buttons 44 with `hitSlop`.
 - Leave 8 between neighbouring targets.
+- The one deliberate 40: the search box at the top of a list (`SearchField compact`, first thing in the list header, always shown). Its clear button is 40 with `hitSlop` 4, so it still has a 48 target. Pickers keep the 48 `SearchField`.
 - One primary action per screen. Destructive actions are never primary-coloured and always confirm.
 - Press feedback appears on press-in (colour change plus the small scale below) and the action commits on release.
 

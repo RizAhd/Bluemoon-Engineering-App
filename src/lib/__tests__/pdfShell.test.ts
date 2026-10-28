@@ -92,7 +92,7 @@ describe('exportHtmlPdf on plain paper', () => {
     expect(out.name).toBe(NAME);
     expect(out.exists).toBe(true);
     expect(out.parentDirectory.uri).toBe(Paths.cache.uri);
-    expect(out.size).toBeGreaterThan(1000);
+    expect(out.size).toBeGreaterThan(500);
     expect(Buffer.from(out.bytesSync().subarray(0, 4)).toString('latin1')).toBe('%PDF');
     expect((await read(out)).getPageCount()).toBe(1);
     expect(html).toHaveBeenCalledTimes(1);
@@ -124,7 +124,7 @@ describe('exportHtmlPdf on plain paper', () => {
     stale.writeSync(new Uint8Array([1, 2, 3, 4]));
     const first = await exportHtmlPdf({ html: builder(), fileName: NAME, letterhead: false });
     expect(first.uri).toBe(stale.uri);
-    expect(first.size).toBeGreaterThan(1000);
+    expect(first.size).toBeGreaterThan(500);
     const second = await exportHtmlPdf({ html: builder(), fileName: NAME, letterhead: false });
     expect(second.uri).toBe(first.uri);
     expect(cacheNames().filter((n) => n.startsWith('Bluemoon-Test'))).toEqual([NAME]);

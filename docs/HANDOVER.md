@@ -71,7 +71,9 @@ src/hooks/               data.ts (queries), form.ts (useRecordForm, useLeaveGuar
 src/lib/                 money, dates (incl. week / month ranges), wages (unpaid for a day), backup,
                          autoBackup, phoneFolder, drive, pdf / estimatePdf / reportHtml, share*, errors,
                          keyboard (app-wide keyboard behaviour), letterheadData (embedded JPEG),
-                         pdfShell (page frame + print / letterhead / write for the printable lists)
+                         pdfShell (page frame + print / letterhead / write for the printable lists),
+                         toolStock (counts of tools and materials), search (the one matching rule),
+                         confirmPay (the one "Pay now" confirmation: names and amounts)
   lib/reports/           the PDF row of the Share sheets: worker statement (3 languages), expense list,
                          workers list, day sheet, tools register, site notes (pure html builders +
                          load.ts from the views + export.ts); src/hooks/pdfShare.ts hands the file over
@@ -89,9 +91,23 @@ scripts/                 embed-letterhead.py, device/phone.py (phone testing)
 - Tables: `projects`, `expenses`, `workers`, `project_workers`, `wage_entries` (kind `work` / `advance` /
   `payment`), `tools`, `tool_movements`, `site_notes`, `attachments`, `estimates`, `estimate_items`,
   `estimate_payments`, `settings`, `audit_log`. Balances come from views (`v_project_cost`,
-  `v_worker_balance`, `v_project_worker_balance`, `v_wage_day`, `v_tool_status`).
+  `v_worker_balance`, `v_project_worker_balance`, `v_wage_day`, `v_tool_status`, `v_tool_stock`,
+  `v_tool_holders`).
 - A worker's balance = work − advances − payments. "Unpaid for today's work" is capped at what the worker is
-  owed on the project (`src/lib/wages.ts`), so an advance is never paid twice.
+  owed on the project (`src/lib/wages.ts`), so an advance is never paid twice. One amount is at most
+  `MAX_ENTRY_CENTS` (Rs 100,000,000, `errAmountTooBig`). A day's wage is `dayWage(days, rate)`: half up, exact for
+  typed days (½, 1½, 0.29), a plain rounded product for a third of a day.
+- Paying: `recordWorkAndPay` (the Record work form's optional *Pay now*: work and payment in one transaction),
+  `payWages` (the Pay button on a worker's balance, the day sheet). Every payment first goes through
+  `confirmPayments` (`src/lib/confirmPay.ts`): one dialog with names and amounts.
+- Tools and materials are counted: `tools.quantity_milli` (the total; 1000 = one piece), `tools.unit`,
+  `tools.is_material` (used up, not lent), `tool_movements.qty_milli`. `v_tool_stock` = total, out, in store;
+  `v_tool_holders` = who has how much (several pieces: issued − returned per project and person; a single piece:
+  whoever the last movement says, as before). `moveTool` refuses an issue above what is in store
+  (`errStockShort`) or a return above what is out (`errReturnTooMany`) through `assertStockNotWorse`: a change is
+  refused only if it makes the count more impossible than it was, so old odd data can still be corrected.
+  A single piece (total 1, not a material) keeps the old wording and rules (`errToolState`). Adding stock = raising
+  the total on the tool form. Today's *Tools out* counts pieces of tools (materials excluded).
 - User preferences live in `settings` (e.g. `theme`, `lang`, `text_size`, `current_project`,
   `backup_folder_uri`, `drive_email`, `auto_backup_at`, list filters `list_*`).
 
@@ -106,6 +122,14 @@ scripts/                 embed-letterhead.py, device/phone.py (phone testing)
 | Android Auto Backup | By Android, about daily | Owner's Google account | Android's rules (`plugins/withBackupRules.js`) |
 
 Full backups split into parts of at most ~40 MB; each part restores on its own. Restore asks first and merges.
+
+What a bundle carries: every data table, plus the business `settings` (company and bank details, estimate number
+counters, language: `BACKUP_SETTINGS` in `src/lib/bundle.ts`; restore fills what is empty and never lowers a
+counter). Phone-only settings (folder, Drive account, PIN) are not carried. `BUNDLE_VERSION` is 2 (tools and
+movements carry counts); version-1 files still import, every tool then being one piece. An app that only knows
+version 1 refuses a version-2 file instead of dropping the counts. Merging two phones keeps one work row per
+worker, project and day (`dedupeWorkDays`). The change fingerprint `dataMark()` includes the settings, and an
+empty phone never overwrites a good snapshot or folder copy.
 
 ### Google Drive sign-in setup (one time, in Google Cloud)
 
@@ -230,6 +254,19 @@ re-check on the phone.
 | B4 | Backup → Run now did not copy to the folder / Drive | Run now also mirrors | yes |
 | B5 | Pay wages / Give advance gave no idea what is owed | "To pay Rs …" / "Paid ahead Rs …" hint | yes |
 | B6 | Unlabelled days box on Record work | "Or type the number of days" | code |
+
+### apk-15 (25–29 Oct 2026): quantities, PDFs, search, paying, safety
+
+Five additions, nothing rearranged. Audited first (code review of money maths, sync and backups), then fixed in one build.
+
+| Area | What was added or fixed |
+|---|---|
+| Quantities | Tools and materials with *How many?*, Tool / Material switch, "7 of 10 in store", over-issue and over-return refused, Today *Tools out* in pieces, project hub, project report and share messages carry counts |
+| PDF | Share sheet → PDF on worker (statement, 3 languages), Expenses (filters + search), Workers, Tools register, Today's work & pay (day sheet with signature lines), Site notes; letterhead tick as for project PDFs |
+| Search | Small search box on Projects, Expenses (SQL, all records), Workers (SQL), Tools, Site notes, Estimates, a worker's history and a tool's history; pickers search from 5 items |
+| Paying | *Pay now* in Record work (one Save, one confirmation), *Pay Rs …* on a worker's balance, tap the owed line on Today's work & pay to fill *Pay now* |
+| Backups | Settings travel in backups, cancelled share is not a backup, folder change copies before saying "Saved", a failed copy keeps the good file, Drive folder-id healing and "Drive is full" message, WAL checkpoint, empty snapshot never overwrites a good one |
+| Money and dates | Delete-worker warning with *Mark as left*, doubled work day after merge kept once, amount limit, day-wage rounding, "12,50" is a decimal, contract bar red only at 100 %, Workers tab and wage sheet roll over at midnight, *Wages to pay* consistent on Today and Workers |
 
 Also checked with no problems in the final round: add / edit / delete for expenses, notes, workers, advances,
 estimates, projects; filters; tool issue and return; share sheets; PIN setup; restore picker; company details;

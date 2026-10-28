@@ -341,7 +341,7 @@ smokeScreen('Share on the Tools tab', () => <ToolsScreen />, {
         shareBefore(tr, tr('newTool'));
         await openShare(tr, lang);
         expect(lastBuild()).toEqual(['toolsOut', projectId(SCHOOL), lang, undefined]);
-        expectPdfRow(tr, tr('pdfToolsRegister'), tr('toolsCount', { n: 5 }));
+        expectPdfRow(tr, tr('pdfToolsRegister'), tr('toolsCount', { n: 7 })); // five tools, the wheelbarrows and the cement
       },
     },
     {

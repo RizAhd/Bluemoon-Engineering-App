@@ -15,9 +15,9 @@ export function searchWords(query: string): string[] {
   return query.toLowerCase().split(/\s+/).filter(Boolean);
 }
 
-const NUMBER = /^[\d,]+(\.\d*)?$/;
+const NUMBER = /^[\d,]*\d[\d,]*(\.\d*)?$/;
 
-/** A word that reads as a number, with its grouping commas removed ("1,250" -> "1250"); null for anything else. */
+/** A word that reads as a number (it has a digit), with its grouping commas removed ("1,250" -> "1250"); null for anything else. */
 function plainDigits(word: string): string | null {
   return NUMBER.test(word) ? word.replace(/,/g, '') : null;
 }

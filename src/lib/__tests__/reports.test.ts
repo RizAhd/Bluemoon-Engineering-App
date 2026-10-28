@@ -380,51 +380,70 @@ describe('the day sheet', () => {
 
 // ================================================================ the tools register
 
+/** The English words, with {n}-style slots filled, so the printed phrases can be read as a person reads them. */
+const words = (key: keyof typeof en, vars?: Record<string, string | number>) => en[key].replace(/\{(\w+)\}/g, (_, k: string) => String(vars?.[k] ?? ''));
+/** The text of a table cell, tags and line breaks flattened. */
+const plain = (cell: string) => cell.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+
 describe('the tools register', () => {
   const register = () => {
     const rows = loadToolsRegister();
-    return { rows, html: buildToolsRegisterHtml({ rows, letterhead: false, t, day: TODAY }) };
+    return { rows, html: buildToolsRegisterHtml({ rows, letterhead: false, t: words, day: TODAY }) };
   };
+  const rowOf = (html: string, name: string) => plain(tableRows(section(html, 'Tools')).rows.find((r) => r.includes(name)) ?? '');
 
-  it('lists every live tool with whether it is out or in store, who has it and since when', () => {
+  it('lists every live tool and material with how many are in store and out, who has them and since when', () => {
     const tools = all<{ name: string }>('SELECT name FROM tools WHERE deleted_at IS NULL');
-    const out = all<{ name: string }>('SELECT name FROM v_tool_status WHERE is_out = 1');
-    expect(tools).toHaveLength(5);
-    expect(out).toHaveLength(2);
+    expect(tools).toHaveLength(7);
     const { rows, html } = register();
-    expect(rows).toHaveLength(5);
-    expect(rows.filter((r) => r.is_out)).toHaveLength(2);
-    expect(rows.filter((r) => !r.is_out)).toHaveLength(3);
-    expect(boxValues(html)).toEqual(['5', '2', '3']);
-    expect(tableRows(section(html, 'tools')).rows).toHaveLength(5);
+    expect(rows).toHaveLength(7);
+    expect(rows.filter((r) => r.out_milli > 0).map((r) => r.name)).toEqual(expect.arrayContaining(['Hilti drill', 'Concrete mixer', 'Wheelbarrow', 'Cement']));
+    expect(rows.map((r) => r.out_milli > 0)).toEqual([true, true, true, true, false, false, false]); // what is out comes first
+    // the same counting as the Tools tab's chips: Tools 7, Out 4, In store 5 (the wheelbarrows and the cement are in both)
+    expect(boxValues(html)).toEqual(['7', '4', '5']);
+    expect(tableRows(section(html, 'Tools')).rows).toHaveLength(7);
     for (const tool of tools) expect(html).toContain(tool.name);
-    const drill = rows.find((r) => r.name === 'Hilti drill');
-    expect(drill).toMatchObject({ is_out: 1, with_name: 'Sunil Fernando', project_name: 'Welimada Primary School Building', last_day: '2026-10-20', condition: 'Good' });
-    expect(rows.find((r) => r.name === 'Aluminium ladder 12 ft')).toMatchObject({ is_out: 0, last_day: '2026-10-18', condition: 'One rung loose' });
-    expect(rows.find((r) => r.name === 'Vibrator poker')).toMatchObject({ is_out: 0, with_name: null, last_day: null });
-    expect(rows.map((r) => r.is_out)).toEqual([1, 1, 0, 0, 0]); // out first
-    expect(html).toContain('<span class="tag out">out</span>');
-    expect(html).toContain('<span class="tag in">inStore</span>');
+
+    // a single piece reads as it always has: a tag, and who has it, where and since when
+    expect(rowOf(html, 'Hilti drill')).toBe('Hilti drill BM-T-001 Out Sunil Fernando · Welimada Primary School Building · 20 Oct 2026 Good');
+    expect(rowOf(html, 'Aluminium ladder')).toBe('Aluminium ladder 12 ft BM-T-005 In store');
+    expect(rowOf(html, 'Vibrator poker')).toBe('Vibrator poker BM-T-003 In store');
+    // several pieces: how many are in store and out, and what each holder has
+    expect(rowOf(html, 'Wheelbarrow')).toBe('Wheelbarrow BM-T-006 2 of 4 in store 2 out Ruwan Jayasinghe · Welimada Primary School Building · 17 Oct 2026 · 2 Tyre flat');
+    // a material: what is left and what was issued
+    expect(rowOf(html, 'Cement')).toBe('Cement 80 bags left 20 bags issued Nimal Perera · Welimada Primary School Building · 22 Oct 2026 · 20 bags');
+    expect(clean(html)).not.toMatch(/NaN|undefined|null/);
   });
 
   it('follows deletions and movements: a deleted tool is gone, a returned tool is in store, someone outside is named', () => {
-    const ladder = idOf('tools', 'Aluminium');
-    deleteRecord('tools', ladder);
-    moveTool({ tool_id: idOf('tools', 'Hilti'), kind: 'return', project_id: idOf('projects', 'Welimada'), day: TODAY });
+    deleteRecord('tools', idOf('tools', 'Aluminium'));
+    moveTool({ tool_id: idOf('tools', 'Hilti'), kind: 'return', project_id: idOf('projects', 'Welimada'), worker_id: idOf('workers', 'Sunil'), day: TODAY });
     moveTool({ tool_id: idOf('tools', 'Vibrator'), kind: 'issue', project_id: idOf('projects', 'Badulla'), taken_by: 'Mr Jayasiri (RDA)', day: TODAY });
     const { rows, html } = register();
-    expect(rows).toHaveLength(4);
-    expect(rows.find((r) => r.name === 'Hilti drill')?.is_out).toBe(0);
-    expect(rows.find((r) => r.name === 'Vibrator poker')).toMatchObject({ is_out: 1, with_name: 'Mr Jayasiri (RDA)', project_name: 'Badulla Culvert Repair' });
-    expect(boxValues(html)).toEqual(['4', '2', '2']);
+    expect(rows).toHaveLength(6);
+    expect(rows.find((r) => r.name === 'Hilti drill')?.holders).toEqual([]);
+    expect(rowOf(html, 'Hilti drill')).toBe('Hilti drill BM-T-001 In store');
+    expect(rowOf(html, 'Vibrator poker')).toBe('Vibrator poker BM-T-003 Out Mr Jayasiri (RDA) · Badulla Culvert Repair · 22 Oct 2026');
+    expect(boxValues(html)).toEqual(['6', '4', '4']);
     expect(clean(html)).not.toMatch(/NaN|undefined|null/);
+  });
+
+  it('a return counts against its holder: the pieces come off the right person', () => {
+    const barrow = idOf('tools', 'Wheelbarrow');
+    moveTool({ tool_id: barrow, kind: 'issue', project_id: idOf('projects', 'Badulla'), worker_id: idOf('workers', 'Sunil'), day: TODAY, qty_milli: 1000 });
+    moveTool({ tool_id: barrow, kind: 'return', project_id: idOf('projects', 'Welimada'), worker_id: idOf('workers', 'Ruwan'), day: TODAY, qty_milli: 2000 });
+    const { rows, html } = register();
+    const line = rows.find((r) => r.name === 'Wheelbarrow');
+    expect(line).toMatchObject({ quantity_milli: 4000, out_milli: 1000, in_store_milli: 3000 });
+    expect(line?.holders).toHaveLength(1);
+    expect(rowOf(html, 'Wheelbarrow')).toContain('3 of 4 in store 1 out Sunil Fernando · Badulla Culvert Repair');
   });
 
   it('an empty register says so', () => {
     for (const row of all<{ id: string }>('SELECT id FROM tools')) deleteRecord('tools', row.id);
     const { rows, html } = register();
     expect(rows).toEqual([]);
-    expect(html).toContain('noTools');
+    expect(html).toContain('No tools');
   });
 });
 

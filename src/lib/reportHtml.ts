@@ -216,23 +216,32 @@ export function buildReportHtml(input: ReportInput): string {
         return `<div>${esc(tl.name)}: ${line}</div>`;
       });
     if (stock.length) sections.push(`<div class="stock">${stock.join('')}</div>`);
+    // The Quantity column only appears once something is counted (several pieces or a material): a project whose tools
+    // are all single pieces prints the table exactly as it always has.
+    const counted = moves.some((mv) => (mv.qty_milli ?? 1000) !== 1000 || !isSinglePiece(tools.get(mv.tool_id) ?? { quantity_milli: 1000, is_material: 0 }));
+    const who = (mv: ToolMovement) => esc(mv.worker_id ? (workerName.get(mv.worker_id) ?? '') : (mv.taken_by ?? ''));
     sections.push(
-      table(
-        [
-          { label: t('date'), width: '16%' },
-          { label: t('tool') },
-          { label: '', width: '13%' },
-          { label: t('quantity'), num: true, width: '13%' },
-          { label: t('takenBy'), width: '26%' },
-        ],
-        moves.map((mv) => [
-          esc(formatDay(mv.day)),
-          esc(toolName(mv.tool_id)),
-          t(mv.kind === 'issue' ? 'issue' : 'return'),
-          esc(qtyText(mv.qty_milli ?? 1000, toolUnit(mv.tool_id))),
-          esc(mv.worker_id ? (workerName.get(mv.worker_id) ?? '') : (mv.taken_by ?? '')),
-        ]),
-      ),
+      counted
+        ? table(
+            [
+              { label: t('date'), width: '16%' },
+              { label: t('tool') },
+              { label: '', width: '13%' },
+              { label: t('quantity'), num: true, width: '13%' },
+              { label: t('takenBy'), width: '26%' },
+            ],
+            moves.map((mv) => [
+              esc(formatDay(mv.day)),
+              esc(toolName(mv.tool_id)),
+              t(mv.kind === 'issue' ? 'issue' : 'return'),
+              esc(qtyText(mv.qty_milli ?? 1000, toolUnit(mv.tool_id))),
+              who(mv),
+            ]),
+          )
+        : table(
+            [{ label: t('date'), width: '18%' }, { label: t('tool') }, { label: '', width: '14%' }, { label: t('takenBy'), width: '28%' }],
+            moves.map((mv) => [esc(formatDay(mv.day)), esc(toolName(mv.tool_id)), t(mv.kind === 'issue' ? 'issue' : 'return'), who(mv)]),
+          ),
     );
   }
 

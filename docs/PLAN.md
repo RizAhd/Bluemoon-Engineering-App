@@ -246,15 +246,15 @@ Every table has the common columns `id TEXT PRIMARY KEY` (UUID made on the phone
 | `workers` | people | name, phone, trade, daily_rate_cents (default rate), active |
 | `project_workers` *(migration 2)* | who works on which project | project_id, worker_id, rate_cents (rate on this project), active — one logical row per (project, worker) |
 | `wage_entries` | the wage ledger | worker_id, project_id, day, kind (work / advance / payment), days (work only), amount_cents, note |
-| `tools` | register | name, code, notes |
-| `tool_movements` | issue / return | tool_id, kind, project_id, worker_id or taken_by, day, condition, note |
+| `tools` | register of tools and materials *(counts: migration 6)* | name, code, notes, quantity_milli (the total; 1000 = one piece), unit, is_material |
+| `tool_movements` | issue / return | tool_id, kind, project_id, worker_id or taken_by, day, condition, note, qty_milli (1000 = one piece) |
 | `site_notes` | daily log | project_id, day, body, weather |
 | `attachments` | photos/PDFs | owner_table, owner_id, kind (photo/pdf/file), file_name, mime, size, sha256 |
 | `audit_log` | every write | seq, at, device_id, table_name, row_id, action, data (JSON) — never updated or deleted |
 | `settings` | key/value | device_id, current_project, lang, theme, last_backup_at, auto_backup*, … |
 
 **Views (totals are never computed on the phone's JS side):**
-`v_project_cost` (expense, labour earned, labour paid per project) · `v_worker_balance` (overall per worker) · `v_project_worker_balance` (per project and worker: earned, advance, paid, balance, days_total) · `v_wage_day` (per project, worker, day: days, work, paid, advance) · `v_tool_status` (latest movement per tool, is_out).
+`v_project_cost` (expense, labour earned, labour paid per project) · `v_worker_balance` (overall per worker) · `v_project_worker_balance` (per project and worker: earned, advance, paid, balance, days_total) · `v_wage_day` (per project, worker, day: days, work, paid, advance) · `v_tool_status` (latest movement per tool, is_out) · `v_tool_stock` (per tool: total, out, in store) · `v_tool_holders` (who has how much: several pieces and materials per project and person, a single piece as the last movement says).
 
 ### Rules
 - **Money** is whole cents (LKR × 100) in INTEGER columns; parsing and formatting only in `src/lib/money.ts`.
@@ -265,13 +265,13 @@ Every table has the common columns `id TEXT PRIMARY KEY` (UUID made on the phone
 
 ### Bundle format (what travels in PDFs and backups)
 ```json
-{ "format": "bluemoon-bundle", "version": 1, "kind": "project" | "backup",
+{ "format": "bluemoon-bundle", "version": 2, "kind": "project" | "backup",
   "exported_at": "...", "device_id": "...", "project_id": "...", "project_name": "...",
   "tables": { "projects": [...], "workers": [...], "tools": [...], "project_workers": [...],
               "expenses": [...], "wage_entries": [...], "tool_movements": [...],
               "site_notes": [...], "attachments": [...] } }
 ```
-Import order = parents before children (`DATA_TABLES`). `applyBundle` first writes every file whose SHA-256 matches its `attachments` row (a bad file stops the import before any row changes), then merges all rows in one transaction and reports inserted / updated / skipped counts.
+Version 2 (apk-15) carries the counts of tools and movements and, in backups, a `settings` object with the business settings (company and bank details, estimate counters, language); version-1 files still import (every tool is then one piece), and an older app refuses a version-2 file instead of dropping the counts. Import order = parents before children (`DATA_TABLES`). `applyBundle` first writes every file whose SHA-256 matches its `attachments` row (a bad file stops the import before any row changes), then merges all rows in one transaction and reports inserted / updated / skipped counts.
 
 ### PDF hand-off format
 - `expo-print` renders the readable report (the phone's own fonts shape Sinhala/Tamil correctly).
@@ -576,6 +576,7 @@ Year-one total at full rollout: **≈ $85** (Android only, Cloudflare paid) or *
 - **2026-10-24** — Audit process: test everything on the phone and list every issue first, fix them all, then build **one** APK and re-check. *Why:* the owner did not want a new version after every fix.
 - **2026-10-24** — "Pay all" and "unpaid for today" never pay more than a worker is owed (advances count). *Why:* the audit found a Rs 2,000 overpayment.
 - **2026-10-28** — Handover documentation for the next developer or agent: `docs/HANDOVER.md`, project rules in `AGENTS.md` (read by Claude Code through `CLAUDE.md`), phone-testing helper `scripts/device/phone.py`.
+- **2026-10-29** — Five small additions for apk-15, nothing rearranged (the owner wanted the same app, plain and simple): **quantities** for tools and materials (add stock = raise the total; over-issue is refused; Today's *Tools out* counts pieces of tools), **PDF** in the existing Share sheet of six more screens, a small **search** box on every list, **paying workers in fewer steps** (Pay now in Record work, a Pay button on the balance, one confirmation with names and amounts) and a round of **safety fixes** found in the audit (settings in backups, delete-worker warning, doubled work day after a merge, honest "Saved" for the folder copy, amount limit). Left for later: a Saturday "pay everyone" screen, new wording across the app, a separate stock-in list for materials.
 
 ---
 

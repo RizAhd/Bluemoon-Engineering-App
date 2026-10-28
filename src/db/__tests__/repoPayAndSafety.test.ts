@@ -7,7 +7,6 @@ import { assignWorker, MAX_ENTRY_CENTS, payWages, recordWorkAndPay, saveProject,
 import type { WageEntry } from '@/db/types';
 import { dataMark } from '@/lib/autoBackup';
 import { applyBundle, applySettings, collectAll, collectSettings } from '@/lib/bundle';
-import { nowIso } from '@/lib/dates';
 import { dayWage } from '@/lib/wages';
 import { resetDb } from '@/test-utils';
 import { useClock } from '@/test-utils/dataKit';

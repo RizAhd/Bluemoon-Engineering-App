@@ -284,6 +284,35 @@ describe('v_tool_holders', () => {
     expect(stock(tool)).toBeNull();
   });
 
+  it('pieces brought back under another name come off the oldest holder first, so the holders still add up to what is out', () => {
+    const tool = ladders();
+    move(tool, 'issue', 3000); // Nimal, school (the oldest)
+    move(tool, 'issue', 2000, { worker_id: sunil, project_id: culvert });
+    move(tool, 'return', 1000, { worker_id: null, taken_by: 'A neighbour', project_id: null }); // nobody of that name took any
+    expect(counts(tool)).toEqual({ out: 4000, inStore: 6000 });
+    expect(held(tool)).toEqual([
+      ['Badulla culvert', 'Sunil Fernando', 2000],
+      ['Welimada school', 'Nimal Perera', 2000],
+    ]);
+    // 3 more come back under a name nobody used: the oldest holder is paid off first, then the next one
+    move(tool, 'return', 3000, { worker_id: null, taken_by: 'Someone else', project_id: null });
+    expect(counts(tool)).toEqual({ out: 1000, inStore: 9000 });
+    expect(held(tool)).toEqual([['Badulla culvert', 'Sunil Fernando', 1000]]);
+    const total = first<{ n: number }>('SELECT COALESCE(SUM(qty_milli), 0) AS n FROM v_tool_holders WHERE tool_id = ?', [tool])?.n;
+    expect(total).toBe(stock(tool)?.out_milli);
+  });
+
+  it('a single piece returned under another name is back in store and has no holder', () => {
+    const drill = saveTool({ name: 'Hilti drill', code: 'BM-T-001' });
+    move(drill, 'issue', null);
+    expect(held(drill)).toEqual([['Welimada school', 'Nimal Perera', 1000]]);
+    move(drill, 'return', null, { worker_id: sunil, project_id: culvert });
+    expect(status(drill)?.is_out).toBe(0);
+    expect(held(drill)).toEqual([]);
+    move(drill, 'issue', null, { worker_id: sunil, project_id: culvert });
+    expect(held(drill)).toEqual([['Badulla culvert', 'Sunil Fernando', 1000]]);
+  });
+
   it('a material: issued amounts stay with their holders (what was used up is never "returned")', () => {
     const cement = saveTool({ name: 'Cement', unit: 'bags', quantity_milli: 100_000, is_material: true });
     move(cement, 'issue', 20_000);

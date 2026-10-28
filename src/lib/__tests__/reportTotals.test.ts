@@ -144,7 +144,10 @@ describe('the tools section', () => {
     moveTool({ tool_id: station, kind: 'issue', project_id: id, worker_id: saman, day: '2026-10-22' });
     const html = section(english(id), 'tools');
     expect(html).not.toContain('class="stock"');
-    expect([...html.matchAll(/<td class="n">([^<]*)<\/td>/g)].map((m) => m[1])).toEqual(['1']);
+    // and the table is the one it always was: no Quantity column until something is counted
+    expect(html).not.toContain('quantity');
+    expect([...html.matchAll(/<td class="n">([^<]*)<\/td>/g)].map((m) => m[1])).toEqual([]);
+    expect(html.match(/<th[ >]/g)).toHaveLength(4); // four column headings (not <thead>)
   });
 });
 
@@ -169,7 +172,7 @@ describe('after corrections', () => {
   it('odd cents are printed exactly', () => {
     const id = projectId('Badulla');
     saveExpense({ project_id: id, day: '2026-10-22', category: 'other', amount_cents: 1, method: 'cash' });
-    saveExpense({ project_id: id, day: '2026-10-22', category: 'other', amount_cents: 99_999_999_999, method: 'cash' });
+    saveExpense({ project_id: id, day: '2026-10-22', category: 'other', amount_cents: 9_999_999_999, method: 'cash' }); // the largest odd amount below the Rs 100,000,000 limit
     const w = first<{ id: string }>("SELECT id FROM workers WHERE name LIKE 'Saman%'")?.id as string;
     recordWorkDay({ project_id: id, worker_id: w, day: '2026-10-10', days: 0.5, amount_cents: 175_025 });
     saveWageEntry({ worker_id: w, project_id: id, day: '2026-10-10', kind: 'advance', amount_cents: 12_345 });
@@ -177,7 +180,7 @@ describe('after corrections', () => {
 
     const html = report(id);
     const cost = first<ProjectCost>('SELECT * FROM v_project_cost WHERE project_id = ?', [id]) as ProjectCost;
-    expect(html).toContain('Rs 999,999,999.99');
+    expect(html).toContain('Rs 99,999,999.99');
     expect(sum(amounts(section(html, 'expenses')))).toBe(cost.expense_cents);
     const cells = amounts(section(html, 'workers'));
     expect(sum(cells.filter((_, i) => i % 2 === 0))).toBe(cost.labour_cents);

@@ -173,9 +173,9 @@ describe('saveExpense', () => {
 
   it('accepts the smallest amount (1 cent) and a very large one, stored as integers', () => {
     const one = expense({ amount_cents: 1 });
-    const large = expense({ amount_cents: 99_999_999_999 });
+    const large = expense({ amount_cents: 9_999_999_999 }); // Rs 99,999,999.99: just under the Rs 100,000,000 limit
     expect(first('SELECT amount_cents, typeof(amount_cents) AS t FROM expenses WHERE id = ?', [one])).toEqual({ amount_cents: 1, t: 'integer' });
-    expect(first('SELECT amount_cents FROM expenses WHERE id = ?', [large])).toEqual({ amount_cents: 99_999_999_999 });
+    expect(first('SELECT amount_cents FROM expenses WHERE id = ?', [large])).toEqual({ amount_cents: 9_999_999_999 });
   });
 
   it('a payment method outside cash / bank / cheque is stopped by the database', () => {

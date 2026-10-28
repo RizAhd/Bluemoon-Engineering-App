@@ -448,18 +448,37 @@ export const migrations: string[] = [
     GROUP BY t.id
   ) s;
 
-  -- Who holds how much: issued minus returned per tool, project and person, only where something is still out.
+  -- Who holds how much, only where something is still out. A single piece reads as it always did: whoever the last
+  -- movement says has it, whoever brings it back. A tool with several pieces, or a material: issued minus returned
+  -- per project and person. Pieces brought back under a name that never took them ("unmatched": Kamal took 3,
+  -- Nimal brought 2 back) come off the oldest holders first, so the holders add up to what v_tool_stock says is out.
   CREATE VIEW v_tool_holders AS
-  SELECT m.tool_id,
-         m.project_id,
-         m.worker_id,
-         m.taken_by,
-         SUM(CASE WHEN m.kind = 'issue' THEN m.qty_milli ELSE -m.qty_milli END) AS qty_milli
-  FROM tool_movements m
-  JOIN tools t ON t.id = m.tool_id AND t.deleted_at IS NULL
-  WHERE m.deleted_at IS NULL
-  GROUP BY m.tool_id, m.project_id, m.worker_id, m.taken_by
-  HAVING SUM(CASE WHEN m.kind = 'issue' THEN m.qty_milli ELSE -m.qty_milli END) > 0;
+  WITH net AS (
+    SELECT m.tool_id, m.project_id, m.worker_id, m.taken_by,
+           SUM(CASE WHEN m.kind = 'issue' THEN m.qty_milli ELSE -m.qty_milli END) AS net_milli,
+           MIN(CASE WHEN m.kind = 'issue' THEN m.day END) AS first_day,
+           MIN(CASE WHEN m.kind = 'issue' THEN m.created_at END) AS first_at
+    FROM tool_movements m
+    JOIN tools t ON t.id = m.tool_id AND t.deleted_at IS NULL AND (t.quantity_milli <> 1000 OR t.is_material = 1)
+    WHERE m.deleted_at IS NULL
+    GROUP BY m.tool_id, m.project_id, m.worker_id, m.taken_by
+  ),
+  counted AS (
+    SELECT n.*,
+           SUM(CASE WHEN n.net_milli < 0 THEN -n.net_milli ELSE 0 END) OVER (PARTITION BY n.tool_id) AS unmatched,
+           SUM(CASE WHEN n.net_milli > 0 THEN n.net_milli ELSE 0 END)
+             OVER (PARTITION BY n.tool_id ORDER BY n.first_day, n.first_at, n.project_id, n.worker_id, n.taken_by ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW) AS running
+    FROM net n
+  )
+  SELECT c.tool_id, c.project_id, c.worker_id, c.taken_by,
+         CASE WHEN c.running - c.net_milli >= c.unmatched THEN c.net_milli ELSE c.running - c.unmatched END AS qty_milli
+  FROM counted c
+  WHERE c.net_milli > 0 AND c.running > c.unmatched
+  UNION ALL
+  SELECT s.tool_id, s.project_id, s.worker_id, s.taken_by, 1000
+  FROM v_tool_status s
+  JOIN tools t ON t.id = s.tool_id
+  WHERE s.is_out = 1 AND t.quantity_milli = 1000 AND t.is_material = 0;
   `,
 ];
 

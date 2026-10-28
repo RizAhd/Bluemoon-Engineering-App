@@ -201,7 +201,7 @@ describe('project form', () => {
     expect(schoolHas('expenses')).toBeGreaterThan(0);
     expect(schoolHas('wage_entries')).toBeGreaterThan(0);
     expect(schoolHas('site_notes')).toBe(2);
-    expect(schoolHas('tool_movements')).toBe(4);
+    expect(schoolHas('tool_movements')).toBe(7); // the drill, mixer, ladder out and back, the wheelbarrows out and back, the cement
     expect(schoolHas('project_workers')).toBe(5);
 
     setRouteParams({ id: school });

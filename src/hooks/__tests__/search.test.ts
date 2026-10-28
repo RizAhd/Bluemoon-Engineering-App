@@ -44,6 +44,8 @@ describe('matchesQuery', () => {
   it('a comma in a word that is not a number is part of the word', () => {
     expect(matchesQuery(row, 'depot,')).toBe(true);
     expect(matchesQuery(row, 'welimada,')).toBe(false);
+    expect(matchesQuery(['Rs 1250'], ',')).toBe(false); // a lone comma has no digits to compare, so it is plain text
+    expect(matchesQuery(['Depot, Welimada'], ',')).toBe(true);
   });
 
   it('Sinhala and Tamil are plain substrings', () => {
