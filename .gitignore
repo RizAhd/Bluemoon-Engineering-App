@@ -45,3 +45,6 @@ example
 # generated native projects (Expo prebuild)
 /android
 /ios
+
+# agent working copies
+.claude/worktrees/

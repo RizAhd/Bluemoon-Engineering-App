@@ -167,14 +167,15 @@ async function folderId(auth: string): Promise<string> {
  */
 export async function uploadToDrive(name: string, bytes: Uint8Array, mime = 'application/zip'): Promise<void> {
   try {
-    await uploadOnce(name, bytes, mime).catch(async (e) => {
+    try {
+      await uploadOnce(name, bytes, mime);
+    } catch (e) {
       // The remembered Drive folder was deleted (Drive answers 404): forget it, so it is found or made again, and try once more.
-      if (e instanceof DriveError && e.reason === 'failed' && /404/.test(e.message) && getSetting('drive_folder_id')) {
-        setSetting('drive_folder_id', null);
-        return uploadOnce(name, bytes, mime);
-      }
-      throw e;
-    });
+      const folderGone = e instanceof DriveError && e.reason === 'failed' && /404/.test(e.message) && !!getSetting('drive_folder_id');
+      if (!folderGone) throw e;
+      setSetting('drive_folder_id', null);
+      await uploadOnce(name, bytes, mime);
+    }
     setSetting('drive_last_at', nowIso());
     setSetting('drive_error', null);
   } catch (e) {

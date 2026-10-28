@@ -6,6 +6,7 @@
 import { Directory, File, Paths } from 'expo-file-system';
 
 import { getSetting, setSetting } from '@/db';
+import { saveProject } from '@/db/repo';
 import { backupsDir, mirrorTodaysSnapshot, runAutoBackupIfDue } from '@/lib/autoBackup';
 import { connectDrive, disconnectDrive, DriveError, driveStatus, uploadSnapshotIfDue, uploadToDrive } from '@/lib/drive';
 import { copyToPhoneFolder, folderName, FOLDER_KEEP, forgetPhoneFolder, phoneFolderStatus, pickPhoneFolder } from '@/lib/phoneFolder';
@@ -89,6 +90,7 @@ global.fetch = jest.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
   }
   if (method === 'POST' && url.includes('uploadType=resumable')) {
     const meta = JSON.parse(String(init?.body)) as { name: string; parents: string[] };
+    if (!drive.some((f) => f.folder && f.id === meta.parents[0])) return reply({ error: 'File not found' }, { status: 404 });
     const session = `https://upload.example/session/${nextId++}`;
     pendingUploads.set(session, { name: meta.name, parent: meta.parents[0] });
     return reply({}, { headers: { location: session } });
@@ -115,6 +117,7 @@ beforeEach(() => {
   offline = false;
   calls.length = 0;
   jest.clearAllMocks();
+  saveProject({ name: 'Test project' }); // an empty phone is never copied out (see "an empty phone" below)
 });
 afterEach(() => clock.restore());
 
@@ -152,6 +155,49 @@ describe('the phone folder', () => {
     expect(copy.bytesSync()).toEqual(new File(backupsDir(), 'Bluemoon-auto-2026-10-22.zip').bytesSync());
     expect((await mirrorTodaysSnapshot()).folder).toBe('skipped'); // already copied today
     expect(getSetting('backup_folder_at')).not.toBeNull();
+  });
+
+  it('choosing another folder forgets the copy stamp, so today\'s snapshot is copied into the new folder', async () => {
+    const first = phoneFolder();
+    (Directory as unknown as { nextPick: Directory }).nextPick = first;
+    await pickPhoneFolder();
+    await runAutoBackupIfDue();
+    expect((await mirrorTodaysSnapshot()).folder).toBe('done');
+    expect(getSetting('backup_folder_of')).not.toBeNull();
+    const second = new Directory(Paths.document, 'external', 'Documents', 'Other');
+    second.create({ intermediates: true, idempotent: true });
+    (Directory as unknown as { nextPick: Directory }).nextPick = second;
+    await pickPhoneFolder();
+    expect(getSetting('backup_folder_of')).toBeNull();
+    expect((await mirrorTodaysSnapshot()).folder).toBe('done');
+    expect(new File(second, 'Bluemoon-auto-2026-10-22.zip').exists).toBe(true);
+  });
+
+  it('a copy that fails half way leaves the good copy of the same day in the folder', () => {
+    const dir = phoneFolder();
+    setSetting('backup_folder_uri', dir.uri);
+    dir.createFile('Bluemoon-auto-2026-10-22.zip', null).writeSync(new Uint8Array([1, 2, 3]));
+    const write = jest.spyOn(File.prototype, 'writeSync').mockImplementationOnce(() => {
+      throw new Error('disk full');
+    });
+    expect(() => copyToPhoneFolder('Bluemoon-auto-2026-10-22.zip', new Uint8Array([9, 9]))).toThrow('disk full');
+    write.mockRestore();
+    const kept = dir.list().filter((e) => e.name === 'Bluemoon-auto-2026-10-22.zip');
+    expect(kept).toHaveLength(1);
+    expect(Array.from((kept[0] as File).bytesSync())).toEqual([1, 2, 3]);
+    expect(phoneFolderStatus().error).toContain('disk full');
+  });
+
+  it('an empty phone copies nothing out: an empty snapshot must never replace a good one', async () => {
+    resetDb();
+    const dir = phoneFolder();
+    setSetting('backup_folder_uri', dir.uri);
+    dir.createFile('Bluemoon-auto-2026-10-22.zip', null).writeSync(new Uint8Array([1, 2, 3]));
+    setSetting('drive_email', 'owner@gmail.com'); // connected, as far as the app can tell (no sign-in needed here)
+    expect(await runAutoBackupIfDue()).toBe('done');
+    expect(await mirrorTodaysSnapshot()).toEqual({ folder: 'skipped', drive: 'skipped' });
+    expect(Array.from((dir.list()[0] as File).bytesSync())).toEqual([1, 2, 3]);
+    expect(calls.filter((c) => c.startsWith('PUT'))).toHaveLength(0);
   });
 
   it('keeps the newest 30 snapshots and leaves other files (full backups) alone', () => {
@@ -238,6 +284,27 @@ describe('Google Drive', () => {
     const uploads = calls.filter((c) => c.startsWith('PUT')).length;
     expect((await mirrorTodaysSnapshot()).drive).toBe('skipped');
     expect(calls.filter((c) => c.startsWith('PUT')).length).toBe(uploads);
+  });
+
+  it('a Drive folder that was deleted is made again, and the upload goes through', async () => {
+    await connectDrive();
+    await uploadToDrive('Bluemoon-auto-2026-10-21.zip', new Uint8Array([1]));
+    const gone = drive.find((f) => f.folder)!.id;
+    drive = drive.filter((f) => !f.folder); // the owner deleted the folder in Drive
+    await uploadToDrive('Bluemoon-auto-2026-10-22.zip', new Uint8Array([2]));
+    const folders = drive.filter((f) => f.folder);
+    expect(folders).toHaveLength(1);
+    expect(folders[0].id).not.toBe(gone);
+    expect(drive.find((f) => f.name === 'Bluemoon-auto-2026-10-22.zip')?.parent).toBe(folders[0].id);
+    expect(driveStatus().error).toBeNull();
+  });
+
+  it('"Drive is full" is its own message and does not ask the owner to sign in again', async () => {
+    await connectDrive();
+    (global.fetch as jest.Mock).mockResolvedValueOnce(reply({ error: { errors: [{ reason: 'storageQuotaExceeded' }] } }, { status: 403 }));
+    await expect(uploadToDrive('a.zip', new Uint8Array([1]))).rejects.toMatchObject({ reason: 'quota' });
+    expect(driveStatus().error).toContain('quota');
+    expect(mockSignin.clearCachedAccessToken).not.toHaveBeenCalled();
   });
 
   it('is skipped entirely while not connected', async () => {

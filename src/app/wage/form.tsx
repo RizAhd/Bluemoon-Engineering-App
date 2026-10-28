@@ -126,7 +126,7 @@ function Inner({ existing, params }: { existing: WageEntry | null; params: { wor
     // Money is confirmed first (name and amount) once everything else is filled in; a missing field is
     // reported straight away by the save itself, before any dialog.
     const ready = !!workerValue && !!projectValue && nDays > 0 && parseCents(shownAmount) !== null;
-    if (canPayNow && payingCents > 0 && ready) confirmPayments(t, [{ name: worker?.name ?? '', cents: payingCents }], 'payNow', save);
+    if (canPayNow && payingCents > 0 && ready) confirmPayments(t, [{ name: items.find((i) => i.id === workerValue)?.title ?? worker?.name ?? '', cents: payingCents }], 'payNow', save);
     else save();
   }
 
