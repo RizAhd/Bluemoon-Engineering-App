@@ -105,6 +105,10 @@ const en = {
   withWho: 'with {name}',
   since: 'since {date}',
   noToolsOut: 'No tools are out right now',
+  /** How many pieces of a tool with several are out ("3 out"); a single piece says nothing. */
+  outCount: '{n} out',
+  /** How much of a material was issued ("20 bags issued"). */
+  issuedCount: '{n} issued',
 
   // ---- site note
   siteNote: 'Site note',
@@ -200,6 +204,8 @@ const si: ShareLabels = {
   withWho: '{name} ළඟ',
   since: '{date} සිට',
   noToolsOut: 'දැන් පිටත ඇති උපකරණ කිසිවක් නැත',
+  outCount: '{n} පිටත',
+  issuedCount: '{n} නිකුත් කළා',
 
   siteNote: 'සයිට් සටහන',
   weather: 'කාලගුණය',
@@ -291,6 +297,8 @@ const ta: ShareLabels = {
   withWho: '{name} இடம்',
   since: '{date} முதல்',
   noToolsOut: 'தற்போது எந்தக் கருவியும் வெளியே இல்லை',
+  outCount: '{n} வெளியில்',
+  issuedCount: '{n} வழங்கப்பட்டது',
 
   siteNote: 'தளக் குறிப்பு',
   weather: 'வானிலை',

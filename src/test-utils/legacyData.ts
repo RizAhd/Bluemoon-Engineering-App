@@ -215,5 +215,13 @@ export const EXPECTED = {
   },
 } as const;
 
+/** The columns migration 6 added (the counts of tools and movements): a comparison with a phone from before it leaves them out. */
+const COUNT_COLUMNS: Record<string, string[]> = { tools: ['quantity_milli', 'unit', 'is_material'], tool_movements: ['qty_milli'] };
+
+export function withoutCounts<T extends Record<string, unknown>>(table: string, rows: T[]): T[] {
+  const drop = COUNT_COLUMNS[table];
+  return drop ? rows.map((r) => Object.fromEntries(Object.entries(r).filter(([k]) => !drop.includes(k))) as T) : rows;
+}
+
 /** Tables of schema version 1, in the order a full-row comparison reads them. */
 export const V1_DATA_TABLES = ['projects', 'workers', 'tools', 'expenses', 'wage_entries', 'tool_movements', 'site_notes', 'attachments', 'audit_log', 'settings'] as const;

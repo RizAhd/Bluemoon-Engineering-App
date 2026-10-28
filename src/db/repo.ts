@@ -350,12 +350,14 @@ function qtyMilli(value: number | null | undefined, isMaterial: boolean, allowZe
 interface StockRow {
   q: number;
   o: number;
+  /** 1 for a material. */
+  mat: number;
 }
 
 /** Quantity and units out of one tool, as the movements add up. */
 function stockOf(toolId: string): StockRow | null {
   return first<StockRow>(
-    `SELECT t.quantity_milli AS q,
+    `SELECT t.quantity_milli AS q, t.is_material AS mat,
             COALESCE((SELECT SUM(CASE WHEN m.kind = 'issue' THEN m.qty_milli ELSE -m.qty_milli END)
                       FROM tool_movements m WHERE m.tool_id = t.id AND m.deleted_at IS NULL), 0) AS o
      FROM tools t WHERE t.id = ?`,
@@ -377,9 +379,10 @@ function stockViolation(r: StockRow | null): number {
 export function assertStockNotWorse(toolId: string, before: StockRow | null, tooLittleKey: 'errStockShort' | 'errReturnTooMany' | 'errStockInvalid') {
   const after = stockOf(toolId);
   if (stockViolation(after) <= stockViolation(before)) return;
-  // a single piece keeps the plain "already out / already back" wording it always had
-  const single = after?.q === 1000 && tooLittleKey !== 'errStockInvalid';
-  throw new ValidationError('qty', single ? 'errToolState' : tooLittleKey);
+  // A single piece keeps the plain "already out / already back" wording it always had, on the field it always had: the
+  // form shows no "How many?" box for one piece, so the message belongs under the tool.
+  const single = after?.q === 1000 && !after.mat && tooLittleKey !== 'errStockInvalid';
+  throw single ? new ValidationError('tool_id', 'errToolState') : new ValidationError('qty', tooLittleKey);
 }
 
 export function saveTool(t: {

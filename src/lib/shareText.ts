@@ -30,7 +30,7 @@ import type { CompanyProfile, Estimate, EstimatePayment, EstimateTotal, Project,
 import type { Lang } from '@/i18n';
 
 import { formatDay, isValidDay } from './dates';
-import { allocatePayments, formatPercent, validUntil } from './estimate';
+import { allocatePayments, formatPercent, formatQty, validUntil } from './estimate';
 import { formatLKR } from './money';
 import { fill, shareLabels, type ShareLabels } from './shareLabels';
 
@@ -148,6 +148,7 @@ export interface ExpensesShareInput extends Dated {
   totalCount: number;
 }
 
+/** One holder of a tool or material: who has how much of it, where, since when (a row of v_tool_holders). */
 export interface ToolOutRow {
   name: string;
   code: string | null;
@@ -156,6 +157,14 @@ export interface ToolOutRow {
   /** The day it went out, "YYYY-MM-DD". */
   since: string | null;
   project_name: string | null;
+  /** How much this person has (thousandths: 1000 = one piece). Left out by older callers: one piece. */
+  qty_milli?: number | null;
+  /** The tool's total, so one of ten pieces reads "1 out" while a single piece says nothing. */
+  quantity_milli?: number | null;
+  /** "bags", "kg"... printed after the count; null for a plain number. */
+  unit?: string | null;
+  /** 1 for a material (issued and used up), 0 for a tool. */
+  is_material?: number | null;
 }
 
 export interface ToolsOutShareInput extends Dated {
@@ -254,6 +263,11 @@ function dayCount(value: unknown): number {
 /** Basis points (a percentage times 100) as stored: a whole number from 0 to 100,000, else null. */
 function basisPoints(value: unknown): number | null {
   return typeof value === 'number' && Number.isInteger(value) && value >= 0 && value <= 100_000 ? value : null;
+}
+
+/** A count in thousandths (1000 = one piece) as stored: a whole number, 0 or more, else null. */
+function milli(value: unknown): number | null {
+  return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0 ? value : null;
 }
 
 /** "22 Oct 2026", or '' when the day is not a real "YYYY-MM-DD". */
@@ -658,7 +672,21 @@ export function expensesMessage(input: ExpensesShareInput, lang: Lang): string {
 
 // ---------------------------------------------------------------- tools out
 
-/** The tools that are out now: which, with whom, since when and on which project, as the Tools tab shows it. */
+/**
+ * "3 out" for a tool that has several pieces, "20 bags issued" for a material, and nothing for a single
+ * piece (or a row that carries no count), so a tool kept as one piece reads exactly as it always did.
+ */
+function qtyPhrase(L: ShareLabels, row: Loose): string {
+  const qty = milli(row.qty_milli);
+  if (qty == null) return '';
+  const material = row.is_material === 1 || row.is_material === true;
+  const total = milli(row.quantity_milli);
+  if (!material && (total ?? qty) === 1000) return '';
+  const unit = singleLine(row.unit, 20);
+  return fill(material ? L.issuedCount : L.outCount, { n: `${formatQty(qty)}${unit ? ` ${unit}` : ''}` });
+}
+
+/** What is out now: which tool or material, how much, with whom, since when and on which project, as the Tools tab shows it. */
 export function toolsOutMessage(input: ToolsOutShareInput, lang: Lang): string {
   const L = shareLabels(lang);
   const root = loose(input);
@@ -673,6 +701,7 @@ export function toolsOutMessage(input: ToolsOutShareInput, lang: Lang): string {
     const since = dayText(t.since);
     return dashed(
       [name, code ? `(${code})` : ''].filter(Boolean).join(' '),
+      qtyPhrase(L, t),
       who ? fill(L.withWho, { name: who }) : '',
       since ? fill(L.since, { date: since }) : '',
       allProjects ? singleLine(t.project_name, SHARE_LIMITS.item) : '',

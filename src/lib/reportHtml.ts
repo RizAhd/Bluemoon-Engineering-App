@@ -13,13 +13,15 @@
  *    starts with the title block and keeps clear of the header block, border and bottom band
  *    (see LETTERHEAD_MARGIN_MM)
  */
-import type { Expense, Project, ProjectCost, SiteNote, ToolMovement, WageEntry } from '@/db/types';
+import type { Expense, Project, ProjectCost, SiteNote, Tool, ToolMovement, WageEntry } from '@/db/types';
 import type { TKey } from '@/i18n';
 
 import { LOGO_ASPECT, LOGO_DATA_URI } from './brandLogo';
 import { formatDay } from './dates';
 import { LETTERHEAD_MARGIN_MM, PLAIN_MARGIN_MM } from './letterhead';
 import { formatLKR } from './money';
+import { fill } from './shareLabels';
+import { isSinglePiece, qtyText } from './toolStock';
 
 type Row = Record<string, string | number | null>;
 
@@ -85,7 +87,15 @@ export function buildReportHtml(input: ReportInput): string {
   const moves = live<ToolMovement>(tables.tool_movements).sort((a, b) => a.day.localeCompare(b.day));
   const notes = live<SiteNote>(tables.site_notes).sort((a, b) => a.day.localeCompare(b.day));
   const workerName = new Map(((tables.workers ?? []) as { id: string; name: string }[]).map((w) => [w.id, w.name]));
-  const toolName = new Map(((tables.tools ?? []) as { id: string; name: string }[]).map((w) => [w.id, w.name]));
+  // A bundle made before quantities existed has no count columns: every such tool and movement is one piece.
+  const tools = new Map(
+    ((tables.tools ?? []) as unknown as Partial<Tool>[]).map((r) => [
+      String(r.id),
+      { name: r.name ?? '', quantity_milli: r.quantity_milli ?? 1000, unit: r.unit ?? null, is_material: r.is_material ?? 0 },
+    ]),
+  );
+  const toolName = (id: string) => tools.get(id)?.name ?? '';
+  const toolUnit = (id: string) => tools.get(id)?.unit ?? null;
 
   const byCat = new Map<string, number>();
   expenses.forEach((e) => byCat.set(e.category, (byCat.get(e.category) ?? 0) + e.amount_cents));
@@ -186,13 +196,35 @@ export function buildReportHtml(input: ReportInput): string {
 
   if (moves.length) {
     sections.push(`<h2>${t('tools')} <span class="count">${moves.length}</span></h2>`);
+    // What is left of each tool with several pieces ("Ladder: 2 of 4 in store") and each material ("Cement: 80 bags left"),
+    // from the whole history the bundle carries. A single piece has nothing to add: the table says where it is.
+    const outOf = new Map<string, number>();
+    moves.forEach((mv) => outOf.set(mv.tool_id, (outOf.get(mv.tool_id) ?? 0) + (mv.kind === 'issue' ? 1 : -1) * (mv.qty_milli ?? 1000)));
+    const stock = [...tools.entries()]
+      .filter(([id, tl]) => !isSinglePiece(tl) && outOf.has(id))
+      .sort((a, b) => a[1].name.localeCompare(b[1].name))
+      .map(([id, tl]) => {
+        const left = Math.max(0, tl.quantity_milli - (outOf.get(id) ?? 0));
+        const line = tl.is_material
+          ? fill(t('leftCount'), { n: esc(qtyText(left, tl.unit)) })
+          : fill(t('inStoreOf'), { n: esc(qtyText(left)), total: esc(qtyText(tl.quantity_milli, tl.unit)) });
+        return `<div>${esc(tl.name)}: ${line}</div>`;
+      });
+    if (stock.length) sections.push(`<div class="stock">${stock.join('')}</div>`);
     sections.push(
       table(
-        [{ label: t('date'), width: '18%' }, { label: t('tool') }, { label: '', width: '14%' }, { label: t('takenBy'), width: '28%' }],
+        [
+          { label: t('date'), width: '16%' },
+          { label: t('tool') },
+          { label: '', width: '13%' },
+          { label: t('quantity'), num: true, width: '13%' },
+          { label: t('takenBy'), width: '26%' },
+        ],
         moves.map((mv) => [
           esc(formatDay(mv.day)),
-          esc(toolName.get(mv.tool_id) ?? ''),
+          esc(toolName(mv.tool_id)),
           t(mv.kind === 'issue' ? 'issue' : 'return'),
+          esc(qtyText(mv.qty_milli ?? 1000, toolUnit(mv.tool_id))),
           esc(mv.worker_id ? (workerName.get(mv.worker_id) ?? '') : (mv.taken_by ?? '')),
         ]),
       ),
@@ -242,6 +274,7 @@ export function buildReportHtml(input: ReportInput): string {
   table.data td { padding: 1.6mm 2mm; border-bottom: 0.5pt solid #E4E7EC; vertical-align: top; }
   table.data tr { break-inside: avoid; page-break-inside: avoid; }
   table.data .n { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .stock { margin: 0 0 2mm; font-size: 9pt; color: #344054; font-variant-numeric: tabular-nums; }
   table.notes td.when { width: 22%; color: #475467; white-space: nowrap; }
   table.notes td { white-space: pre-wrap; }
   .foot { margin-top: 8mm; font-size: 8pt; color: #667085; }

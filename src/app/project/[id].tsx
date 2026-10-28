@@ -1,6 +1,6 @@
 import * as Sharing from 'expo-sharing';
 import { router, Stack, useLocalSearchParams } from 'expo-router';
-import { CalendarRange, FileOutput, FileText, Hammer, HardHat, NotebookPen, Pencil, Star, UserPlus } from 'lucide-react-native';
+import { CalendarRange, FileOutput, FileText, Hammer, HardHat, NotebookPen, Package, Pencil, Star, UserPlus } from 'lucide-react-native';
 import { useState } from 'react';
 import { Pressable, View } from 'react-native';
 
@@ -13,14 +13,18 @@ import { Checkbox } from '@/components/ui/form';
 import { Card, Divider, ListCard, ListRow, Screen, SectionTitle } from '@/components/ui/layout';
 import { Txt } from '@/components/ui/Txt';
 import { setSetting, useFirst, useQuery, useSetting } from '@/db';
-import type { Estimate, ProjectCost, ToolStatus } from '@/db/types';
+import type { Estimate, ProjectCost, ToolHolder, ToolStock } from '@/db/types';
 import { setCurrentProject, useCurrentProjectId, useEstimateTotal, useProject, useProjectEstimates, useProjectWorkers } from '@/hooks/data';
 import { useT, type TKey } from '@/i18n';
 import { formatDay } from '@/lib/dates';
 import { showError } from '@/lib/errors';
 import { formatLKR } from '@/lib/money';
 import { exportProjectPdf } from '@/lib/pdf';
+import { isSinglePiece, qtyText } from '@/lib/toolStock';
 import { radius, space, useColors } from '@/theme';
+
+/** One holder of a tool on this project: who has how much of it, since the last issue to them. */
+type OutRow = ToolHolder & Pick<ToolStock, 'name' | 'code' | 'unit' | 'is_material' | 'quantity_milli'> & { worker_name: string | null; since: string | null };
 
 const MAX_ROWS = 5;
 
@@ -79,9 +83,14 @@ export default function ProjectDetail() {
   const estimates = useProjectEstimates(id);
   // "Mark inactive" only changes workers.active, and the roster view reports project_workers.active, so ask for the worker's own flag too.
   const inactiveWorkerIds = useQuery<{ id: string }>('SELECT id FROM workers WHERE active = 0 AND deleted_at IS NULL');
-  const toolsOut = useQuery<ToolStatus & { worker_name: string | null }>(
-    `SELECT s.*, w.name AS worker_name FROM v_tool_status s LEFT JOIN workers w ON w.id = s.worker_id
-     WHERE s.is_out = 1 AND s.project_id = ? ORDER BY s.name COLLATE NOCASE`,
+  // One row per tool and holder (a tool with 3 pieces here shows "3"; a material its issued amount), since the last issue to them.
+  const toolsOut = useQuery<OutRow>(
+    `SELECT h.*, s.name, s.code, s.unit, s.is_material, s.quantity_milli, w.name AS worker_name,
+            (SELECT MAX(m.day) FROM tool_movements m
+             WHERE m.tool_id = h.tool_id AND m.kind = 'issue' AND m.deleted_at IS NULL
+               AND m.project_id IS h.project_id AND m.worker_id IS h.worker_id AND m.taken_by IS h.taken_by) AS since
+     FROM v_tool_holders h JOIN v_tool_stock s ON s.tool_id = h.tool_id LEFT JOIN workers w ON w.id = h.worker_id
+     WHERE h.project_id = ? ORDER BY s.name COLLATE NOCASE, h.tool_id, since, worker_name COLLATE NOCASE`,
     [id ?? ''],
   );
   // The last choices are remembered: photos on by default, letterhead off by default.
@@ -272,11 +281,13 @@ export default function ProjectDetail() {
             <ListCard inset>
               {toolsOut.slice(0, MAX_ROWS).map((s) => (
                 <ListRow
-                  key={s.tool_id}
-                  icon={Hammer}
+                  key={`${s.tool_id}-${s.worker_id ?? ''}-${s.taken_by ?? ''}`}
+                  icon={s.is_material ? Package : Hammer}
                   iconTone="warning"
                   title={s.code ? `${s.name} · ${s.code}` : s.name}
-                  subtitle={[`${t('outWith')} ${s.worker_name ?? s.taken_by ?? ''}`.trim(), s.last_day ? formatDay(s.last_day) : null].filter(Boolean).join(' · ')}
+                  subtitle={[`${t('outWith')} ${s.worker_name ?? s.taken_by ?? ''}`.trim(), s.since ? formatDay(s.since) : null].filter(Boolean).join(' · ')}
+                  // a single piece looks as it always did; several pieces (or a material) show how many are here
+                  value={isSinglePiece(s) ? undefined : qtyText(s.qty_milli, s.unit)}
                   onPress={() => router.push(`/tool/${s.tool_id}`)}
                 />
               ))}

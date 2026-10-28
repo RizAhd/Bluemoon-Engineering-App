@@ -33,6 +33,7 @@ import { useToday } from '@/hooks/today';
 import { useT, type TKey } from '@/i18n';
 import { daysSince, formatDay, toDay } from '@/lib/dates';
 import { formatLKR } from '@/lib/money';
+import { qtyText } from '@/lib/toolStock';
 import { unpaidForDay } from '@/lib/wages';
 import { hairline, radius, space, useColors } from '@/theme';
 
@@ -51,6 +52,9 @@ interface Activity {
   created_at: string;
   ref: string;
   project_name: string | null;
+  /** Tool movements: how many went out or came back (thousandths) and the tool's unit. */
+  qty_milli: number | null;
+  unit: string | null;
 }
 
 /** Today dashboard: data safety, today's spend, work & pay, cost summary, quick actions, recent activity. */
@@ -61,7 +65,6 @@ export default function TodayScreen() {
   const pid = useCurrentProjectId();
   // moves on at midnight by itself, so the screen never shows yesterday as "today"
   const td = useToday();
-  const scope = pid ? 'AND project_id = ?' : '';
   const args = pid ? [pid] : [];
   const [choosing, setChoosing] = useState(false);
 
@@ -72,25 +75,32 @@ export default function TodayScreen() {
     () => (pid ? roster.reduce((a, w) => a + Math.max(0, w.balance_cents), 0) : allOwed),
     [pid, roster, allOwed],
   );
-  const toolsOut = useFirst<{ n: number }>(`SELECT COUNT(*) AS n FROM v_tool_status WHERE is_out = 1 ${scope}`, args)?.n ?? 0;
+  // Pieces of tools that are out (3 of one ladder count 3); materials are used up, not lent, so they are not "out".
+  const toolsOutMilli =
+    useFirst<{ n: number }>(
+      `SELECT COALESCE(SUM(h.qty_milli), 0) AS n FROM v_tool_holders h JOIN tools t ON t.id = h.tool_id
+       WHERE t.is_material = 0 ${pid ? 'AND h.project_id = ?' : ''}`,
+      args,
+    )?.n ?? 0;
   const cost = useQuery<ProjectCost>(`SELECT * FROM v_project_cost ${pid ? 'WHERE project_id = ?' : "WHERE status != 'completed'"}`, args);
   const dayRows = useWageDay(pid, td);
 
   const recent = useQuery<Activity>(
     `SELECT * FROM (
-       SELECT 'expense' AS kind, e.id, e.category AS title, e.paid_to AS sub, e.amount_cents, e.day, e.created_at, e.id AS ref, p.name AS project_name
+       SELECT 'expense' AS kind, e.id, e.category AS title, e.paid_to AS sub, e.amount_cents, e.day, e.created_at, e.id AS ref, p.name AS project_name,
+              NULL AS qty_milli, NULL AS unit
          FROM expenses e LEFT JOIN projects p ON p.id = e.project_id
          WHERE e.deleted_at IS NULL AND p.deleted_at IS NULL ${pid ? 'AND e.project_id = ?' : ''}
        UNION ALL
-       SELECT 'wage', w.id, w.kind, wk.name, w.amount_cents, w.day, w.created_at, w.worker_id, p.name
+       SELECT 'wage', w.id, w.kind, wk.name, w.amount_cents, w.day, w.created_at, w.worker_id, p.name, NULL, NULL
          FROM wage_entries w JOIN workers wk ON wk.id = w.worker_id LEFT JOIN projects p ON p.id = w.project_id
          WHERE w.deleted_at IS NULL AND wk.deleted_at IS NULL AND p.deleted_at IS NULL ${pid ? 'AND w.project_id = ?' : ''}
        UNION ALL
-       SELECT 'tool', m.id, m.kind, tl.name, NULL, m.day, m.created_at, m.tool_id, p.name
+       SELECT 'tool', m.id, m.kind, tl.name, NULL, m.day, m.created_at, m.tool_id, p.name, m.qty_milli, tl.unit
          FROM tool_movements m JOIN tools tl ON tl.id = m.tool_id LEFT JOIN projects p ON p.id = m.project_id
          WHERE m.deleted_at IS NULL AND tl.deleted_at IS NULL AND p.deleted_at IS NULL ${pid ? 'AND m.project_id = ?' : ''}
        UNION ALL
-       SELECT 'note', n.id, 'note', n.body, NULL, n.day, n.created_at, n.id, p.name
+       SELECT 'note', n.id, 'note', n.body, NULL, n.day, n.created_at, n.id, p.name, NULL, NULL
          FROM site_notes n LEFT JOIN projects p ON p.id = n.project_id
          WHERE n.deleted_at IS NULL AND p.deleted_at IS NULL ${pid ? 'AND n.project_id = ?' : ''}
      ) ORDER BY created_at DESC LIMIT 8`,
@@ -180,7 +190,7 @@ export default function TodayScreen() {
             tone={wagesToPay > 0 ? 'danger' : 'text'}
             onPress={() => router.push('/(tabs)/workers')}
           />
-          <Stat label={t('toolsOut')} value={String(toolsOut)} tone={toolsOut > 0 ? 'warning' : 'text'} onPress={() => router.push('/(tabs)/tools')} />
+          <Stat label={t('toolsOut')} value={qtyText(toolsOutMilli)} tone={toolsOutMilli > 0 ? 'warning' : 'text'} onPress={() => router.push('/(tabs)/tools')} />
         </Tiles>
 
         <Card>
@@ -324,7 +334,8 @@ function ActivityRow({ a, showProject }: { a: Activity; showProject: boolean }) 
         <ListRow
           icon={Hammer}
           title={a.sub ?? ''}
-          subtitle={withProject(t(a.title === 'issue' ? 'issue' : 'return'))}
+          // a single piece reads as it always did; several pieces (or a material) say how many: "Issue · 3"
+          subtitle={withProject(t(a.title === 'issue' ? 'issue' : 'return'), a.qty_milli != null && a.qty_milli !== 1000 ? qtyText(a.qty_milli, a.unit) : null)}
           onPress={() => router.push(`/tool/${a.ref}`)}
         />
       );

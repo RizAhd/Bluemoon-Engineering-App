@@ -10,7 +10,7 @@ import type { EstimateTotal } from '@/db/types';
 import { estimateSums } from '@/lib/estimate';
 import { resetDb, silenceConsoleError } from '@/test-utils';
 import { openLegacyDb } from '@/test-utils/dataKit';
-import { insertRow } from '@/test-utils/legacyData';
+import { insertRow, withoutCounts } from '@/test-utils/legacyData';
 
 jest.setTimeout(60_000);
 
@@ -315,7 +315,7 @@ describe('upgrading a version-4 database (migration 5)', () => {
   const VIEWS = ['v_project_cost', 'v_worker_balance', 'v_tool_status', 'v_project_worker_balance'] as const;
 
   type Reader = { getAllSync: <T>(sql: string) => T[] };
-  const dump = (db: Reader) => Object.fromEntries(V4_TABLES.map((t) => [t, db.getAllSync<Record<string, unknown>>(`SELECT * FROM ${t} ORDER BY ${ORDER[t] ?? 'id'}`)]));
+  const dump = (db: Reader) => Object.fromEntries(V4_TABLES.map((t) => [t, withoutCounts(t, db.getAllSync<Record<string, unknown>>(`SELECT * FROM ${t} ORDER BY ${ORDER[t] ?? 'id'}`))]));
   const dumpViews = (db: Reader) => Object.fromEntries(VIEWS.map((v) => [v, db.getAllSync<Record<string, unknown>>(`SELECT * FROM ${v}`)]));
 
   /** A phone on schema version 4 holding the owner's records. */

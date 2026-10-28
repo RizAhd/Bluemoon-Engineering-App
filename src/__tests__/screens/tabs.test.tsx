@@ -60,7 +60,8 @@ smokeScreen('Today tab (demo data)', () => <TodayScreen />, {
         CULVERT,
         tr('noProjectSelected'),
         tr('toolsOut'),
-        /^2$/m, // tools out
+        /^4$/m, // pieces of tools out: the drill, the mixer and two wheelbarrows (cement is a material, not "out")
+        `${tr('issue')} · 20 bags`, // the newest movement in the recent list says how much
       ],
     },
     {
@@ -366,8 +367,10 @@ smokeScreen('Tools tab (demo data)', () => <ToolsScreen />, {
         'Concrete mixer · BM-T-002',
         'Vibrator poker · BM-T-003',
         'Aluminium ladder 12 ft · BM-T-005',
-        `${tr('out')} (2)`,
-        `${tr('inStore')} (3)`,
+        'Wheelbarrow · BM-T-006',
+        // the wheelbarrows and the cement are out and in store at the same time: 4 rows out, 5 rows in store
+        `${tr('out')} (4)`,
+        `${tr('inStore')} (5)`,
         `${tr('outWith')} Sunil Fernando · ${SCHOOL}`,
         tr('all'),
       ],
@@ -375,12 +378,12 @@ smokeScreen('Tools tab (demo data)', () => <ToolsScreen />, {
     {
       name: 'school selected: out here and available',
       prepare: () => setCurrent(projectId(SCHOOL)),
-      expect: (tr) => [`${tr('outHere')} (2)`, `${tr('availableToIssue')} (3)`],
+      expect: (tr) => [`${tr('outHere')} (4)`, `${tr('availableToIssue')} (5)`],
     },
     {
       name: 'culvert selected: tools out on another project are collapsed',
       prepare: () => setCurrent(projectId(CULVERT)),
-      expect: (tr) => [`${tr('outElsewhere')} (2)`, tr('otherProjects'), tr('showAll'), `${tr('availableToIssue')} (3)`],
+      expect: (tr) => [`${tr('outElsewhere')} (4)`, tr('otherProjects'), tr('showAll'), `${tr('availableToIssue')} (5)`],
       absent: () => ['Hilti drill · BM-T-001'],
     },
   ],
@@ -401,13 +404,13 @@ describe('Tools tab interactions', () => {
     setCurrent(projectId(CULVERT));
     await renderScreen(<ToolsScreen />);
     expect(visibleText()).not.toContain('Hilti drill');
-    await pressLabel('Out on other projects: 2. Show all');
+    await pressLabel('Out on other projects: 4. Show all');
     expect(visibleText()).toContain('Hilti drill · BM-T-001');
     expectClean('tools expanded');
     await changeSetting('current_project', null);
-    await pressLabel('Out 2');
+    await pressLabel('Out 4');
     expect(visibleText()).not.toContain('Vibrator poker');
-    await pressLabel('In store 3');
+    await pressLabel('In store 5');
     expect(visibleText()).toContain('Vibrator poker');
     expect(visibleText()).not.toContain('Hilti drill');
   });

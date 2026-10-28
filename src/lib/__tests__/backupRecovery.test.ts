@@ -95,7 +95,7 @@ describe.each(['garbage', 'truncated'] as const)('the database file is %s', (kin
 
     expect(dump()).toEqual(before);
     expect(first('SELECT expense_cents, labour_cents FROM v_project_cost WHERE name LIKE ?', ['Welimada%'])).toEqual({ expense_cents: 49_555_000, labour_cents: 6_180_000 });
-    expect(first('SELECT COUNT(*) AS n FROM v_tool_status WHERE is_out = 1')).toEqual({ n: 2 });
+    expect(first('SELECT COUNT(*) AS n FROM v_tool_status WHERE is_out = 1')).toEqual({ n: 3 }); // the drill, the mixer and the cement
   });
 
   it('the photos were never in the database, so they are still on the phone and match their restored rows', async () => {

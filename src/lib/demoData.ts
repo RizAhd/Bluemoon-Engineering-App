@@ -173,6 +173,13 @@ export function seedDemoData(): { created: boolean } {
     moveTool({ tool_id: mixer, kind: 'issue', project_id: school, worker_id: nimal, day: d(3), condition: 'Good' });
     moveTool({ tool_id: ladder, kind: 'issue', project_id: school, worker_id: kamal, day: d(6), condition: 'Good' });
     moveTool({ tool_id: ladder, kind: 'return', project_id: school, worker_id: kamal, day: d(4), condition: 'One rung loose' });
+    // A tool with several pieces: four wheelbarrows, three went to the school and the one with a flat tyre came back.
+    const barrow = saveTool({ name: 'Wheelbarrow', code: 'BM-T-006', quantity_milli: 4000 });
+    moveTool({ tool_id: barrow, kind: 'issue', project_id: school, worker_id: ruwan, day: d(5), qty_milli: 3000, condition: 'Good' });
+    moveTool({ tool_id: barrow, kind: 'return', project_id: school, worker_id: ruwan, day: d(2), qty_milli: 1000, condition: 'Tyre flat' });
+    // A material: 100 bags of cement in store, 20 of them issued to the school.
+    const cement = saveTool({ name: 'Cement', unit: 'bags', quantity_milli: 100_000, is_material: true });
+    moveTool({ tool_id: cement, kind: 'issue', project_id: school, worker_id: nimal, day: d(0), qty_milli: 20_000 });
 
     saveNote({ project_id: school, day: d(0), body: 'First-floor slab shuttering completed on the east side. Waiting for the bar-bending inspection before pouring.', weather: 'sunny' });
     saveNote({ project_id: school, day: d(1), body: 'Rain after 3 pm, work stopped for the day. Covered the cement bags.', weather: 'rain' });

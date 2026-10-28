@@ -259,7 +259,7 @@ describe('the real data layer', () => {
         ]),
       );
     const afterFirst = counts();
-    expect(afterFirst).toMatchObject({ projects: 3, workers: 6, project_workers: 7, expenses: 12, tools: 5, tool_movements: 4, site_notes: 3 });
+    expect(afterFirst).toMatchObject({ projects: 3, workers: 6, project_workers: 7, expenses: 12, tools: 7, tool_movements: 7, site_notes: 3 });
     expect(afterFirst.wage_entries).toBeGreaterThan(10);
 
     expect(seedDemoData()).toEqual({ created: false });
@@ -267,7 +267,15 @@ describe('the real data layer', () => {
 
     // totals come from the views, in whole cents: Rs 495,550.00 spent on the school
     expect(first('SELECT expense_cents FROM v_project_cost WHERE name = ?', [SCHOOL])).toEqual({ expense_cents: 49_555_000 });
-    expect(all('SELECT name FROM v_tool_status WHERE is_out = 1 ORDER BY name')).toEqual([{ name: 'Concrete mixer' }, { name: 'Hilti drill' }]);
+    // v_tool_status goes by the latest movement: the cement's is an issue, the wheelbarrows' a (partial) return
+    expect(all('SELECT name FROM v_tool_status WHERE is_out = 1 ORDER BY name')).toEqual([{ name: 'Cement' }, { name: 'Concrete mixer' }, { name: 'Hilti drill' }]);
+    // v_tool_holders counts pieces: one drill, one mixer, two of the four wheelbarrows and 20 bags of cement are out
+    expect(all('SELECT t.name, h.qty_milli FROM v_tool_holders h JOIN tools t ON t.id = h.tool_id ORDER BY t.name')).toEqual([
+      { name: 'Cement', qty_milli: 20_000 },
+      { name: 'Concrete mixer', qty_milli: 1000 },
+      { name: 'Hilti drill', qty_milli: 1000 },
+      { name: 'Wheelbarrow', qty_milli: 2000 },
+    ]);
   });
 
   it('seedDemo() and resetDb() work on the main phone', () => {

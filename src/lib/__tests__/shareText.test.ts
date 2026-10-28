@@ -817,6 +817,23 @@ describe('a label whose value is empty is left out', () => {
     expect(toolsOutMessage({ today: TODAY, projectName: 'Site A', tools: [] }, 'en')).toBe(lines('*Tools out — Site A*', 'No tools are out right now', '', FOOTER.en));
   });
 
+  it('tools out: several pieces say how many are out, a material how much was issued, a single piece nothing', () => {
+    const row = (over: Record<string, unknown>) => ({ name: 'Ladder', code: null, with_name: 'Loki', since: '2026-10-20', project_name: 'Perera House', ...over });
+    const msg = (rows: unknown[], lang: Lang = 'en') => toolsOutMessage({ today: TODAY, projectName: null, tools: rows as never }, lang);
+    expect(msg([row({ qty_milli: 3000, quantity_milli: 10_000, unit: null, is_material: 0 })])).toContain('Ladder — 3 out — with Loki — since 20 Oct 2026 — Perera House\n');
+    // one of ten is still a count; one of one is the plain line it always was
+    expect(msg([row({ qty_milli: 1000, quantity_milli: 10_000, unit: null, is_material: 0 })])).toContain('Ladder — 1 out — with Loki');
+    expect(msg([row({ qty_milli: 1000, quantity_milli: 1000, unit: null, is_material: 0 })])).toContain('Ladder — with Loki — since');
+    expect(msg([row({ qty_milli: 1000 })])).toContain('Ladder — with Loki — since');
+    expect(msg([row({ qty_milli: 20_000, quantity_milli: 100_000, unit: 'bags', is_material: 1, name: 'Cement' })])).toContain('Cement — 20 bags issued — with Loki');
+    expect(msg([row({ qty_milli: 2500, quantity_milli: 100_000, unit: 'kg', is_material: 1, name: 'Nails' })])).toContain('Nails — 2.5 kg issued — with Loki');
+    expect(msg([row({ qty_milli: 3000, quantity_milli: 4000 })], 'si')).toContain('Ladder — 3 පිටත — Loki ළඟ');
+    expect(msg([row({ qty_milli: 3000, quantity_milli: 4000 })], 'ta')).toContain('Ladder — 3 வெளியில் — Loki இடம்');
+    // a count that is not a count is left out, never printed as NaN or undefined
+    for (const bad of [-1, 1.5, 'three', NaN, Infinity, null, undefined]) expect(msg([row({ qty_milli: bad, quantity_milli: 4000 })])).toContain('Ladder — with Loki — since');
+    expect(msg([row({ qty_milli: 3000, quantity_milli: 4000, unit: '*bags*\n' })])).toContain('Ladder — 3 bags out — with Loki');
+  });
+
   it('tools out of all projects name the project, and a tool taken by an outsider names him', () => {
     const text = toolsOutMessage(
       { today: TODAY, projectName: null, tools: [{ name: 'Total station', code: 'BM-T-004', with_name: 'Contractor Silva', since: '2026-10-20', project_name: SCHOOL }] },
