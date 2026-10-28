@@ -14,6 +14,7 @@ import type {
   WageDay,
   Worker,
 } from '@/db/types';
+import { likeQuery } from '@/lib/search';
 
 export function useProjects(includeCompleted = true) {
   return useQuery<Project>(
@@ -157,7 +158,14 @@ export interface ExpenseFilter {
   methods: string[];
   minCents: number | null;
   maxCents: number | null;
+  /** Search text: every word must be in the payee, note, project name, category or be the exact amount. */
+  q?: string;
+  /** The category names as the screen shows them (key -> name in the UI language), so a typed word finds a category by its name. */
+  categoryNames?: Record<string, string>;
 }
+
+/** What a typed word is looked for in (the project name through a subquery: the totals do not join projects). */
+const EXPENSE_SEARCH = ['e.paid_to', 'e.note', 'e.category', '(SELECT pn.name FROM projects pn WHERE pn.id = e.project_id)'];
 
 /** The WHERE clause (table alias `e`) and its bound values for an expense filter. Nothing from the filter is pasted into the SQL. */
 export function expenseWhere(f: ExpenseFilter, opts: { withPeriod?: boolean } = {}): { sql: string; args: Bind[] } {
@@ -188,6 +196,23 @@ export function expenseWhere(f: ExpenseFilter, opts: { withPeriod?: boolean } = 
     parts.push('e.amount_cents <= ?');
     args.push(f.maxCents);
   }
+  // one group per typed word: the text columns, the categories whose name holds the word, and the word as an exact amount
+  for (const w of likeQuery(f.q ?? '', EXPENSE_SEARCH)) {
+    const ors = [w.sql];
+    args.push(...w.args);
+    const cats = Object.entries(f.categoryNames ?? {})
+      .filter(([, name]) => name.toLowerCase().includes(w.word))
+      .map(([key]) => key);
+    if (cats.length) {
+      ors.push(`e.category IN (${cats.map(() => '?').join(', ')})`);
+      args.push(...cats);
+    }
+    if (w.cents != null) {
+      ors.push('e.amount_cents = ?');
+      args.push(w.cents);
+    }
+    parts.push(`(${ors.join(' OR ')})`);
+  }
   return { sql: parts.join(' AND '), args };
 }
 
@@ -201,9 +226,14 @@ const EXPENSE_ORDER: Record<ExpenseSort, string> = {
 /**
  * The Expenses tab: the filtered rows in the chosen order (up to `limit`, -1 = all), their total and number, the
  * total of every day that has rows, and the months that have rows under the same filters (for the month picker).
+ * The search (`f.q`) is part of the filter, so all of these follow it; `unsearched` is how many rows the other filters
+ * leave before the search narrows them (the "m" of "n of m").
  */
 export function useExpenseList(f: ExpenseFilter, sort: ExpenseSort, limit: number) {
   const w = expenseWhere(f);
+  const searching = !!f.q?.trim();
+  const plain = expenseWhere({ ...f, q: '' });
+  const before = useFirst<{ n: number }>(searching ? `SELECT COUNT(*) AS n FROM expenses e WHERE ${plain.sql}` : 'SELECT 1 AS n WHERE 0', searching ? plain.args : []);
   const rows = useQuery<Expense & { project_name: string }>(
     `SELECT e.*, p.name AS project_name FROM expenses e JOIN projects p ON p.id = e.project_id
      WHERE ${w.sql} ORDER BY ${EXPENSE_ORDER[sort]} LIMIT ?`,
@@ -217,7 +247,8 @@ export function useExpenseList(f: ExpenseFilter, sort: ExpenseSort, limit: numbe
      FROM expenses e WHERE ${any.sql} GROUP BY month ORDER BY month DESC`,
     any.args,
   );
-  return { rows, total: sum?.total ?? 0, count: sum?.count ?? 0, dayTotals, months };
+  const count = sum?.count ?? 0;
+  return { rows, total: sum?.total ?? 0, count, unsearched: searching ? (before?.n ?? 0) : count, dayTotals, months };
 }
 
 export const PROJECT_SORTS = ['name', 'newest', 'cost', 'used'] as const;
@@ -251,6 +282,7 @@ export interface WorkerListRow {
   id: string;
   name: string;
   trade: string | null;
+  phone: string | null;
   rate: number;
   balance: number;
   active: number;
@@ -268,26 +300,35 @@ const STATUS_SQL: Record<WorkerStatusFilter, string> = { all: '1 = 1', active: '
 
 /**
  * The Workers tab: one project's roster, or every worker with "All projects" (projectId null), filtered by balance
- * and status and in the chosen order. `counts` are per balance under the status filter (for the chips); `total`
- * is the whole roster with no filter.
+ * and status, searched by name, trade or phone (`q`, every word must match) and in the chosen order. `counts` are
+ * per balance under the status filter and the search (for the chips); `total` is the whole roster with no filter;
+ * `unsearched` is how many workers the status and balance filters leave before the search narrows them.
  */
-export function useWorkerList(projectId: string | null, opts: { sort: WorkerSort; balance: BalanceFilter; status: WorkerStatusFilter }) {
+export function useWorkerList(projectId: string | null, opts: { sort: WorkerSort; balance: BalanceFilter; status: WorkerStatusFilter; q?: string }) {
   const base = projectId
-    ? `SELECT worker_id AS id, name, trade, rate_cents AS rate, balance_cents AS balance, active, days_total AS days
+    ? `SELECT worker_id AS id, name, trade, phone, rate_cents AS rate, balance_cents AS balance, active, days_total AS days
        FROM v_project_worker_balance WHERE project_id = ?`
-    : `SELECT v.worker_id AS id, v.name, v.trade, v.daily_rate_cents AS rate, v.balance_cents AS balance, v.active,
+    : `SELECT v.worker_id AS id, v.name, v.trade, (SELECT wk.phone FROM workers wk WHERE wk.id = v.worker_id) AS phone,
+         v.daily_rate_cents AS rate, v.balance_cents AS balance, v.active,
          COALESCE((SELECT SUM(we.days) FROM wage_entries we WHERE we.worker_id = v.worker_id AND we.kind = 'work' AND we.deleted_at IS NULL), 0) AS days
        FROM v_worker_balance v`;
   const args: Bind[] = projectId ? [projectId] : [];
-  const status = STATUS_SQL[opts.status];
-  const rows = useQuery<WorkerListRow>(`SELECT * FROM (${base}) WHERE ${status} AND ${BALANCE_SQL[opts.balance]} ORDER BY ${WORKER_ORDER[opts.sort]}`, args);
+  const search = likeQuery(opts.q ?? '', ['name', 'trade', 'phone']);
+  const searched = [STATUS_SQL[opts.status], ...search.map((w) => w.sql)].join(' AND ');
+  const searchedArgs = [...args, ...search.flatMap((w) => w.args)];
+  const rows = useQuery<WorkerListRow>(`SELECT * FROM (${base}) WHERE ${searched} AND ${BALANCE_SQL[opts.balance]} ORDER BY ${WORKER_ORDER[opts.sort]}`, searchedArgs);
   const counts = useFirst<{ pay: number; advance: number; settled: number; n: number }>(
     `SELECT COALESCE(SUM(balance > 0), 0) AS pay, COALESCE(SUM(balance < 0), 0) AS advance, COALESCE(SUM(balance = 0), 0) AS settled, COUNT(*) AS n
-     FROM (${base}) WHERE ${status}`,
-    args,
+     FROM (${base}) WHERE ${searched}`,
+    searchedArgs,
   );
   const total = useFirst<{ n: number }>(`SELECT COUNT(*) AS n FROM (${base})`, args)?.n ?? 0;
-  return { rows, counts: counts ?? { pay: 0, advance: 0, settled: 0, n: 0 }, total };
+  const searching = search.length > 0;
+  const before = useFirst<{ n: number }>(
+    searching ? `SELECT COUNT(*) AS n FROM (${base}) WHERE ${STATUS_SQL[opts.status]} AND ${BALANCE_SQL[opts.balance]}` : 'SELECT 1 AS n WHERE 0',
+    searching ? args : [],
+  );
+  return { rows, counts: counts ?? { pay: 0, advance: 0, settled: 0, n: 0 }, total, unsearched: searching ? (before?.n ?? 0) : rows.length };
 }
 
 export const ESTIMATE_SORTS = ['newest', 'oldest', 'highest', 'lowest'] as const;

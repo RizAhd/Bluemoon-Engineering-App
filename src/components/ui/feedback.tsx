@@ -1,10 +1,12 @@
+import * as Haptics from 'expo-haptics';
 import type { LucideIcon } from 'lucide-react-native';
-import { AlertTriangle, CheckCircle2, X } from 'lucide-react-native';
+import { AlertTriangle, CheckCircle2, Search, X } from 'lucide-react-native';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Pressable, View } from 'react-native';
 import Animated, { FadeInDown, FadeOutDown } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { useT } from '@/i18n';
 import { hairline, motion, radius, space, touchMin, useColors, useLayout, useMotion, type Palette } from '@/theme';
 
 import { Txt } from './Txt';
@@ -40,6 +42,41 @@ export function EmptyState({ icon: Icon, title, hint, action, compact }: EmptySt
         </Txt>
       ) : null}
       {action ? <View style={{ marginTop: space.xs, alignSelf: compact ? 'center' : 'stretch' }}>{action}</View> : null}
+    </View>
+  );
+}
+
+// ---------------------------------------------------------------- NoResults
+
+/** What a list shows when a search finds nothing: the text typed and a one-tap way back to everything. Never a blank list. */
+export function NoResults({ query, onClear }: { query: string; onClear: () => void }) {
+  const t = useT();
+  const c = useColors();
+  return (
+    <View style={{ alignItems: 'center', paddingVertical: space.xl, paddingHorizontal: space.lg, gap: space.sm }} accessibilityLiveRegion="polite">
+      <Search size={24} color={c.textMuted} strokeWidth={2} />
+      <Txt color="textMuted" center>
+        {t('noResultsFor', { q: query })}
+      </Txt>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={t('clearSearch')}
+        hitSlop={4}
+        onPress={() => {
+          Haptics.selectionAsync().catch(() => {});
+          onClear();
+        }}
+        style={({ pressed }) => ({
+          minHeight: touchMin,
+          paddingHorizontal: space.md,
+          borderRadius: radius.md,
+          justifyContent: 'center',
+          backgroundColor: pressed ? c.primarySoft : 'transparent',
+        })}>
+        <Txt weight="semibold" color="primary">
+          {t('clearSearch')}
+        </Txt>
+      </Pressable>
     </View>
   );
 }

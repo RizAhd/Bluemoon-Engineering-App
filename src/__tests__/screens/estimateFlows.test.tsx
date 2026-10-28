@@ -740,11 +740,16 @@ describe('estimate list', () => {
     expect(router.push).toHaveBeenLastCalledWith('/estimate/form');
   });
 
-  it('from 6 estimates there are status chips with counts; from 9 a search box', async () => {
+  it('from 6 estimates there are status chips with counts; the search box is always there', async () => {
     make(5);
     await renderScreen(<EstimatesScreen />);
     expect(hasLabel(E('all'))).toBe(false); // five estimates: no chips yet
-    expect(hasLabel(E('search'))).toBe(false);
+    expect(hasLabel(E('search'))).toBe(true);
+    // every word must match somewhere (the number EST-2026-00n holds the year), so "4" is the only digit that is unique to Job 4
+    await typeInto(E('search'), 'job 4');
+    expect(visibleText()).toContain('Client 4');
+    expect(visibleText()).not.toContain('Client 3');
+    expect(visibleText()).not.toContain('Client 5');
     await screen.unmount();
 
     make(9, 6); // nine in all
@@ -765,9 +770,11 @@ describe('estimate list', () => {
     expect(visibleText()).toContain('Client 7');
     expect(visibleText()).not.toContain('Client 6');
     await typeInto(E('search'), 'nothing like this');
-    expect(visibleText()).toContain(`0 ${E('estimates')}`);
-    expect(visibleText()).toContain('"nothing like this"');
+    expect(visibleText()).toContain(E('noResultsFor', { q: 'nothing like this' }));
+    expect(visibleText()).not.toContain(`0 ${E('estimates')}`);
     expectClean('estimate list with a search');
+    await pressLabel(E('clearSearch'));
+    expect(visibleText()).toContain('Client 6');
   });
 });
 

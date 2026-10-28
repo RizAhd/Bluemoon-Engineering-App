@@ -10,9 +10,11 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useT } from '@/i18n';
 import { addDays, formatDay, toDay, today } from '@/lib/dates';
 import { formatAmount, parseCents } from '@/lib/money';
+import { matchesQuery } from '@/lib/search';
 import { FONT_MAP, hairline, lineHeight, listTuning, motion, radius, space, touch, touchMin, type, useColors, useElevation, useFont, useLayout, useTextScale } from '@/theme';
 
 import { IconButton } from './Button';
+import { NoResults } from './feedback';
 import { useFocusChain, useFocusReveal } from './focusChain';
 import { useKeyboardInset } from './layout';
 import { usePressScale } from './PressScale';
@@ -546,18 +548,24 @@ export function Checkbox({
 
 // ---------------------------------------------------------------- SearchField
 
-/** 48-tall search box with a leading magnifier and a clear button. No label. */
+/** The compact search box: 40 tall, for the top of a list (it sits above 48-tall chips, so it reads as lighter than them). */
+const SEARCH_COMPACT = 40;
+
+/** 48-tall search box with a leading magnifier and a clear button. No label. `compact` is the 40-tall one at the top of every list. */
 export function SearchField({
   value,
   onChangeText,
   placeholder,
   autoFocus,
+  compact,
   style,
 }: {
   value: string;
   onChangeText: (s: string) => void;
   placeholder?: string;
   autoFocus?: boolean;
+  /** 40 tall with a smaller magnifier; the clear button stays. */
+  compact?: boolean;
   style?: StyleProp<ViewStyle>;
 }) {
   const k = useTextScale();
@@ -567,22 +575,24 @@ export function SearchField({
   const [focus, setFocus] = useState(false);
   const box = useBoxColors({ focus });
   const ph = placeholder ?? t('search');
+  const height = compact ? SEARCH_COMPACT : touchMin;
+  const clear = compact ? SEARCH_COMPACT : 44;
   return (
     <Ring focus={focus} style={style}>
       <View
         style={{
           flexDirection: 'row',
           alignItems: 'center',
-          minHeight: touchMin,
+          minHeight: height,
           borderRadius: radius.md,
           borderWidth: hairline,
           borderColor: box.borderColor,
           backgroundColor: box.backgroundColor,
-          paddingLeft: space.md,
-          paddingRight: space.xs,
-          gap: space.sm,
+          paddingLeft: compact ? space.sm : space.md,
+          paddingRight: compact ? 0 : space.xs,
+          gap: compact ? space.xs : space.sm,
         }}>
-        <Search size={18} color={c.textMuted} strokeWidth={2} />
+        <Search size={compact ? 16 : 18} color={c.textMuted} strokeWidth={2} />
         <TextInput
           value={value}
           onChangeText={onChangeText}
@@ -594,9 +604,9 @@ export function SearchField({
           autoCorrect={false}
           onFocus={() => setFocus(true)}
           onBlur={() => setFocus(false)}
-          style={{ flex: 1, minHeight: touchMin - 2, color: c.text, fontSize: type.body * k, fontFamily: font('regular'), paddingVertical: 0 }}
+          style={{ flex: 1, minHeight: height - 2, color: c.text, fontSize: type.body * k, fontFamily: font('regular'), paddingVertical: 0 }}
         />
-        {value ? <IconButton icon={X} label={t('close')} size={44} tone="textMuted" onPress={() => onChangeText('')} /> : <View style={{ width: 44 }} />}
+        {value ? <IconButton icon={X} label={t('clearSearch')} size={clear} tone="textMuted" onPress={() => onChangeText('')} /> : <View style={{ width: clear }} />}
       </View>
     </Ring>
   );
@@ -873,7 +883,7 @@ export function PickerSheet<T extends PickerItem>({
   onClose,
   allowNone,
   footer,
-  searchFrom = 8,
+  searchFrom = 5,
 }: {
   visible: boolean;
   title: string;
@@ -883,13 +893,15 @@ export function PickerSheet<T extends PickerItem>({
   onClose: () => void;
   allowNone?: boolean;
   footer?: ReactNode;
-  /** Show the search box when there are more items than this. */
+  /** Show the search box when there are more items than this (default 5). */
   searchFrom?: number;
 }) {
   const c = useColors();
   const t = useT();
   const [q, setQ] = useState('');
-  const shown = q ? items.filter((i) => `${i.title} ${i.subtitle ?? ''}`.toLowerCase().includes(q.toLowerCase())) : items;
+  const query = q.trim();
+  // the same rule as every list's search box: each word in the title or the subtitle, in any order
+  const shown = query ? items.filter((i) => matchesQuery([i.title, i.subtitle], query)) : items;
   const rows = allowNone ? [{ id: '', title: t('notChosen') } as T, ...shown] : shown;
   const hasIcons = items.some((i) => i.icon);
   const separatorInset = hasIcons ? 68 : space.lg;
@@ -909,13 +921,7 @@ export function PickerSheet<T extends PickerItem>({
         {...listTuning}
         removeClippedSubviews={Platform.OS === 'android'}
         ItemSeparatorComponent={() => <View style={{ height: hairline, backgroundColor: c.border, marginLeft: separatorInset }} />}
-        ListEmptyComponent={
-          q ? (
-            <Txt variant="caption" color="textMuted" style={{ padding: space.lg }}>
-              {`${t('search')}: "${q}"`}
-            </Txt>
-          ) : undefined
-        }
+        ListEmptyComponent={query ? <NoResults query={query} onClear={() => setQ('')} /> : undefined}
         renderItem={({ item }) => <PickerRow item={item} on={(item.id || null) === value} onPick={onPick} />}
       />
       {footer ? <View style={{ paddingHorizontal: space.lg, paddingTop: space.lg }}>{footer}</View> : null}

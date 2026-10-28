@@ -27,6 +27,7 @@ import {
   type WorkerSort,
   type WorkerStatusFilter,
 } from '@/hooks/data';
+import { useSearchBox } from '@/hooks/search';
 import { useToday } from '@/hooks/today';
 import { useT, type TKey } from '@/i18n';
 import { formatLKR } from '@/lib/money';
@@ -114,7 +115,9 @@ export default function WorkersScreen() {
   const balance = oneOf<BalanceFilter>(prefs.balance, BALANCE_FILTERS, 'all');
   const status = oneOf<WorkerStatusFilter>(prefs.status, WORKER_STATUS_FILTERS, 'all');
   const sort = oneOf<WorkerSort>(prefs.sort, WORKER_SORTS, 'name');
-  const list = useWorkerList(pid, { sort, balance, status });
+  // The database searches name, trade and phone; the box is drawn with the list only (an empty roster has no rows to hide).
+  const search = useSearchBox();
+  const list = useWorkerList(pid, { sort, balance, status, q: search.query });
   const rows = list.rows;
 
   const active = rows.filter((r) => !!r.active);
@@ -149,11 +152,16 @@ export default function WorkersScreen() {
   const noProjects = projects.length === 0;
   const empty = list.total === 0;
   const applied = [
+    search.query ? t('nOfM', { n: rows.length, m: list.unsearched }) : null,
     balance !== 'all' ? t(BALANCE_LABEL[balance]) : null,
     status !== 'all' ? t(STATUS_LABEL[status]) : null,
     sort !== 'name' ? t(`sort_${sort}`) : null,
   ].filter((s): s is string => !!s);
   const sheetCount = [status !== 'all', sort !== 'name'].filter(Boolean).length;
+  const clear = () => {
+    reset();
+    search.setQuery('');
+  };
 
   return (
     <View style={{ flex: 1, backgroundColor: c.bg }}>
@@ -186,6 +194,9 @@ export default function WorkersScreen() {
               <EmptyState icon={Building2} title={t('addProjectFirst')} hint={t('addProjectFirstHint')} action={<Button icon={Plus} label={t('newProject')} onPress={newProject} full />} />
             ) : (
               <View style={{ gap: space.md }}>
+                {/* first in the header, above everything; with nobody on the roster there is nothing to search */}
+                {empty ? null : search.node}
+
                 {!pid && !noProjects ? (
                   <Card tone="warningSoft">
                     <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.md }}>
@@ -232,7 +243,7 @@ export default function WorkersScreen() {
                       sort={{ value: sort, onChange: (v) => set('sort', v), options: WORKER_SORTS.map((s) => ({ value: s, label: t(`sort_${s}`) })) }}
                       sheetCount={sheetCount}
                       applied={applied}
-                      onClear={reset}>
+                      onClear={clear}>
                       <Chips<WorkerStatusFilter>
                         label={t('status')}
                         value={status}
@@ -256,9 +267,9 @@ export default function WorkersScreen() {
                       </Txt>
                     ) : null}
 
-                    {rows.length === 0 ? (
-                      <EmptyState icon={Search} title={t('noMatches')} hint={t('noMatchesHint')} action={<Button kind="secondary" compact label={t('clearFilters')} onPress={reset} />} compact />
-                    ) : null}
+                    {rows.length === 0
+                      ? (search.noResults ?? <EmptyState icon={Search} title={t('noMatches')} hint={t('noMatchesHint')} action={<Button kind="secondary" compact label={t('clearFilters')} onPress={reset} />} compact />)
+                      : null}
                   </>
                 )}
               </View>

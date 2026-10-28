@@ -11,27 +11,32 @@ import {
   expectClean,
   fireEvent,
   hasLabel,
+  makeTr,
   pressLabel,
   renderScreen,
   screen,
   setLanguage,
   setTheme,
   smokeScreen,
+  typeInto,
   visibleText,
 } from '@/test-utils/screenKit';
 
 import { router } from 'expo-router';
+import { StyleSheet } from 'react-native';
 
 import ExpensesScreen from '@/app/(tabs)/expenses';
 import TodayScreen from '@/app/(tabs)/index';
 import ProjectsScreen from '@/app/(tabs)/projects';
 import ToolsScreen from '@/app/(tabs)/tools';
 import WorkersScreen from '@/app/(tabs)/workers';
+import { SearchField } from '@/components/ui/form';
 import { getSetting, save, setSetting } from '@/db';
 import { saveWorker } from '@/db/repo';
 import { resetDb, seedDemo } from '@/test-utils';
 import { addManyProjects, CULVERT, DRAIN, projectId, SCHOOL, setCurrent } from '@/test-utils/screenData';
 
+const E = makeTr('en');
 const greetings = (tr: (k: 'goodMorning' | 'goodAfternoon' | 'goodEvening') => string) => anyOf(tr('goodMorning'), tr('goodAfternoon'), tr('goodEvening'));
 
 // ---------------------------------------------------------------- Today
@@ -153,6 +158,41 @@ describe('Today tab with a failed-photo-backup warning', () => {
   });
 });
 
+// ---------------------------------------------------------------- the search box
+
+describe('SearchField sizes', () => {
+  beforeAll(() => {
+    resetDb();
+  });
+
+  it('compact is 40 tall with a 40 clear button and keeps the clear button; the default stays 48 / 44', async () => {
+    setSetting('lang', 'en');
+    const seen: { box: number | undefined; clear: number | undefined }[] = [];
+    for (const compact of [false, true]) {
+      await renderScreen(<SearchField value="abc" onChangeText={() => {}} compact={compact} />);
+      const box = StyleSheet.flatten(screen.getByLabelText('Search').parent!.props.style);
+      const clear = StyleSheet.flatten(screen.getByLabelText('Clear search').props.style);
+      seen.push({ box: box.minHeight as number | undefined, clear: clear.width as number | undefined });
+      await screen.unmount();
+    }
+    expect(seen).toEqual([
+      { box: 48, clear: 44 },
+      { box: 40, clear: 40 },
+    ]);
+  });
+
+  it('the clear button only shows once something is typed, and empties the box', async () => {
+    setSetting('lang', 'en');
+    const typed: string[] = [];
+    await renderScreen(<SearchField compact value="" onChangeText={(s) => typed.push(s)} />);
+    expect(hasLabel('Clear search')).toBe(false);
+    await screen.unmount();
+    await renderScreen(<SearchField compact value="abc" onChangeText={(s) => typed.push(s)} />);
+    await pressLabel('Clear search');
+    expect(typed).toEqual(['']);
+  });
+});
+
 // ---------------------------------------------------------------- Projects
 
 smokeScreen('Projects tab (demo data)', () => <ProjectsScreen />, {
@@ -200,6 +240,30 @@ smokeScreen('Projects tab (empty phone)', () => <ProjectsScreen />, {
   variants: [{ name: 'empty state with the primary action', expect: (tr) => [tr('projects'), tr('noProjects'), tr('noProjectsHint'), tr('newProject')] }],
 });
 
+describe('Projects search', () => {
+  beforeAll(() => {
+    resetDb();
+    seedDemo();
+  });
+  it('is there with three projects already (no minimum), finds by client or place in any order, and clears', async () => {
+    setSetting('lang', 'en');
+    await renderScreen(<ProjectsScreen />);
+    expectClean('projects search');
+    expect(screen.getAllByLabelText('Search')).toHaveLength(1);
+    await typeInto('Search', 'education zonal'); // the school's client, words in any order
+    expect(visibleText()).toContain(SCHOOL);
+    expect(visibleText()).not.toContain(CULVERT);
+    expect(visibleText()).toContain(`${E('status_active')} (1)`);
+    await typeInto('Search', 'nothing here');
+    expect(visibleText()).toContain(E('noResultsFor', { q: 'nothing here' }));
+    expect(visibleText()).not.toContain('0 Projects');
+    expectClean('projects no results');
+    await pressLabel(E('clearSearch'));
+    expect(visibleText()).toContain(CULVERT);
+    expect(visibleText()).toContain(DRAIN);
+  });
+});
+
 describe('Projects tab with many projects', () => {
   beforeAll(() => {
     resetDb();
@@ -215,7 +279,7 @@ describe('Projects tab with many projects', () => {
     expect(visibleText()).toContain('Extra Project 4');
     expect(visibleText()).not.toContain('Extra Project 5');
     await fireEvent.changeText(screen.getByLabelText('Search'), 'zzz-no-match');
-    expect(visibleText()).toContain('0 Projects');
+    expect(visibleText()).toContain('No results for "zzz-no-match"');
     expectClean('projects no match');
   });
   it('filters by status chip', async () => {
@@ -411,6 +475,29 @@ describe('Tools tab interactions', () => {
     expect(visibleText()).toContain('Vibrator poker');
     expect(visibleText()).not.toContain('Hilti drill');
   });
+
+  it('the search finds a tool by code, by who has it or by project, and says when nothing matches', async () => {
+    setSetting('lang', 'en');
+    setCurrent(null);
+    await renderScreen(<ToolsScreen />);
+    expect(screen.getAllByLabelText('Search')).toHaveLength(1);
+    await typeInto('Search', 'bm-t-003');
+    expect(visibleText()).toContain('Vibrator poker · BM-T-003');
+    expect(visibleText()).not.toContain('Hilti drill');
+    expect(visibleText()).toContain(`${E('inStore')} (1)`);
+    await typeInto('Search', 'sunil');
+    expect(visibleText()).toContain('Hilti drill · BM-T-001');
+    expect(visibleText()).not.toContain('Vibrator poker');
+    await typeInto('Search', 'welimada primary'); // the school, words in any order
+    expect(visibleText()).toContain('Hilti drill · BM-T-001');
+    expect(visibleText()).not.toContain('Vibrator poker'); // never issued, so it is on no project
+    await typeInto('Search', 'zzz');
+    expect(visibleText()).toContain('No results for "zzz"');
+    expectClean('tools no results');
+    await pressLabel('Clear search');
+    expect(visibleText()).toContain('Vibrator poker · BM-T-003');
+    expect(visibleText()).toContain('Hilti drill · BM-T-001');
+  });
 });
 
 // ---------------------------------------------------------------- the empty states act
@@ -470,9 +557,10 @@ describe('project pill in the tab header', () => {
     expect(visibleText()).toContain('Extra Project 7');
     expectClean('project sheet');
 
-    // 12 projects: the sheet has its own search box
+    // 12 projects: the sheet has its own search box; the sheet sits in the header, so its box comes before the list's own
     const boxes = screen.getAllByLabelText('Search');
-    await fireEvent.changeText(boxes[boxes.length - 1], 'culvert');
+    expect(boxes).toHaveLength(2);
+    await fireEvent.changeText(boxes[0], 'culvert');
     expect(screen.queryAllByText('Extra Project 7')).toHaveLength(0);
     await fireEvent.press(screen.getAllByText(CULVERT).at(-1)!);
     expect(getSetting('current_project')).toBe(projectId(CULVERT));
@@ -502,8 +590,8 @@ describe('project pill in the tab header', () => {
     await renderScreen(<ExpensesScreen />);
     await pressLabel('Choose project: All projects');
     const boxes = screen.getAllByLabelText('Search');
-    await fireEvent.changeText(boxes[boxes.length - 1], 'culvert');
-    // the first "Close" is the dimmed backdrop (the others are the sheet's X and the search box's clear button)
+    await fireEvent.changeText(boxes[0], 'culvert'); // the sheet's box (the list's own comes after it)
+    // the first "Close" is the dimmed backdrop (the other is the sheet's X)
     await fireEvent.press(screen.getAllByLabelText('Close')[0]);
     await pressLabel('Choose project: All projects');
     expect(screen.getAllByText('Extra Project 7').length).toBeGreaterThan(0);

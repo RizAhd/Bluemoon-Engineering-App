@@ -1,6 +1,6 @@
 import { router } from 'expo-router';
 import { Building2, Plus, Search } from 'lucide-react-native';
-import { memo, useMemo, useState } from 'react';
+import { memo, useMemo } from 'react';
 import { View } from 'react-native';
 
 import { ListControls, oneOf, useListPrefs } from '@/components/ListControls';
@@ -8,10 +8,10 @@ import { TabHeader } from '@/components/ProjectSwitcher';
 import { Button } from '@/components/ui/Button';
 import { CardList, type CardSection } from '@/components/ui/CardList';
 import { Badge, EmptyState } from '@/components/ui/feedback';
-import { SearchField } from '@/components/ui/form';
 import { ListRow, Screen } from '@/components/ui/layout';
 import type { ProjectCost, ProjectStatus } from '@/db/types';
 import { PROJECT_SORTS, useCurrentProjectId, useProjectList, type ProjectSort } from '@/hooks/data';
+import { useListSearch } from '@/hooks/search';
 import { useT } from '@/i18n';
 import { formatLKR } from '@/lib/money';
 import { radius, space, useColors } from '@/theme';
@@ -20,8 +20,9 @@ type Row = ProjectCost & { location: string | null; client: string | null };
 type Filter = 'all' | ProjectStatus;
 
 const STATUSES: ProjectStatus[] = ['active', 'on_hold', 'completed'];
-/** The search box appears above this many projects (FLOWS section 2). */
-const SEARCH_FROM = 5;
+
+/** What a project can be found by in the search box. */
+const projectFields = (r: Row) => [r.name, r.client, r.location];
 
 /** What the Projects tab remembers (settings `list_projects_<field>`); these are the defaults. */
 const DEFAULTS = { status: 'all', sort: 'name' };
@@ -60,23 +61,22 @@ export default function ProjectsScreen() {
   const { prefs, set, reset } = useListPrefs('projects', DEFAULTS);
   const filter = oneOf<Filter>(prefs.status, ['all', ...STATUSES], 'all');
   const sort = oneOf<ProjectSort>(prefs.sort, PROJECT_SORTS, 'name');
-  const [q, setQ] = useState('');
   const rows: Row[] = useProjectList(sort);
+  // The search box is only drawn with the list (not over the empty state), and its text only applies while it is on screen.
+  const search = useListSearch(rows, projectFields, { shown: rows.length > 0 });
 
   const goNew = () => router.push('/project/form');
-  // The search text only applies while its field is on screen, so it can never filter the list invisibly.
-  const query = rows.length > SEARCH_FROM ? q.trim().toLowerCase() : '';
 
   const { counts, visible, activeFilter } = useMemo(() => {
+    // The chips count what the search leaves, so a chip never promises rows the search has already hidden.
     const counts: Record<ProjectStatus, number> = { active: 0, on_hold: 0, completed: 0 };
-    rows.forEach((r) => {
+    search.filtered.forEach((r) => {
       counts[r.status] += 1;
     });
     // A chip whose count dropped to 0 is disabled: fall back to All instead of an empty list behind a dead chip.
     const activeFilter: Filter = filter !== 'all' && counts[filter] === 0 ? 'all' : filter;
-    const matches = (r: Row) => !query || [r.name, r.client, r.location].some((s) => (s ?? '').toLowerCase().includes(query));
-    return { counts, activeFilter, visible: rows.filter((r) => matches(r) && (activeFilter === 'all' || r.status === activeFilter)) };
-  }, [rows, query, filter]);
+    return { counts, activeFilter, visible: search.filtered.filter((r) => activeFilter === 'all' || r.status === activeFilter) };
+  }, [search.filtered, filter]);
 
   // Opening a project to look at it must not move the app's current project; the hub's actions do that.
   const open = (p: Row) => router.push(`/project/${p.project_id}`);
@@ -112,10 +112,10 @@ export default function ProjectsScreen() {
             keyOf={projectKey}
             renderRow={renderRow}
             inset
-            empty={<EmptyState icon={Search} title={`0 ${t('projects')}`} hint={query ? `"${q.trim()}"` : undefined} />}
+            empty={search.noResults ?? <EmptyState icon={Search} title={`0 ${t('projects')}`} />}
             header={
               <View style={{ gap: space.md }}>
-                {rows.length > SEARCH_FROM ? <SearchField value={q} onChangeText={setQ} placeholder={t('search')} /> : null}
+                {search.node}
                 <ListControls
                   quick={{
                     value: activeFilter,

@@ -13,6 +13,7 @@ import { useFirst, useQuery } from '@/db';
 import { deleteRecord } from '@/db/repo';
 import type { Tool, ToolHolder, ToolMovement, ToolStatus, ToolStock } from '@/db/types';
 import { useCurrentProjectId } from '@/hooks/data';
+import { useListSearch } from '@/hooks/search';
 import { useT } from '@/i18n';
 import { formatDay } from '@/lib/dates';
 import { showError } from '@/lib/errors';
@@ -53,6 +54,8 @@ export default function ToolDetail() {
     [id ?? ''],
   );
   const photos = new Map(photoRows.map((r) => [r.owner_id, r.n]));
+  // The history searched by who, project, condition, note and day; the box is drawn with the history only.
+  const search = useListSearch(moves, (m) => [m.worker_name ?? m.taken_by, m.project_name, m.condition, m.note, formatDay(m.day)], { shown: moves.length > 0 });
 
   if (!tool || !status || !stock) {
     return (
@@ -101,14 +104,14 @@ export default function ToolDetail() {
       />
       <Screen scroll={false}>
         <CardList
-          sections={[{ key: 'moves', rows: moves }]}
+          sections={[{ key: 'moves', rows: search.filtered }]}
           keyOf={moveKey}
           renderRow={(m) => <MoveRow m={m} photos={photos.get(m.id) ?? 0} onRemove={removeMove} qtyUnit={single ? undefined : (stock.unit ?? '')} />}
           inset
           gap={space.lg}
           empty={
             <Card>
-              <EmptyState compact icon={History} title={t('noToolHistory')} hint={t('noToolHistoryHint')} />
+              {search.noResults ?? <EmptyState compact icon={History} title={t('noToolHistory')} hint={t('noToolHistoryHint')} />}
             </Card>
           }
           header={
@@ -209,6 +212,7 @@ export default function ToolDetail() {
               <PhotoStrip ownerTable="tools" ownerId={tool.id} label={t('photoProof')} editable={false} />
 
               <SectionTitle title={t('history')} count={moves.length || undefined} />
+              {search.node}
             </View>
           }
         />

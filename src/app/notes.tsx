@@ -11,6 +11,7 @@ import { Txt } from '@/components/ui/Txt';
 import { useQuery } from '@/db';
 import type { Attachment, SiteNote } from '@/db/types';
 import { useCurrentProjectId, useProject } from '@/hooks/data';
+import { useListSearch } from '@/hooks/search';
 import { useT, type TKey } from '@/i18n';
 import { formatDay, today } from '@/lib/dates';
 import { fileFor } from '@/lib/files';
@@ -34,6 +35,8 @@ export default function NotesScreen() {
      WHERE n.deleted_at IS NULL AND p.deleted_at IS NULL ${pid ? 'AND n.project_id = ?' : ''} ORDER BY n.day DESC, n.created_at DESC`,
     pid ? [pid] : [],
   );
+  // Found by the text, the project and the weather as the card words it; the box is drawn with the notes only.
+  const search = useListSearch(notes, (n) => [n.body, n.project_name, n.weather && n.weather in WEATHER ? t(`weather_${n.weather as WeatherKey}`) : null], { shown: notes.length > 0 });
   // Only the photos of the notes on screen (this project's, or every live project's), not every note photo on the phone.
   const photos = useQuery<Attachment>(
     `SELECT a.* FROM attachments a JOIN site_notes n ON n.id = a.owner_id AND n.deleted_at IS NULL JOIN projects p ON p.id = n.project_id AND p.deleted_at IS NULL
@@ -59,7 +62,7 @@ export default function NotesScreen() {
     // On a short window (landscape, split screen) the New note button scrolls with the notes instead of covering them.
     <Screen scroll={false} footer={short ? undefined : newButton}>
       <FlatList
-        data={notes}
+        data={search.filtered}
         keyExtractor={noteKey}
         keyboardShouldPersistTaps="handled"
         {...listTuning}
@@ -67,18 +70,21 @@ export default function NotesScreen() {
         contentContainerStyle={[column, { paddingHorizontal: gutter, paddingTop: space.lg, paddingBottom: space.xl, gap: space.md }]}
         ListFooterComponent={short && newButton ? <View style={{ paddingTop: space.sm }}>{newButton}</View> : undefined}
         ListHeaderComponent={
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.sm, minHeight: 32 }} accessibilityRole="header">
-            <ScopeIcon size={20} color={project ? c.primary : c.textMuted} strokeWidth={2} />
-            <Txt weight="semibold" numberOfLines={1} style={{ flex: 1 }}>
-              {scopeName}
-            </Txt>
-            <Txt variant="caption" color="textMuted" numeric>
-              {t('notesCount', { n: notes.length })}
-            </Txt>
+          <View style={{ gap: space.md }}>
+            {search.node}
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.sm, minHeight: 32 }} accessibilityRole="header">
+              <ScopeIcon size={20} color={project ? c.primary : c.textMuted} strokeWidth={2} />
+              <Txt weight="semibold" numberOfLines={1} style={{ flex: 1 }}>
+                {scopeName}
+              </Txt>
+              <Txt variant="caption" color="textMuted" numeric>
+                {t('notesCount', { n: search.filtered.length })}
+              </Txt>
+            </View>
           </View>
         }
         ListEmptyComponent={
-          <EmptyState icon={NotebookPen} title={t('noNotes')} hint={t('noNotesHint')} action={<Button icon={Plus} label={t('newNote')} onPress={openNew} full />} />
+          search.noResults ?? <EmptyState icon={NotebookPen} title={t('noNotes')} hint={t('noNotesHint')} action={<Button icon={Plus} label={t('newNote')} onPress={openNew} full />} />
         }
         renderItem={({ item }) => <NoteCard item={item} pics={byNote.get(item.id) ?? NO_PICS} showProject={!pid} />}
       />

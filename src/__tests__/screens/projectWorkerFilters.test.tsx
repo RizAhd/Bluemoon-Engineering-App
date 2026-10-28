@@ -27,6 +27,7 @@ import {
   screen,
   setTheme,
   smokeScreen,
+  typeInto,
   visibleText,
   visibleTexts,
 } from '@/test-utils/screenKit';
@@ -254,6 +255,47 @@ describe('Workers: balance chips, status, sort', () => {
     await pressLabel(E('clear'));
     expect(['balance', 'status', 'sort'].map((f) => getSetting(`list_workers_${f}`))).toEqual([null, null, null]);
     expect(visibleText()).toContain(`${E('projectWorkers')} (2)`);
+  });
+
+  it('the search finds workers by trade in the database, says n of m, and Clear restores everything', async () => {
+    await renderScreen(<WorkersScreen />);
+    expect(hasLabel(E('search'))).toBe(true);
+    await typeInto(E('search'), 'painter');
+    expect(shown(ALL())).toEqual(['Old Hand']); // the one painter, who has left
+    expect(visibleText()).toContain(`${E('inactive')} (1)`);
+    expect(screen.getByTestId('list-applied').props.children).toBe(E('nOfM', { n: 1, m: ALL().length }));
+
+    await typeInto(E('search'), 'MASON');
+    expect(shown(ALL())).toEqual(overall("trade LIKE '%mason%'", 'name COLLATE NOCASE'));
+    expect(shown(ALL()).length).toBeGreaterThan(1);
+    // the chips count what the search leaves
+    const pay = rows<{ n: number }>("SELECT COUNT(*) AS n FROM v_worker_balance WHERE balance_cents > 0 AND trade LIKE '%mason%'")[0].n;
+    expect(hasLabel(`${E('weOwe')} ${pay}`)).toBe(true);
+    // the tiles keep totalling the whole roster
+    const owed = rows<{ s: number }>('SELECT SUM(balance_cents) AS s FROM v_worker_balance WHERE balance_cents > 0')[0].s;
+    expect(hasLabel(`${E('weOwe')} ${formatLKR(owed)}`)).toBe(true);
+
+    await typeInto(E('search'), 'nobody like this');
+    expect(visibleText()).toContain(E('noResultsFor', { q: 'nobody like this' }));
+    expect(visibleText()).not.toContain(E('noMatches'));
+    expectClean('workers no results');
+
+    await pressLabel(E('clear'));
+    expect(shown(ALL())).toEqual(overall('1 = 1', 'name COLLATE NOCASE'));
+    expect(screen.queryByTestId('list-applied')).toBeNull();
+    expect(['balance', 'status', 'sort'].map((f) => getSetting(`list_workers_${f}`))).toEqual([null, null, null]);
+  });
+
+  it('on a project the search covers that roster only, by name or phone', async () => {
+    setCurrent(projectId(SCHOOL));
+    await renderScreen(<WorkersScreen />);
+    await typeInto(E('search'), 'nimal');
+    expect(shown(ALL())).toEqual(['Nimal Perera']);
+    const phone = rows<{ phone: string }>("SELECT phone FROM workers WHERE name = 'Nimal Perera'")[0].phone;
+    await typeInto(E('search'), phone.slice(0, 6));
+    expect(shown(ALL())).toContain('Nimal Perera');
+    await typeInto(E('search'), 'saman'); // on the culvert, not the school
+    expect(visibleText()).toContain(E('noResultsFor', { q: 'saman' }));
   });
 
   it('a balance with no workers is a disabled chip', async () => {
