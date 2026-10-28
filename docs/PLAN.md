@@ -29,6 +29,9 @@ Bluemoon Engineering is a CIDA-registered contractor (C-21184, grades C-6 buildi
 
 ## 2. Where we are today (2026-10-22)
 
+> **Snapshot from 2026-10-22, kept for history.** The current state, build route (tag → `ci-result` branch) and
+> open items are in [HANDOVER.md](HANDOVER.md).
+
 ### Built and pushed (commit `5725001`)
 
 | Area | What works |
@@ -566,6 +569,13 @@ Year-one total at full rollout: **≈ $85** (Android only, Cloudflare paid) or *
 - **2026-10-22** — The first blue theme was judged "not professional": full redesign (bright white light theme, true dark theme, typography/alignment/spacing by the frontend rules), complete testing before handover, built with multiple agents.
 - **2026-10-22** — **Projects as a bottom tab**; **workers per project** with per-project rates; **"after work, payment today"** sheet; everything per project; **error/exception handling everywhere**; research-based, easy UX.
 - **2026-10-22** — Write and keep this plan (`docs/PLAN.md`) covering frontend, backend and operations.
+- **2026-10-23** — APKs are built by GitHub Actions on an `apk-*` tag (debug-signed), with the result pushed to the `ci-result` branch; the workflow file is not changed without the owner. *Why:* no local Android build on Windows, no Expo account needed.
+- **2026-10-23** — Backups also go to a **folder on the phone** the owner picks and to the owner's **Google Drive** (real Google sign-in, `drive.file` scope, OAuth client in the owner's Google Cloud project). *Why:* data must survive a lost phone or an uninstall, at no cost.
+- **2026-10-23** — Smoother motion and depth (Reanimated), splash fixed, all text 15 % smaller; every screen audited on the owner's phone before fixes.
+- **2026-10-24** — Today becomes a **dashboard**: Day / Week / Month summary with earlier periods, per-project lines for "All projects", day rolls over at midnight. Settings gets **Text size** (Small / Medium / Large).
+- **2026-10-24** — Audit process: test everything on the phone and list every issue first, fix them all, then build **one** APK and re-check. *Why:* the owner did not want a new version after every fix.
+- **2026-10-24** — "Pay all" and "unpaid for today" never pay more than a worker is owed (advances count). *Why:* the audit found a Rs 2,000 overpayment.
+- **2026-10-28** — Handover documentation for the next developer or agent: `docs/HANDOVER.md`, project rules in `AGENTS.md` (read by Claude Code through `CLAUDE.md`), phone-testing helper `scripts/device/phone.py`.
 
 ---
 
