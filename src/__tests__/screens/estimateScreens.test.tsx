@@ -60,8 +60,8 @@ smokeScreen('estimate/index (demo data)', () => <EstimatesScreen />, {
           tr('newEstimate'),
         ];
       },
-      // two estimates: neither the status chips (from 6) nor the search box (from 9) are drawn
-      absent: (tr) => [tr('search'), tr('noEstimates')],
+      // two estimates: the status chips (from 6) are not drawn yet; the search box always is
+      absent: (tr) => [tr('noEstimates')],
       check: () => {
         const text = visibleText();
         expect(text.indexOf('Mr. K. Wijesekara')).toBeLessThan(text.indexOf('Nuwara View Hotel'));

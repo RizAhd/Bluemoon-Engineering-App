@@ -66,7 +66,8 @@ src/components/
   PeriodSummary.tsx      the Day / Week / Month card on Today
   BackupPlaces.tsx       "Where copies are kept" rows (phone folder, Google Drive)
 src/db/                  schema.ts (tables, views, migrations), repo.ts (the single write path), index.ts
-src/hooks/               data.ts (queries), form.ts (useRecordForm, useLeaveGuard), today.ts (useToday)
+src/hooks/               data.ts (queries), form.ts (useRecordForm, useLeaveGuard), today.ts (useToday),
+                         search.ts (the search box at the top of every list: useListSearch, useSearchBox)
 src/lib/                 money, dates (incl. week / month ranges), wages (unpaid for a day), backup,
                          autoBackup, phoneFolder, drive, pdf / estimatePdf / reportHtml, share*, errors,
                          keyboard (app-wide keyboard behaviour), letterheadData (embedded JPEG)
@@ -184,6 +185,12 @@ input unless Bluemoon is in front. Things learned the hard way:
 - Forms: `useRecordForm` + `form.useLeaveGuard([...values])` gives "Discard changes?" on Back. Mark intentional
   leaves (`saved.current = true` / `allowLeave()`) before `router.back()`.
 - Amounts: `AmountField` (groups thousands as typed; adding commas is not counted as an edit).
+- Search: every list has a compact `SearchField` as the first thing in its header, always shown (no "from N rows"
+  rule). Short lists use `useListSearch(rows, fields)` from `src/hooks/search.ts`; the paged / server-filtered ones
+  (Expenses, Workers) pass `q` to the query instead (`ExpenseFilter.q`, `useWorkerList`) built with `likeQuery`.
+  Both follow one rule (`matchesQuery`, `src/lib/search.ts`): every typed word must be in some field, in any order;
+  digits match amounts with commas ignored. A search that finds nothing shows `NoResults` ("No results for …" + Clear).
+  The text is plain state, never remembered.
 - Keyboard: fields inside `Screen` join the Next chain automatically (`focusChain.tsx`); `src/lib/keyboard.ts`
   closes the keyboard before every Alert and blurs a field when the keyboard is put away.
 - Errors: wrap risky actions in `guard()` / `showError()` from `src/lib/errors.ts`; they log to the in-app error log.

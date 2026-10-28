@@ -13,10 +13,11 @@ import { ListRow, Screen } from '@/components/ui/layout';
 import { useQuery } from '@/db';
 import type { ToolStock } from '@/db/types';
 import { useCurrentProjectId } from '@/hooks/data';
+import { useListSearch } from '@/hooks/search';
 import { useT } from '@/i18n';
 import { formatDay } from '@/lib/dates';
 import { isSinglePiece, qtyText } from '@/lib/toolStock';
-import { useColors } from '@/theme';
+import { space, useColors } from '@/theme';
 
 /** One tool or material with its counts, and (for a single piece) where it is, as the tab has always shown. */
 type Row = ToolStock & {
@@ -33,6 +34,9 @@ type Row = ToolStock & {
 type Bucket = 'out' | 'in' | 'elsewhere';
 type Bucketed = Row & { bucket: Bucket };
 type Filter = 'all' | 'out' | 'in';
+
+/** What a tool can be found by in the search box. */
+const toolFields = (r: Row) => [r.name, r.code, r.worker_name, r.project_name];
 
 /**
  * Tools tab. With a current project: "Out on this project" · "In store — available" ·
@@ -56,18 +60,21 @@ export default function ToolsScreen() {
      ORDER BY (s.out_milli > 0) DESC, s.name COLLATE NOCASE`,
     [pid],
   );
+  // In memory over the rows already loaded; the box is only drawn with the list, so its text applies only while it is on screen.
+  const search = useListSearch(rows, toolFields, { shown: rows.length > 0 });
+  const found = search.filtered;
 
   const { out, inStore, outHere, outElsewhere } = useMemo(() => {
     const tag = (list: Row[], bucket: Bucket): Bucketed[] => list.map((r) => ({ ...r, bucket }));
-    const out = rows.filter((r) => r.out_milli > 0);
-    const inStore = rows.filter((r) => r.in_store_milli > 0);
+    const out = found.filter((r) => r.out_milli > 0);
+    const inStore = found.filter((r) => r.in_store_milli > 0);
     return {
       out,
       inStore: tag(inStore, 'in'),
-      outHere: tag(pid ? rows.filter((r) => r.here_milli > 0) : out, 'out'),
-      outElsewhere: tag(pid ? rows.filter((r) => r.out_milli - r.here_milli > 0) : [], 'elsewhere'),
+      outHere: tag(pid ? found.filter((r) => r.here_milli > 0) : out, 'out'),
+      outElsewhere: tag(pid ? found.filter((r) => r.out_milli - r.here_milli > 0) : [], 'elsewhere'),
     };
-  }, [rows, pid]);
+  }, [found, pid]);
 
   // A selected chip whose group has emptied (the last tool was returned, issued or deleted) falls back to All, never a blank list.
   const active: Filter = (filter === 'out' && out.length === 0) || (filter === 'in' && inStore.length === 0) ? 'all' : filter;
@@ -131,18 +138,21 @@ export default function ToolsScreen() {
           keyOf={toolKey}
           renderRow={renderRow}
           inset
-          empty={rows.length === 0 ? <EmptyState icon={Hammer} title={t('noTools')} hint={t('noToolsHint')} action={<Button icon={Plus} label={t('newTool')} onPress={goNew} full />} /> : null}
+          empty={rows.length === 0 ? <EmptyState icon={Hammer} title={t('noTools')} hint={t('noToolsHint')} action={<Button icon={Plus} label={t('newTool')} onPress={goNew} full />} /> : search.noResults}
           header={
             rows.length ? (
-              <Chips
-                value={active}
-                onChange={setFilter}
-                options={[
-                  { value: 'all', label: t('all') },
-                  { value: 'out', label: t('out'), count: out.length, disabled: out.length === 0 },
-                  { value: 'in', label: t('inStore'), count: inStore.length, disabled: inStore.length === 0 },
-                ]}
-              />
+              <View style={{ gap: space.md }}>
+                {search.node}
+                <Chips
+                  value={active}
+                  onChange={setFilter}
+                  options={[
+                    { value: 'all', label: t('all') },
+                    { value: 'out', label: t('out'), count: out.length, disabled: out.length === 0 },
+                    { value: 'in', label: t('inStore'), count: inStore.length, disabled: inStore.length === 0 },
+                  ]}
+                />
+              </View>
             ) : null
           }
         />

@@ -16,8 +16,10 @@ import { resetDb, seedDemo } from '@/test-utils';
 import { CULVERT, projectId, rows, SCHOOL, setCurrent } from '@/test-utils/screenData';
 import {
   expectClean,
+  fireEvent,
   has,
   hasLabel,
+  inputValue,
   makeTr,
   pressLabel,
   pressText,
@@ -273,12 +275,103 @@ describe('Expenses: remembered and cleared', () => {
   });
 });
 
+describe('Expenses: search (in the database, so the totals and the paging follow)', () => {
+  const ORDER = 'e.day DESC, e.created_at DESC, e.id';
+  const NONE = { projectId: null, range: null, categories: [], methods: [], minCents: null, maxCents: null };
+
+  it('"Lanka" finds the shop; the caption says n of m; the tiles total what is found; Clear restores', async () => {
+    await renderScreen(<ExpensesScreen />);
+    expect(hasLabel(E('search'))).toBe(true);
+    await typeInto(E('search'), 'Lanka');
+    const want = sql("(e.paid_to LIKE '%lanka%' OR e.note LIKE '%lanka%')");
+    expect(want.count).toBeGreaterThan(0);
+    expect(shownPayees()).toEqual(payeesBy(ORDER, "(e.paid_to LIKE '%lanka%' OR e.note LIKE '%lanka%')"));
+    expect(visibleText()).toContain('Lanka Cement Depot, Welimada');
+    expect(visibleText()).not.toContain('March Diesel');
+    expect(screen.getByTestId('list-applied').props.children).toBe(E('nOfM', { n: want.count, m: sql().count }));
+    expect(hasLabel(`${E('total')} · ${E('allTime')} ${formatLKR(want.total)} ${E('allProjects')}`)).toBe(true);
+    expect(hasLabel(`${E('entries')} ${want.count}`)).toBe(true);
+    expectClean('expenses search');
+
+    await pressLabel(E('clear'));
+    expect(inputValue(E('search'))).toBe('');
+    expect(screen.queryByTestId('list-applied')).toBeNull();
+    expect(shownPayees()).toEqual(payeesBy(ORDER));
+    // the search is plain state, nothing was stored
+    for (const k of KEYS) expect([k, getSetting(k)]).toEqual([k, null]);
+  });
+
+  it('a number finds the exact amount, with or without commas', async () => {
+    await renderScreen(<ExpensesScreen />);
+    await typeInto(E('search'), '50000');
+    expect(shownPayees()).toEqual(payeesBy(ORDER, 'e.amount_cents = 5000000'));
+    expect(visibleText()).toContain('March Cement');
+    await typeInto(E('search'), '12,345.50');
+    expect(shownPayees()).toEqual(['March Diesel']);
+    expect(hasLabel(`${E('total')} · ${E('allTime')} Rs 12,345.50 ${E('allProjects')}`)).toBe(true);
+  });
+
+  it('a category is found by its name in the UI language, and two words must both match', async () => {
+    await renderScreen(<ExpensesScreen />);
+    await typeInto(E('search'), E('cat_fuel'));
+    expect(shownPayees()).toEqual(payeesBy(ORDER, "(e.category = 'fuel' OR e.paid_to LIKE '%fuel%' OR e.note LIKE '%fuel%')"));
+    expect(visibleText()).toContain('March Diesel');
+    await typeInto(E('search'), 'diesel march');
+    expect(shownPayees()).toEqual(['March Diesel']);
+    await typeInto(E('search'), 'diesel cement');
+    expect(visibleText()).toContain(E('noResultsFor', { q: 'diesel cement' }));
+    expect(visibleText()).not.toContain(E('noMatches'));
+  });
+
+  it('nothing found says so with the text typed, and Clear search brings everything back', async () => {
+    await renderScreen(<ExpensesScreen />);
+    await typeInto(E('search'), 'zzz-nothing');
+    expect(visibleText()).toContain(E('noResultsFor', { q: 'zzz-nothing' }));
+    expect(shownPayees()).toEqual([]);
+    expectClean('expenses no results');
+    // the last "Clear search" is the link under the message (the first is the box's own X); either empties the box
+    const links = screen.getAllByLabelText(E('clearSearch'));
+    await fireEvent.press(links[links.length - 1]);
+    expect(visibleText()).not.toContain(E('noResultsFor', { q: 'zzz-nothing' }));
+    expect(shownPayees()).toEqual(payeesBy(ORDER));
+  });
+
+  it('narrows together with the project and the other filters', async () => {
+    setCurrent(projectId(SCHOOL));
+    setSetting('list_expenses_cats', 'materials');
+    await renderScreen(<ExpensesScreen />);
+    await typeInto(E('search'), 'march');
+    expect(shownPayees().sort()).toEqual(['March Cement', 'March Sand']);
+    // "m" is what the project and the category leave before the search: the school's four materials expenses
+    const m = sql("e.project_id = ? AND e.category = 'materials'", [projectId(SCHOOL)]).count;
+    expect(m).toBe(4);
+    expect(screen.getByTestId('list-applied').props.children).toBe(`${E('nOfM', { n: 2, m })} · ${E('cat_materials')}`);
+  });
+
+  it('expenseWhere: one group per word over payee, note, category, project name, the categories named and the amount', () => {
+    const w = expenseWhere({ ...NONE, q: 'Lanka 1,250', categoryNames: { materials: 'Materials', fuel: 'Fuel', other: 'Other' } }, { withPeriod: false });
+    const like = "LIKE ? ESCAPE '\\'";
+    const group = `(e.paid_to ${like} OR e.note ${like} OR e.category ${like} OR (SELECT pn.name FROM projects pn WHERE pn.id = e.project_id) ${like})`;
+    expect(w.sql).toBe(`${expenseWhere(NONE).sql} AND (${group}) AND (${group} OR e.amount_cents = ?)`);
+    expect(w.args).toEqual(['%lanka%', '%lanka%', '%lanka%', '%lanka%', '%1,250%', '%1,250%', '%1,250%', '%1,250%', 125000]);
+    // a word inside a category's name adds that category; % and _ are bound as literals
+    const c = expenseWhere({ ...NONE, q: 'ria 100%_', categoryNames: { materials: 'Materials', fuel: 'Fuel' } });
+    expect(c.sql).toContain('OR e.category IN (?))');
+    expect(c.args).toEqual(['%ria%', '%ria%', '%ria%', '%ria%', 'materials', '%100\\%\\_%', '%100\\%\\_%', '%100\\%\\_%', '%100\\%\\_%']);
+  });
+});
+
 describe('expenseWhere: filters become bound values, never SQL text', () => {
+  const LIVE_PROJECT = 'EXISTS (SELECT 1 FROM projects px WHERE px.id = e.project_id AND px.deleted_at IS NULL)';
+
   it('builds placeholders for every value', () => {
     const w = expenseWhere({ projectId: "x' OR 1=1 --", range: { from: '2025-03-01', to: '2025-04-01' }, categories: ['materials', 'fuel'], methods: ['cash'], minCents: 100, maxCents: 900 });
-    expect(w.sql).toBe('e.deleted_at IS NULL AND e.project_id = ? AND e.day >= ? AND e.day < ? AND e.category IN (?, ?) AND e.method IN (?) AND e.amount_cents >= ? AND e.amount_cents <= ?');
+    expect(w.sql).toBe(`e.deleted_at IS NULL AND ${LIVE_PROJECT} AND e.project_id = ? AND e.day >= ? AND e.day < ? AND e.category IN (?, ?) AND e.method IN (?) AND e.amount_cents >= ? AND e.amount_cents <= ?`);
     expect(w.args).toEqual(["x' OR 1=1 --", '2025-03-01', '2025-04-01', 'materials', 'fuel', 'cash', 100, 900]);
-    expect(expenseWhere({ projectId: null, range: { from: 'a', to: 'b' }, categories: [], methods: [], minCents: null, maxCents: null }, { withPeriod: false })).toEqual({ sql: 'e.deleted_at IS NULL', args: [] });
+    expect(expenseWhere({ projectId: null, range: { from: 'a', to: 'b' }, categories: [], methods: [], minCents: null, maxCents: null, q: '  ' }, { withPeriod: false })).toEqual({
+      sql: `e.deleted_at IS NULL AND ${LIVE_PROJECT}`,
+      args: [],
+    });
   });
 
   it('the screen shows only the rows the query returns (a capped list is still filtered first)', async () => {
@@ -286,5 +379,23 @@ describe('expenseWhere: filters become bound values, never SQL text', () => {
     await renderScreen(<ExpensesScreen />);
     expect(shownPayees().sort()).toEqual(payeesBy('e.paid_to', "e.category = 'fuel'").sort());
     expectClean('expenses fuel');
+  });
+});
+
+describe('Expenses: the search reaches past the first page', () => {
+  // the list loads 500 rows at first; 501 new ones push every older row behind "Show all"
+  beforeAll(() => {
+    const culvert = projectId(CULVERT);
+    for (let i = 1; i <= 501; i++) saveExpense({ project_id: culvert, day: today(), category: 'food', amount_cents: 100 * i, paid_to: `Bulk ${i}`, method: 'cash', note: null });
+  });
+
+  it('an old row behind the cap is found by the search, because the database does the searching', async () => {
+    await renderScreen(<ExpensesScreen />);
+    expect(hasLabel(E('showAll'))).toBe(true);
+    expect(visibleText()).not.toContain('January Steel');
+    await typeInto(E('search'), 'steel');
+    expect(shownPayees()).toEqual(['January Steel']);
+    expect(hasLabel(E('showAll'))).toBe(false);
+    expect(screen.getByTestId('list-applied').props.children).toBe(E('nOfM', { n: 1, m: sql().count }));
   });
 });

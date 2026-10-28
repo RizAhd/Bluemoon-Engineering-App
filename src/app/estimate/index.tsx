@@ -1,6 +1,6 @@
 import { router } from 'expo-router';
 import { FileText, Plus, Search } from 'lucide-react-native';
-import { memo, useMemo, useState } from 'react';
+import { memo, useMemo } from 'react';
 import { View } from 'react-native';
 
 import { EstimateStatusBadge } from '@/components/EstimateBits';
@@ -8,11 +8,11 @@ import { ListControls, oneOf, periodLabel, periodRange, toPeriod, useListPrefs, 
 import { Button } from '@/components/ui/Button';
 import { CardList } from '@/components/ui/CardList';
 import { EmptyState } from '@/components/ui/feedback';
-import { SearchField } from '@/components/ui/form';
 import { ListRow, Screen } from '@/components/ui/layout';
 import { Txt } from '@/components/ui/Txt';
 import { ESTIMATE_STATUSES, type EstimateListRow, type EstimateStatus } from '@/db/types';
 import { ESTIMATE_SORTS, useEstimateList, type EstimateSort } from '@/hooks/data';
+import { useListSearch } from '@/hooks/search';
 import { useT } from '@/i18n';
 import { formatDay } from '@/lib/dates';
 import { formatLKR } from '@/lib/money';
@@ -21,9 +21,11 @@ import { space } from '@/theme';
 
 type Filter = 'all' | EstimateStatus;
 
-/** Status chips appear above this many estimates, the search box above the second number (docs/ESTIMATES.md section 6). */
+/** Status chips appear above this many estimates (docs/ESTIMATES.md section 6); the search box is always there. */
 const FILTER_FROM = 5;
-const SEARCH_FROM = 8;
+
+/** What an estimate can be found by in the search box. */
+const estimateFields = (r: EstimateListRow) => [r.client_name, r.title, r.number, formatLKR(r.total_cents)];
 
 /** What the estimate list remembers (settings `list_estimates_<field>`); these are the defaults. */
 const DEFAULTS = { status: 'all', period: 'all', sort: 'newest' };
@@ -42,24 +44,24 @@ export default function EstimatesScreen() {
   const sort = oneOf<EstimateSort>(prefs.sort, ESTIMATE_SORTS, 'newest');
   const filter = oneOf<Filter>(prefs.status, ['all', ...ESTIMATE_STATUSES], 'all');
   const { rows, months, total } = useEstimateList(periodRange(period, td), sort);
-  const [q, setQ] = useState('');
+  // The search box is only drawn with the list (not over the empty state), and its text only applies while it is on screen.
+  const search = useListSearch(rows, estimateFields, { shown: total > 0 });
 
   const goNew = () => router.push('/estimate/form');
-  // Chips and search only count while they are on screen, so a filter can never hide rows invisibly.
+  // Chips only count while they are on screen, so a filter can never hide rows invisibly.
   const showFilter = total > FILTER_FROM;
-  const query = total > SEARCH_FROM ? q.trim().toLowerCase() : '';
 
   const { counts, visible, activeFilter } = useMemo(() => {
+    // the chips count what the search leaves, so a chip never promises rows the search has already hidden
     const counts: Record<EstimateStatus, number> = { draft: 0, sent: 0, accepted: 0, declined: 0 };
-    rows.forEach((r) => {
+    search.filtered.forEach((r) => {
       counts[r.status] += 1;
     });
     // a chip whose count dropped to 0 is disabled: fall back to All instead of an empty list behind a dead chip
     const chosen: Filter = showFilter ? filter : 'all';
     const activeFilter: Filter = chosen !== 'all' && counts[chosen] === 0 ? 'all' : chosen;
-    const matches = (r: EstimateListRow) => !query || [r.client_name, r.title, r.number].some((s) => s.toLowerCase().includes(query));
-    return { counts, activeFilter, visible: rows.filter((r) => matches(r) && (activeFilter === 'all' || r.status === activeFilter)) };
-  }, [rows, query, filter, showFilter]);
+    return { counts, activeFilter, visible: search.filtered.filter((r) => activeFilter === 'all' || r.status === activeFilter) };
+  }, [search.filtered, filter, showFilter]);
 
   const applied = [
     period !== 'all' ? periodLabel(period, td, t) : null,
@@ -87,10 +89,10 @@ export default function EstimatesScreen() {
         renderRow={renderRow}
         inset
         stickyFooter={<Button icon={Plus} label={t('newEstimate')} onPress={goNew} full />}
-        empty={<EmptyState icon={Search} title={`0 ${t('estimates')}`} hint={query ? `"${q.trim()}"` : undefined} />}
+        empty={search.noResults ?? <EmptyState icon={Search} title={`0 ${t('estimates')}`} />}
         header={
           <View style={{ gap: space.md }}>
-            {total > SEARCH_FROM ? <SearchField value={q} onChangeText={setQ} placeholder={t('search')} /> : null}
+            {search.node}
             <ListControls
               quick={
                 showFilter

@@ -27,6 +27,7 @@ import { ListRow, Screen } from '@/components/ui/layout';
 import { useFirst } from '@/db';
 import { EXPENSE_CATEGORIES, PAY_METHODS, type Expense } from '@/db/types';
 import { EXPENSE_SORTS, useAttachmentCounts, useCurrentProjectId, useExpenseList, type ExpenseSort } from '@/hooks/data';
+import { useSearchBox } from '@/hooks/search';
 import { useT, type TKey } from '@/i18n';
 import { addDays, formatDay } from '@/lib/dates';
 import { centsToInput, formatLKR, parseCents } from '@/lib/money';
@@ -97,7 +98,11 @@ export default function ExpensesScreen() {
   const max = centsOf(prefs.max);
   const range = periodRange(period, td);
 
-  const list = useExpenseList({ projectId: pid, range, categories: cats, methods, minCents: min, maxCents: max }, sort, limit);
+  // The database searches payee, note, project, category (by its name in the UI language) and the exact amount, so an
+  // old row past the first page is found too. The box is drawn with the list only (an empty tab has no rows to hide).
+  const search = useSearchBox();
+  const categoryNames = Object.fromEntries(EXPENSE_CATEGORIES.map((k) => [k, t(`cat_${k}`)]));
+  const list = useExpenseList({ projectId: pid, range, categories: cats, methods, minCents: min, maxCents: max, q: search.query, categoryNames }, sort, limit);
   const rows = list.rows;
   const where = pid ? 'AND e.project_id = ?' : '';
   const args = pid ? [pid] : [];
@@ -130,9 +135,10 @@ export default function ExpensesScreen() {
   const dayLabel = (day: string) => (day === td ? t('today') : day === yesterday ? t('yesterday') : formatDay(day));
   const goNew = () => router.push('/expense/form');
 
-  const filtered = period !== 'all' || cats.length > 0 || methods.length > 0 || min != null || max != null;
+  const filtered = period !== 'all' || cats.length > 0 || methods.length > 0 || min != null || max != null || !!search.query;
   const amountLabel = amountRangeLabel(min, max, t);
   const applied = [
+    search.query ? t('nOfM', { n: list.count, m: list.unsearched }) : null,
     period !== 'all' ? periodLabel(period, td, t) : null,
     cats.length ? (cats.length <= 2 ? cats.map((k) => t(`cat_${k}`)).join(', ') : t('categoriesCount', { n: cats.length })) : null,
     methods.length ? methods.map((m) => t(`method_${m}`)).join(', ') : null,
@@ -142,6 +148,7 @@ export default function ExpensesScreen() {
   const sheetCount = [cats.length > 0, methods.length > 0, min != null || max != null, sort !== 'newest'].filter(Boolean).length;
   const clear = () => {
     reset();
+    search.setQuery('');
     setLimit(PAGE);
   };
 
@@ -170,10 +177,11 @@ export default function ExpensesScreen() {
             keyOf={rowKey}
             renderRow={renderRow}
             inset
-            empty={<EmptyState icon={Search} title={t('noMatches')} hint={t('noMatchesHint')} action={<Button kind="secondary" compact label={t('clearFilters')} onPress={clear} />} compact />}
+            empty={search.noResults ?? <EmptyState icon={Search} title={t('noMatches')} hint={t('noMatchesHint')} action={<Button kind="secondary" compact label={t('clearFilters')} onPress={clear} />} compact />}
             footer={capped ? <Button kind="secondary" label={t('showAll')} onPress={() => setLimit(-1)} full /> : null}
             header={
               <View style={{ gap: space.md }}>
+                {search.node}
                 <ListControls
                   period={{ value: period, onChange: (p) => set('period', p), months: list.months, today: td }}
                   sort={{ value: sort, onChange: (v) => set('sort', v), options: EXPENSE_SORTS.map((s) => ({ value: s, label: t(`sort_${s}`) })) }}

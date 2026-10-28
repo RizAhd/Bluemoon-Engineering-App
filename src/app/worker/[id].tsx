@@ -15,6 +15,7 @@ import { useFirst, useQuery } from '@/db';
 import { deleteRecord, payWages, saveWorker, unassignWorker } from '@/db/repo';
 import type { WageEntry, WageKind, Worker, WorkerBalance } from '@/db/types';
 import { useCurrentProjectId, useProjects, useWorkerProjects } from '@/hooks/data';
+import { useListSearch } from '@/hooks/search';
 import { formatPhone } from '@/lib/names';
 import { useT } from '@/i18n';
 import { confirmPayments } from '@/lib/confirmPay';
@@ -85,6 +86,10 @@ export default function WorkerDetail() {
   // The statement follows that filter: one project when one is chosen (the current project by default), else all.
   const share = useShareSheet({ kind: 'workerStatement', id: id ?? null, options: { projectId: activeFilter === ALL ? null : activeFilter } });
 
+  // The history under the project chip, then searched by note, project, kind, amount or day; the box is drawn with the history only.
+  const shown = useMemo(() => (activeFilter === ALL ? entries : entries.filter((e) => e.project_id === activeFilter)), [entries, activeFilter]);
+  const search = useListSearch(shown, (e) => [e.note, e.project_name, t(`wage_${e.kind}`), formatLKR(e.amount_cents), formatDay(e.day)], { shown: entries.length > 0 });
+
   // The worker was deleted (from the edit form on top of this screen): leave instead of showing an empty shell.
   const gone = !!id && (!worker || !bal);
   useFocusEffect(
@@ -108,7 +113,6 @@ export default function WorkerDetail() {
   const toneText = b > 0 ? 'danger' : b < 0 ? 'warning' : 'success';
   const hasUnassigned = entries.some((e) => !e.project_id || !e.project_name);
   const showChips = historyProjects.length > 1 || (historyProjects.length >= 1 && hasUnassigned);
-  const shown = activeFilter === ALL ? entries : entries.filter((e) => e.project_id === activeFilter);
   const onCurrent = !!pid && wp.some((p) => p.project_id === pid);
 
   /** Which project an action belongs to: current project if the worker is on it, the only one, else ask. */
@@ -241,15 +245,17 @@ export default function WorkerDetail() {
       />
       <Screen scroll={false}>
         <CardList
-          sections={[{ key: 'history', rows: shown }]}
+          sections={[{ key: 'history', rows: search.filtered }]}
           keyOf={entryKey}
           renderRow={(e) => <EntryRow e={e} showProject={activeFilter === ALL} onPress={onEntry} />}
           inset
           gap={space.lg}
           empty={
-            <Txt variant="caption" color="textMuted">
-              {`${t('recordWork')} · ${t('giveAdvance')} · ${t('payWages')}`}
-            </Txt>
+            search.noResults ?? (
+              <Txt variant="caption" color="textMuted">
+                {`${t('recordWork')} · ${t('giveAdvance')} · ${t('payWages')}`}
+              </Txt>
+            )
           }
           footer={
             <View style={{ gap: space.sm, marginTop: space.md }}>
@@ -321,6 +327,7 @@ export default function WorkerDetail() {
               ) : null}
 
               <SectionTitle title={t('history')} count={entries.length || undefined} />
+              {search.node}
               {showChips ? (
                 <Chips
                   value={activeFilter}
