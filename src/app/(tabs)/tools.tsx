@@ -10,12 +10,14 @@ import { CardList, type CardSection } from '@/components/ui/CardList';
 import { Badge, EmptyState } from '@/components/ui/feedback';
 import { Chips } from '@/components/ui/form';
 import { ListRow, Screen } from '@/components/ui/layout';
-import { useQuery } from '@/db';
+import { useQuery, useSetting } from '@/db';
 import type { ToolStock } from '@/db/types';
 import { useCurrentProjectId } from '@/hooks/data';
+import { usePdfShare } from '@/hooks/pdfShare';
 import { useListSearch } from '@/hooks/search';
 import { useT } from '@/i18n';
 import { formatDay } from '@/lib/dates';
+import { exportToolsRegisterPdf } from '@/lib/reports/export';
 import { isSinglePiece, qtyText } from '@/lib/toolStock';
 import { space, useColors } from '@/theme';
 
@@ -49,8 +51,6 @@ export default function ToolsScreen() {
   const pid = useCurrentProjectId();
   const [filter, setFilter] = useState<Filter>('all');
   const [showElsewhere, setShowElsewhere] = useState(false);
-  // The tools that are out now, on the current project (or on all projects), as a message.
-  const share = useShareSheet({ kind: 'toolsOut', id: pid });
   const rows = useQuery<Row>(
     `SELECT s.*, st.last_day, st.project_id, st.worker_id, st.taken_by, st.is_out, w.name AS worker_name, p.name AS project_name,
             COALESCE((SELECT SUM(h.qty_milli) FROM v_tool_holders h WHERE h.tool_id = s.tool_id AND h.project_id IS ?), 0) AS here_milli
@@ -63,6 +63,19 @@ export default function ToolsScreen() {
   // In memory over the rows already loaded; the box is only drawn with the list, so its text applies only while it is on screen.
   const search = useListSearch(rows, toolFields, { shown: rows.length > 0 });
   const found = search.filtered;
+  // The tools that are out now, on the current project (or on all projects), as a message; the PDF is the whole register.
+  const letterhead = useSetting('export_letterhead') === '1';
+  const pdf = usePdfShare({
+    tag: 'tools.pdf',
+    title: t('tools'),
+    make: (notice) => exportToolsRegisterPdf({ letterhead, onNotice: notice }),
+    details: { letterhead },
+  });
+  const share = useShareSheet({
+    kind: 'toolsOut',
+    id: pid,
+    pdf: { hint: `${t('pdfToolsRegister')} · ${t('toolsCount', { n: rows.length })} · ${t(letterhead ? 'letterheadOption' : 'pdfPlainPaper')}`, run: pdf.run },
+  });
 
   const { out, inStore, outHere, outElsewhere } = useMemo(() => {
     const tag = (list: Row[], bucket: Bucket): Bucketed[] => list.map((r) => ({ ...r, bucket }));

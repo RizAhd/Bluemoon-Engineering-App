@@ -1,20 +1,23 @@
 import { Image } from 'expo-image';
-import { router, useLocalSearchParams } from 'expo-router';
+import { router, Stack, useLocalSearchParams } from 'expo-router';
 import { Building2, Cloud, CloudRain, LayoutGrid, NotebookPen, Plus, Sun } from 'lucide-react-native';
 import { memo, useMemo } from 'react';
 import { FlatList, Platform, View } from 'react-native';
 
+import { ShareHeaderButton, useShareSheet } from '@/components/ShareSheet';
 import { Button } from '@/components/ui/Button';
 import { EmptyState } from '@/components/ui/feedback';
 import { Card, Screen } from '@/components/ui/layout';
 import { Txt } from '@/components/ui/Txt';
-import { useQuery } from '@/db';
+import { useQuery, useSetting } from '@/db';
 import type { Attachment, SiteNote } from '@/db/types';
 import { useCurrentProjectId, useProject } from '@/hooks/data';
+import { usePdfShare } from '@/hooks/pdfShare';
 import { useListSearch } from '@/hooks/search';
 import { useT, type TKey } from '@/i18n';
 import { formatDay, today } from '@/lib/dates';
 import { fileFor } from '@/lib/files';
+import { exportNotesPdf } from '@/lib/reports/export';
 import { hairline, listTuning, radius, space, useColors, useLayout } from '@/theme';
 
 const WEATHER = { sunny: Sun, cloudy: Cloud, rain: CloudRain } as const;
@@ -58,37 +61,56 @@ export default function NotesScreen() {
   const scopeName = project?.name ?? t('allProjects');
   const newButton = notes.length ? <Button icon={Plus} label={t('newNote')} onPress={openNew} full /> : undefined;
 
+  // The notes on screen as a message (the newest, one line each) or as a PDF (all of them, whole).
+  const letterhead = useSetting('export_letterhead') === '1';
+  const pdf = usePdfShare({
+    tag: 'notes.pdf',
+    title: `${t('siteNotes')} · ${scopeName}`,
+    make: (notice) => exportNotesPdf(project?.id ?? null, { letterhead, onNotice: notice }),
+    details: { projectId: pid, letterhead },
+  });
+  const share = useShareSheet({
+    kind: 'notesList',
+    id: project?.id ?? null,
+    pdf: { hint: `${t('pdfNotes')} · ${scopeName} · ${t(letterhead ? 'letterheadOption' : 'pdfPlainPaper')}`, run: pdf.run },
+  });
+
   return (
-    // On a short window (landscape, split screen) the New note button scrolls with the notes instead of covering them.
-    <Screen scroll={false} footer={short ? undefined : newButton}>
-      <FlatList
-        data={search.filtered}
-        keyExtractor={noteKey}
-        keyboardShouldPersistTaps="handled"
-        {...listTuning}
-        removeClippedSubviews={Platform.OS === 'android'}
-        contentContainerStyle={[column, { paddingHorizontal: gutter, paddingTop: space.lg, paddingBottom: space.xl, gap: space.md }]}
-        ListFooterComponent={short && newButton ? <View style={{ paddingTop: space.sm }}>{newButton}</View> : undefined}
-        ListHeaderComponent={
-          <View style={{ gap: space.md }}>
-            {search.node}
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.sm, minHeight: 32 }} accessibilityRole="header">
-              <ScopeIcon size={20} color={project ? c.primary : c.textMuted} strokeWidth={2} />
-              <Txt weight="semibold" numberOfLines={1} style={{ flex: 1 }}>
-                {scopeName}
-              </Txt>
-              <Txt variant="caption" color="textMuted" numeric>
-                {t('notesCount', { n: search.filtered.length })}
-              </Txt>
+    <>
+      {/* With no note yet there is nothing to share. */}
+      <Stack.Screen options={{ title: t('siteNotes'), headerRight: notes.length ? () => <ShareHeaderButton onPress={share.open} /> : undefined }} />
+      {/* On a short window (landscape, split screen) the New note button scrolls with the notes instead of covering them. */}
+      <Screen scroll={false} footer={short ? undefined : newButton}>
+        <FlatList
+          data={search.filtered}
+          keyExtractor={noteKey}
+          keyboardShouldPersistTaps="handled"
+          {...listTuning}
+          removeClippedSubviews={Platform.OS === 'android'}
+          contentContainerStyle={[column, { paddingHorizontal: gutter, paddingTop: space.lg, paddingBottom: space.xl, gap: space.md }]}
+          ListFooterComponent={short && newButton ? <View style={{ paddingTop: space.sm }}>{newButton}</View> : undefined}
+          ListHeaderComponent={
+            <View style={{ gap: space.md }}>
+              {search.node}
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.sm, minHeight: 32 }} accessibilityRole="header">
+                <ScopeIcon size={20} color={project ? c.primary : c.textMuted} strokeWidth={2} />
+                <Txt weight="semibold" numberOfLines={1} style={{ flex: 1 }}>
+                  {scopeName}
+                </Txt>
+                <Txt variant="caption" color="textMuted" numeric>
+                  {t('notesCount', { n: search.filtered.length })}
+                </Txt>
+              </View>
             </View>
-          </View>
-        }
-        ListEmptyComponent={
-          search.noResults ?? <EmptyState icon={NotebookPen} title={t('noNotes')} hint={t('noNotesHint')} action={<Button icon={Plus} label={t('newNote')} onPress={openNew} full />} />
-        }
-        renderItem={({ item }) => <NoteCard item={item} pics={byNote.get(item.id) ?? NO_PICS} showProject={!pid} />}
-      />
-    </Screen>
+          }
+          ListEmptyComponent={
+            search.noResults ?? <EmptyState icon={NotebookPen} title={t('noNotes')} hint={t('noNotesHint')} action={<Button icon={Plus} label={t('newNote')} onPress={openNew} full />} />
+          }
+          renderItem={({ item }) => <NoteCard item={item} pics={byNote.get(item.id) ?? NO_PICS} showProject={!pid} />}
+        />
+      </Screen>
+      {share.sheet}
+    </>
   );
 }
 

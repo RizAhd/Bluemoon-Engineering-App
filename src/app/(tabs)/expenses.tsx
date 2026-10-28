@@ -24,13 +24,15 @@ import { Badge, EmptyState } from '@/components/ui/feedback';
 import { CardList, type CardSection } from '@/components/ui/CardList';
 import { AmountField, HelperText, Label } from '@/components/ui/form';
 import { ListRow, Screen } from '@/components/ui/layout';
-import { useFirst } from '@/db';
+import { useFirst, useSetting } from '@/db';
 import { EXPENSE_CATEGORIES, PAY_METHODS, type Expense } from '@/db/types';
-import { EXPENSE_SORTS, useAttachmentCounts, useCurrentProjectId, useExpenseList, type ExpenseSort } from '@/hooks/data';
+import { EXPENSE_SORTS, useAttachmentCounts, useCurrentProjectId, useExpenseList, useProject, type ExpenseFilter, type ExpenseSort } from '@/hooks/data';
+import { usePdfShare } from '@/hooks/pdfShare';
 import { useSearchBox } from '@/hooks/search';
 import { useT, type TKey } from '@/i18n';
 import { addDays, formatDay } from '@/lib/dates';
 import { centsToInput, formatLKR, parseCents } from '@/lib/money';
+import { exportExpensesPdf } from '@/lib/reports/export';
 import { space, useColors } from '@/theme';
 
 type Row = Expense & { project_name: string };
@@ -86,8 +88,6 @@ export default function ExpensesScreen() {
   const td = useToday();
   const month = td.slice(0, 7);
   const [limit, setLimit] = useState(PAGE); // -1 = no cap
-  // The newest expenses and the total cost of the current project (or of all projects), as a message.
-  const share = useShareSheet({ kind: 'expenses', id: pid });
 
   const { prefs, set, reset } = useListPrefs('expenses', DEFAULTS);
   const period = toPeriod(prefs.period);
@@ -102,7 +102,36 @@ export default function ExpensesScreen() {
   // old row past the first page is found too. The box is drawn with the list only (an empty tab has no rows to hide).
   const search = useSearchBox();
   const categoryNames = Object.fromEntries(EXPENSE_CATEGORIES.map((k) => [k, t(`cat_${k}`)]));
-  const list = useExpenseList({ projectId: pid, range, categories: cats, methods, minCents: min, maxCents: max, q: search.query, categoryNames }, sort, limit);
+  const filter: ExpenseFilter = { projectId: pid, range, categories: cats, methods, minCents: min, maxCents: max, q: search.query, categoryNames };
+  const list = useExpenseList(filter, sort, limit);
+  const projectName = useProject(pid)?.name ?? null;
+
+  // The PDF: every expense the filters and the search match (not only the page shown), with them named at the top.
+  const letterhead = useSetting('export_letterhead') === '1';
+  const pdf = usePdfShare({
+    tag: 'expenses.pdf',
+    title: t('expenses'),
+    make: (notice) =>
+      exportExpensesPdf(filter, sort, {
+        letterhead,
+        onNotice: notice,
+        filters: [
+          { label: t('period'), value: periodLabel(period, td, t) },
+          ...(search.query ? [{ label: t('search'), value: search.query }] : []),
+          ...(cats.length ? [{ label: t('category'), value: cats.map((k) => t(`cat_${k}`)).join(', ') }] : []),
+          ...(methods.length ? [{ label: t('method'), value: methods.map((m) => t(`method_${m}`)).join(', ') }] : []),
+          ...(amountRangeLabel(min, max, t) ? [{ label: t('amount'), value: amountRangeLabel(min, max, t) ?? '' }] : []),
+          { label: t('sortBy'), value: t(`sort_${sort}`) },
+        ],
+      }),
+    details: { projectId: pid, period, sort, letterhead },
+  });
+  // The newest expenses and the total cost of the current project (or of all projects), as a message; the PDF has them all.
+  const share = useShareSheet({
+    kind: 'expenses',
+    id: pid,
+    pdf: { hint: `${t('pdfExpenses')} · ${projectName ?? t('allProjects')} · ${t(letterhead ? 'letterheadOption' : 'pdfPlainPaper')}`, run: pdf.run },
+  });
   const rows = list.rows;
   const where = pid ? 'AND e.project_id = ?' : '';
   const args = pid ? [pid] : [];

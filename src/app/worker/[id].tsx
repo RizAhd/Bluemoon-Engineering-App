@@ -1,8 +1,9 @@
 import { router, Stack, useFocusEffect, useLocalSearchParams } from 'expo-router';
-import { Banknote, Building2, CalendarCheck, HandCoins, Pencil, Phone, Trash2, UserX } from 'lucide-react-native';
+import { Banknote, Building2, CalendarCheck, FileText, HandCoins, Pencil, Phone, Trash2, UserX } from 'lucide-react-native';
 import { memo, useCallback, useMemo, useState } from 'react';
 import { Alert, Linking, View } from 'react-native';
 
+import { PdfOptionsSheet } from '@/components/PdfOptionsSheet';
 import { ShareHeaderButton, useShareSheet } from '@/components/ShareSheet';
 import { Stat, Tiles } from '@/components/Stats';
 import { Button, HeaderButton } from '@/components/ui/Button';
@@ -11,17 +12,19 @@ import { Badge, EmptyState, toast } from '@/components/ui/feedback';
 import { Chips, PickerSheet } from '@/components/ui/form';
 import { Card, ListCard, ListRow, Screen, SectionTitle } from '@/components/ui/layout';
 import { Txt } from '@/components/ui/Txt';
-import { useFirst, useQuery } from '@/db';
+import { setSetting, useFirst, useQuery, useSetting } from '@/db';
 import { deleteRecord, payWages, saveWorker, unassignWorker } from '@/db/repo';
 import type { WageEntry, WageKind, Worker, WorkerBalance } from '@/db/types';
 import { useCurrentProjectId, useProjects, useWorkerProjects } from '@/hooks/data';
+import { usePdfShare } from '@/hooks/pdfShare';
 import { useListSearch } from '@/hooks/search';
 import { formatPhone } from '@/lib/names';
-import { useT } from '@/i18n';
+import { LANG_NAMES, useLang, useT, type Lang } from '@/i18n';
 import { confirmPayments } from '@/lib/confirmPay';
 import { formatDay, today } from '@/lib/dates';
 import { showError } from '@/lib/errors';
 import { formatLKR } from '@/lib/money';
+import { exportWorkerStatementPdf } from '@/lib/reports/export';
 import { space, useColors } from '@/theme';
 
 const ICON = { work: CalendarCheck, advance: HandCoins, payment: Banknote } as const;
@@ -57,6 +60,7 @@ export default function WorkerDetail() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const t = useT();
   const c = useColors();
+  const appLang = useLang();
   const pid = useCurrentProjectId();
   const worker = useFirst<Worker>('SELECT * FROM workers WHERE id = ? AND deleted_at IS NULL', [id ?? '']);
   const bal = useFirst<WorkerBalance>('SELECT * FROM v_worker_balance WHERE worker_id = ?', [id ?? '']);
@@ -83,8 +87,36 @@ export default function WorkerDetail() {
   // The chosen filter only counts while that project is still in the history; otherwise fall back to the default.
   const filterValid = filter === ALL || (filter != null && historyProjects.some((p) => p.id === filter));
   const activeFilter = filterValid && filter ? filter : pid && historyProjects.some((p) => p.id === pid) ? pid : ALL;
+  const statementProject = activeFilter === ALL ? null : activeFilter;
+  const statementProjectName = statementProject ? (historyProjects.find((p) => p.id === statementProject)?.name ?? null) : null;
+
+  // The printed statement: the letterhead choice is the one of every PDF; its language is remembered for the
+  // next worker (the app's language until one is chosen), since a worker may not read what the owner reads.
+  const letterhead = useSetting('export_letterhead') === '1';
+  const savedLang = useSetting('statement_lang');
+  const statementLang: Lang = savedLang === 'en' || savedLang === 'si' || savedLang === 'ta' ? savedLang : appLang;
+  const [pdfOpen, setPdfOpen] = useState(false);
+  const pdf = usePdfShare({
+    tag: 'worker.statementPdf',
+    title: `${t('pdfStatement')} · ${worker?.name ?? ''}`.trim(),
+    make: (notice) => exportWorkerStatementPdf(id ?? '', statementProject, { letterhead, lang: statementLang, onNotice: notice }),
+    details: { id, projectId: statementProject, letterhead, lang: statementLang },
+  });
+  // the sheets go first: a message shown while one is open would sit behind it
+  const exportStatement = (handOff?: () => void) =>
+    pdf.run(() => {
+      setPdfOpen(false);
+      handOff?.();
+    });
+
+  const pdfHint = `${t('pdfStatement')} · ${statementProjectName ?? t('allProjects')} · ${LANG_NAMES[statementLang]} · ${t(letterhead ? 'letterheadOption' : 'pdfPlainPaper')}`;
   // The statement follows that filter: one project when one is chosen (the current project by default), else all.
-  const share = useShareSheet({ kind: 'workerStatement', id: id ?? null, options: { projectId: activeFilter === ALL ? null : activeFilter } });
+  const share = useShareSheet({
+    kind: 'workerStatement',
+    id: id ?? null,
+    options: { projectId: statementProject },
+    pdf: { hint: pdfHint, run: exportStatement },
+  });
 
   // The history under the project chip, then searched by note, project, kind, amount or day; the box is drawn with the history only.
   const shown = useMemo(() => (activeFilter === ALL ? entries : entries.filter((e) => e.project_id === activeFilter)), [entries, activeFilter]);
@@ -326,7 +358,12 @@ export default function WorkerDetail() {
                 </>
               ) : null}
 
-              <SectionTitle title={t('history')} count={entries.length || undefined} />
+              {/* the statement prints this history (all of it, for the project chosen below): its own options are one tap away */}
+              <SectionTitle
+                title={t('history')}
+                count={entries.length || undefined}
+                action={entries.length ? <Button kind="ghost" compact icon={FileText} label={t('statementPdf')} onPress={() => setPdfOpen(true)} /> : undefined}
+              />
               {search.node}
               {showChips ? (
                 <Chips
@@ -353,6 +390,16 @@ export default function WorkerDetail() {
           if (kind === 'quickpay') quickPay(projectId);
           else go(kind, projectId);
         }}
+      />
+      <PdfOptionsSheet
+        visible={pdfOpen}
+        title={t('statementPdf')}
+        busy={pdf.busy}
+        letterhead={letterhead}
+        onLetterhead={(v) => setSetting('export_letterhead', v ? '1' : '0')}
+        lang={{ label: t('statementLanguage'), value: statementLang, onChange: (l) => setSetting('statement_lang', l) }}
+        onShare={() => void exportStatement()}
+        onClose={() => setPdfOpen(false)}
       />
       {share.sheet}
     </>

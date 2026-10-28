@@ -731,6 +731,24 @@ export const en = {
   phUnitTool: 'pcs, bags, kg, m',
   heldBy: 'Who has them',
   inStoreOf: '{n} of {total} in store',
+  // printable lists (the PDF row of the Share sheet)
+  pdfStatement: 'Statement',
+  pdfExpenses: 'Expense list',
+  pdfWorkersList: 'Workers list',
+  pdfDaySheet: 'Day sheet',
+  pdfToolsRegister: 'Tools register',
+  pdfNotes: 'Notes list',
+  pdfFooter: 'Made with the Bluemoon Engineering site app',
+  printedOn: 'Printed {date}',
+  supervisor: 'Supervisor',
+  checkedBy: 'Checked by',
+  unpaid: 'Unpaid',
+  noWorkRecorded: 'No work recorded for this day',
+  toolsRegisterHint: 'Every tool, out or in store',
+  code: 'Code',
+  statementPdf: 'Statement PDF',
+  statementLanguage: 'Language of the statement',
+  toolsCount: '{n} tools',
 } as const;
 
 export type Dict = Record<keyof typeof en, string>;
