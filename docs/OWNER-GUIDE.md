@@ -21,6 +21,7 @@ One app for every site. Everything is saved **on the phone**, so it works with n
 | See today's, this week's or this month's spending | **Today** tab → *Summary* → Day / Week / Month (‹ › for earlier) |
 | See what needs paying | **Today** tab → *Wages to pay* |
 | Make a price quotation for a client | ⚙ Settings → **Estimates** |
+| Note money the client has paid, and see how much is still to come | Open the project → **Money from client** → *Record payment* |
 | Send a project to another phone | Project → *Export PDF* |
 
 **Everything is per project.** The name at the top of each screen is the site you are working on.

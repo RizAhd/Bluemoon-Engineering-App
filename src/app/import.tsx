@@ -31,6 +31,7 @@ type State =
 
 const TABLE_LABEL: Record<DataTable, TKey> = {
   projects: 'projects',
+  project_receipts: 'moneyFromClient',
   workers: 'workers',
   tools: 'tools',
   project_workers: 'projectWorkers',

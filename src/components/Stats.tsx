@@ -103,6 +103,23 @@ export function ContractBar({ spent, contract }: { spent: number; contract: numb
   );
 }
 
+/** How much of the project value the client has paid. Green fill plus a % label, never colour alone. */
+export function ReceivedBar({ percent, received, over }: { percent: number; received: number; over: boolean }) {
+  const t = useT();
+  const c = useColors();
+  return (
+    <View style={{ gap: space.xs }} accessibilityLabel={`${percent}% ${t('receivedSoFar')}`}>
+      <View style={{ height: 10, borderRadius: 5, backgroundColor: c.border, overflow: 'hidden' }}>
+        <View style={{ width: `${percent}%`, height: '100%', borderRadius: 5, backgroundColor: over ? c.warning : c.success }} />
+      </View>
+      <Txt variant="caption" color={over ? 'warning' : 'textMuted'} weight="semibold" numeric>
+        {/* something received but under one percent reads "<1 %", never a misleading "0 %" */}
+        {received > 0 && percent === 0 ? '<1' : percent} %
+      </Txt>
+    </View>
+  );
+}
+
 /** Horizontal bars for spend by category. Values are labelled, so no legend is needed. */
 export function CategoryBars({ rows }: { rows: { label: string; cents: number }[] }) {
   const c = useColors();

@@ -215,6 +215,7 @@ function AppStack() {
         <Stack.Screen name="more" options={{ title: t('settingsAndMore') }} />
         <Stack.Screen name="project/form" options={{ title: t('project') }} />
         <Stack.Screen name="project/[id]" options={{ title: t('project') }} />
+        <Stack.Screen name="project/receipt" options={{ title: t('moneyFromClient') }} />
         <Stack.Screen name="expense/form" options={{ title: t('expense') }} />
         <Stack.Screen name="worker/form" options={{ title: t('worker') }} />
         <Stack.Screen name="worker/[id]" options={{ title: t('worker') }} />

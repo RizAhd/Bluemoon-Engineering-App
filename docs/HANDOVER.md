@@ -90,9 +90,17 @@ scripts/                 embed-letterhead.py, device/phone.py (phone testing)
 - Nothing is hard-deleted: rows get `deleted_at` (soft delete). Restore and PDF import **merge**, never delete.
 - Tables: `projects`, `expenses`, `workers`, `project_workers`, `wage_entries` (kind `work` / `advance` /
   `payment`), `tools`, `tool_movements`, `site_notes`, `attachments`, `estimates`, `estimate_items`,
-  `estimate_payments`, `settings`, `audit_log`. Balances come from views (`v_project_cost`,
+  `estimate_payments`, `project_receipts`, `settings`, `audit_log`. Balances come from views (`v_project_cost`, `v_project_received`,
   `v_worker_balance`, `v_project_worker_balance`, `v_wage_day`, `v_tool_status`, `v_tool_stock`,
   `v_tool_holders`).
+- **Money from the client** (migration 7): `project_receipts` holds each payment the client made on a project
+  (`saveReceipt`: amount > 0 and at most `MAX_ENTRY_CENTS`, valid day, cash/bank/cheque). The project value is
+  `projects.contract_cents`. `v_project_received` gives received and the number of payments; `receiptSummary`
+  (`src/lib/receipts.ts`) turns value + received into *still to receive*, *over by* and the percent, in integer
+  cents, and is the only place that does that sum (project page, projects list, project PDF). Going past the value is
+  allowed and shown as "over". The table is in `DATA_TABLES`, so backups, Drive, merge and the project hand-off carry
+  it (`collectProject` too); deleting a project soft-deletes its payments. `estimate_payments` is only the planned
+  stage % of a quotation and is unrelated.
 - A worker's balance = work − advances − payments. "Unpaid for today's work" is capped at what the worker is
   owed on the project (`src/lib/wages.ts`), so an advance is never paid twice. One amount is at most
   `MAX_ENTRY_CENTS` (Rs 100,000,000, `errAmountTooBig`). A day's wage is `dayWage(days, rate)`: half up, exact for
@@ -174,7 +182,7 @@ full backup first, then restore after installing. Local Gradle builds on the Win
 
 ```bash
 npm run check        # tsc --noEmit && eslint src   (must be clean)
-npx jest             # 80 suites, ~3,020 tests, ~15 minutes on a quiet PC (an hour when other programs are busy)
+npx jest             # 82 suites, ~3,070 tests, ~15 minutes on a quiet PC (an hour when other programs are busy)
 npx jest path/to/file.test.tsx -t "name"   # one file / one test
 ```
 

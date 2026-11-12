@@ -109,6 +109,31 @@ export function saveExpense(e: {
   });
 }
 
+// ---------------------------------------------------------------- money received from the client
+
+/**
+ * One payment from the client towards a project. Over the project value is allowed (extra work is real): the
+ * screen says "over by", the database does not refuse.
+ */
+export function saveReceipt(r: {
+  id?: string;
+  project_id: string | null;
+  day: string;
+  amount_cents: number | null;
+  method: PayMethod;
+  note?: string | null;
+}): string {
+  if (!exists('projects', r.project_id)) throw new ValidationError('project_id', 'errProject');
+  return save('project_receipts', {
+    id: r.id,
+    project_id: r.project_id,
+    day: day(r.day),
+    amount_cents: cents(r.amount_cents),
+    method: r.method,
+    note: opt(r.note),
+  });
+}
+
 // ---------------------------------------------------------------- workers & wages
 
 export function saveWorker(w: {
@@ -500,7 +525,7 @@ export function saveNote(n: { id?: string; project_id: string | null; day: strin
 
 /** Soft-deletes a record and its attachments together. Deleting a project or a tool also deletes what belongs to it. */
 export function deleteRecord(
-  table: 'projects' | 'expenses' | 'workers' | 'project_workers' | 'wage_entries' | 'tools' | 'tool_movements' | 'site_notes',
+  table: 'projects' | 'expenses' | 'workers' | 'project_workers' | 'wage_entries' | 'tools' | 'tool_movements' | 'site_notes' | 'project_receipts',
   id: string,
 ) {
   const d = getDb();
@@ -514,7 +539,7 @@ export function deleteRecord(
   tx(() => {
     if (table === 'projects') {
       // Cascade so lists/totals that do not join v_project_cost stop counting them; their photos go with them.
-      for (const child of ['expenses', 'site_notes', 'wage_entries', 'tool_movements', 'project_workers'] as const) {
+      for (const child of ['expenses', 'site_notes', 'wage_entries', 'tool_movements', 'project_workers', 'project_receipts'] as const) {
         d.getAllSync<{ id: string }>(`SELECT id FROM ${child} WHERE project_id = ? AND deleted_at IS NULL`, [id]).forEach((r) => removeWithFiles(child, r.id));
       }
     }

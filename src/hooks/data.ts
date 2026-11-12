@@ -9,6 +9,8 @@ import type {
   Expense,
   Project,
   ProjectCost,
+  ProjectReceipt,
+  ProjectReceived,
   ProjectWorkerBalance,
   Tool,
   WageDay,
@@ -71,6 +73,16 @@ export function useWorkerProjects(workerId: string): (ProjectWorkerBalance & { p
      ORDER BY CASE p.status WHEN 'active' THEN 0 WHEN 'on_hold' THEN 1 ELSE 2 END, b.active DESC, p.name COLLATE NOCASE`,
     [workerId],
   );
+}
+
+/** Every payment the client made on this project, newest first. */
+export function useProjectReceipts(projectId: string | null | undefined) {
+  return useQuery<ProjectReceipt>('SELECT * FROM project_receipts WHERE project_id = ? AND deleted_at IS NULL ORDER BY day DESC, created_at DESC, id', [projectId ?? '']);
+}
+
+/** The project's value, what has been received and how many payments. null when the project is missing or deleted. */
+export function useProjectReceived(projectId: string | null | undefined) {
+  return useFirst<ProjectReceived>('SELECT * FROM v_project_received WHERE project_id = ?', [projectId ?? '']);
 }
 
 export function useTools() {
@@ -265,8 +277,10 @@ const PROJECT_ORDER: Record<ProjectSort, string> = {
 
 /** Every project with its costs, by status (active, on hold, completed) and then in the chosen order. */
 export function useProjectList(sort: ProjectSort) {
-  return useQuery<ProjectCost & { location: string | null; client: string | null; created_at: string }>(
-    `SELECT v.*, p.location, p.client, p.created_at FROM v_project_cost v JOIN projects p ON p.id = v.project_id
+  return useQuery<ProjectCost & { location: string | null; client: string | null; created_at: string; received_cents: number }>(
+    `SELECT v.*, p.location, p.client, p.created_at,
+            COALESCE((SELECT r.received_cents FROM v_project_received r WHERE r.project_id = v.project_id), 0) AS received_cents
+     FROM v_project_cost v JOIN projects p ON p.id = v.project_id
      ORDER BY CASE v.status WHEN 'active' THEN 0 WHEN 'on_hold' THEN 1 ELSE 2 END, ${PROJECT_ORDER[sort]}`,
   );
 }

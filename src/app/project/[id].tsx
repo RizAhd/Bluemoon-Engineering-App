@@ -1,12 +1,12 @@
 import * as Sharing from 'expo-sharing';
 import { router, Stack, useLocalSearchParams } from 'expo-router';
-import { CalendarRange, FileOutput, FileText, Hammer, HardHat, NotebookPen, Package, Pencil, Star, UserPlus } from 'lucide-react-native';
+import { CalendarRange, FileOutput, FileText, Hammer, HardHat, NotebookPen, Package, Pencil, Plus, Star, UserPlus } from 'lucide-react-native';
 import { useState } from 'react';
 import { Pressable, View } from 'react-native';
 
 import { PhotoStrip } from '@/components/PhotoStrip';
 import { ShareHeaderButton, useShareSheet } from '@/components/ShareSheet';
-import { CategoryBars, ContractBar, Stat, Tiles } from '@/components/Stats';
+import { CategoryBars, ContractBar, ReceivedBar, Stat, Tiles } from '@/components/Stats';
 import { Button, HeaderButton } from '@/components/ui/Button';
 import { Badge, EmptyState, toast } from '@/components/ui/feedback';
 import { Checkbox } from '@/components/ui/form';
@@ -14,12 +14,13 @@ import { Card, Divider, ListCard, ListRow, Screen, SectionTitle } from '@/compon
 import { Txt } from '@/components/ui/Txt';
 import { setSetting, useFirst, useQuery, useSetting } from '@/db';
 import type { Estimate, ProjectCost, ToolHolder, ToolStock } from '@/db/types';
-import { setCurrentProject, useCurrentProjectId, useEstimateTotal, useProject, useProjectEstimates, useProjectWorkers } from '@/hooks/data';
+import { setCurrentProject, useCurrentProjectId, useEstimateTotal, useProject, useProjectEstimates, useProjectReceipts, useProjectReceived, useProjectWorkers } from '@/hooks/data';
 import { useT, type TKey } from '@/i18n';
 import { formatDay } from '@/lib/dates';
 import { showError } from '@/lib/errors';
 import { formatLKR } from '@/lib/money';
 import { exportProjectPdf } from '@/lib/pdf';
+import { receiptSummary } from '@/lib/receipts';
 import { isSinglePiece, qtyText } from '@/lib/toolStock';
 import { radius, space, useColors } from '@/theme';
 
@@ -53,6 +54,20 @@ function ExportOption({ label, hint, checked, onChange }: { label: string; hint:
   );
 }
 
+/** One line of the "Money from client" card: the label on the left, the amount on the right. */
+function MoneyLine({ label, value, strong, tone = 'text' }: { label: string; value: string; strong?: boolean; tone?: 'text' | 'warning' | 'danger' }) {
+  return (
+    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline', gap: space.sm }}>
+      <Txt variant="caption" color="textMuted" weight="semibold" style={{ flexShrink: 1 }}>
+        {label}
+      </Txt>
+      <Txt weight={strong ? 'bold' : 'semibold'} color={tone} numeric style={{ flexShrink: 1, textAlign: 'right' }}>
+        {value}
+      </Txt>
+    </View>
+  );
+}
+
 /** A link back to the estimate this project was made from: "Estimate EST-2026-001" and its total. */
 function LinkedEstimate({ estimate }: { estimate: Estimate }) {
   const t = useT();
@@ -81,6 +96,8 @@ export default function ProjectDetail() {
   const noteCount = useFirst<{ n: number }>('SELECT COUNT(*) AS n FROM site_notes WHERE project_id = ? AND deleted_at IS NULL', [id ?? ''])?.n ?? 0;
   const workers = useProjectWorkers(id ?? null);
   const estimates = useProjectEstimates(id);
+  const receipts = useProjectReceipts(id);
+  const receivedRow = useProjectReceived(id);
   // "Mark inactive" only changes workers.active, and the roster view reports project_workers.active, so ask for the worker's own flag too.
   const inactiveWorkerIds = useQuery<{ id: string }>('SELECT id FROM workers WHERE active = 0 AND deleted_at IS NULL');
   // One row per tool and holder (a tool with 3 pieces here shows "3"; a material its issued amount), since the last issue to them.
@@ -142,6 +159,7 @@ export default function ProjectDetail() {
   }
   const pr = project;
   const total = cost.expense_cents + cost.labour_cents;
+  const money = receiptSummary(pr.contract_cents, receivedRow?.received_cents ?? 0);
   const inactive = new Set(inactiveWorkerIds.map((r) => r.id));
   const activeWorkers = workers.filter((w) => w.active && !inactive.has(w.worker_id));
 
@@ -213,6 +231,55 @@ export default function ProjectDetail() {
             </>
           ) : null}
         </Card>
+
+        <SectionTitle
+          title={t('moneyFromClient')}
+          action={<Button kind="ghost" compact icon={Plus} label={t('recordPayment')} onPress={() => router.push(`/project/receipt?projectId=${pr.id}`)} />}
+        />
+        <Card>
+          {money.value != null ? <ReceivedBar percent={money.percent} received={money.received} over={money.over > 0} /> : null}
+          {money.value != null ? (
+            <MoneyLine label={t('projectValue')} value={formatLKR(money.value)} />
+          ) : null}
+          <MoneyLine label={t('receivedSoFar')} value={formatLKR(money.received)} strong />
+          {money.value != null ? (
+            money.over > 0 ? (
+              <MoneyLine label={t('overValueBy')} value={formatLKR(money.over)} tone="warning" strong />
+            ) : (
+              <MoneyLine label={t('stillToReceive')} value={formatLKR(money.left ?? 0)} strong />
+            )
+          ) : (
+            <Txt variant="caption" color="textMuted">
+              {t('addValueHint')}
+            </Txt>
+          )}
+          {money.received > 0 ? (
+            <>
+              <Divider />
+              <MoneyLine
+                label={t('receivedMinusSpent')}
+                value={formatLKR(money.received - total)}
+                tone={money.received - total < 0 ? 'danger' : 'text'}
+              />
+            </>
+          ) : null}
+        </Card>
+        {receipts.length ? (
+          <ListCard inset>
+            {receipts.map((r) => (
+              <ListRow
+                key={r.id}
+                title={formatLKR(r.amount_cents)}
+                subtitle={[formatDay(r.day), t(`method_${r.method}`), r.note].filter(Boolean).join(' · ')}
+                onPress={() => router.push(`/project/receipt?id=${r.id}`)}
+              />
+            ))}
+          </ListCard>
+        ) : (
+          <Txt variant="caption" color="textMuted">
+            {t('noPaymentsYet')}
+          </Txt>
+        )}
 
         {/* two even tiles; what was paid of the labour sits under it, not alone on a third row */}
         <Tiles>

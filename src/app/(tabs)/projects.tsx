@@ -16,7 +16,7 @@ import { useT } from '@/i18n';
 import { formatLKR } from '@/lib/money';
 import { radius, space, useColors } from '@/theme';
 
-type Row = ProjectCost & { location: string | null; client: string | null };
+type Row = ProjectCost & { location: string | null; client: string | null; received_cents?: number };
 type Filter = 'all' | ProjectStatus;
 
 const STATUSES: ProjectStatus[] = ['active', 'on_hold', 'completed'];
@@ -150,7 +150,16 @@ const ProjectRow = memo(function ProjectRow({ p, current, onOpen }: { p: Row; cu
       icon={Building2}
       iconTone={current ? 'primary' : undefined}
       title={p.name}
-      subtitle={[p.client, p.location].filter(Boolean).join(' · ') || undefined}
+      subtitle={
+        [
+          p.client,
+          p.location,
+          // what the client has paid, only once something was received and a value is known
+          p.contract_cents && p.received_cents ? t('receivedOfValue', { received: formatLKR(p.received_cents), value: formatLKR(p.contract_cents) }) : null,
+        ]
+          .filter(Boolean)
+          .join(' · ') || undefined
+      }
       value={formatLKR(total(p))}
       accessibilityLabel={label}
       badge={

@@ -487,11 +487,39 @@ export const migrations: string[] = [
   JOIN tools t ON t.id = s.tool_id
   WHERE s.is_out = 1 AND t.quantity_milli = 1000 AND t.is_material = 0;
   `,
+
+  // 7 — money received from the client, part by part (the project value is projects.contract_cents). Nothing existing
+  // changes: a project with no receipts simply has received = 0.
+  `
+  CREATE TABLE project_receipts (
+    ${common},
+    project_id TEXT NOT NULL REFERENCES projects(id),
+    day TEXT NOT NULL CHECK (day GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]'),
+    amount_cents INTEGER NOT NULL CHECK (amount_cents > 0),
+    method TEXT NOT NULL DEFAULT 'bank' CHECK (method IN ('cash','bank','cheque')),
+    note TEXT
+  );
+  CREATE INDEX ix_receipts_project_day ON project_receipts(project_id, day);
+
+  -- One row per live project: its value, what the client has paid so far and how many payments that was.
+  CREATE VIEW v_project_received AS
+  SELECT p.id AS project_id,
+         p.contract_cents,
+         COALESCE((SELECT SUM(r.amount_cents) FROM project_receipts r
+                   WHERE r.project_id = p.id AND r.deleted_at IS NULL), 0) AS received_cents,
+         (SELECT COUNT(*) FROM project_receipts r
+          WHERE r.project_id = p.id AND r.deleted_at IS NULL) AS receipt_count,
+         (SELECT MAX(r.day) FROM project_receipts r
+          WHERE r.project_id = p.id AND r.deleted_at IS NULL) AS last_day
+  FROM projects p
+  WHERE p.deleted_at IS NULL;
+  `,
 ];
 
 /** Tables that hold business data, in an order where parents come before children. */
 export const DATA_TABLES = [
   'projects',
+  'project_receipts',
   'estimates',
   'estimate_items',
   'estimate_payments',

@@ -103,6 +103,7 @@ export function collectProject(projectId: string): Bundle['tables'] {
   // v_tool_status uses each tool's latest movement, so carry the tool's whole history.
   const moves = allMovesOfTools(new Set(projectMoves.map((m) => String(m.tool_id))));
   const notes = all<Row>('SELECT * FROM site_notes WHERE project_id = ?', [projectId]);
+  const receipts = all<Row>('SELECT * FROM project_receipts WHERE project_id = ?', [projectId]);
   // the estimate this project came from, with its lines and stages
   const estimates = all<Row>('SELECT * FROM estimates WHERE project_id = ?', [projectId]);
   const estimateIds = estimates.map((e) => String(e.id));
@@ -131,6 +132,7 @@ export function collectProject(projectId: string): Bundle['tables'] {
 
   return {
     projects,
+    project_receipts: receipts,
     estimates,
     estimate_items: estimateChildren('estimate_items', estimateIds),
     estimate_payments: estimateChildren('estimate_payments', estimateIds),

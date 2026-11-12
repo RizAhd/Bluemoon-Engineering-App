@@ -439,8 +439,8 @@ describe('upgrading a version-2 database (assignments already exist)', () => {
 describe('upgrading a version-3 database (migration 4: a worker who left is inactive on the roster)', () => {
   const stamp = '2026-10-10T04:00:00.000Z';
   const base = (id: string) => ({ id, created_at: stamp, updated_at: stamp, version: 1, device_id: 'dev' });
-  // the tables a version-3 phone has (estimates arrived with version 5)
-  const ALL_TABLES = [...DATA_TABLES.filter((t) => !t.startsWith('estimate')), 'audit_log', 'settings'] as const;
+  // the tables a version-3 phone has (estimates arrived with version 5, client payments with version 7)
+  const ALL_TABLES = [...DATA_TABLES.filter((t) => !t.startsWith('estimate') && t !== 'project_receipts'), 'audit_log', 'settings'] as const;
   const ROSTER = 'SELECT * FROM v_project_worker_balance ORDER BY project_id, worker_id';
 
   type Reader = { getAllSync: <T>(sql: string) => T[] };
@@ -836,5 +836,52 @@ describe('the migrations themselves', () => {
 
   it('every migration is a single non-empty script', () => {
     for (const m of migrations) expect(m.trim().length).toBeGreaterThan(20);
+  });
+});
+
+describe('upgrading a version-6 database (migration 7: money received from the client)', () => {
+  const stamp = '2026-10-10T04:00:00.000Z';
+  const base = (id: string) => ({ id, created_at: stamp, updated_at: stamp, version: 1, device_id: 'dev' });
+
+  function installVersion6() {
+    resetDb();
+    const old = openLegacyDb(6);
+    insertRow(old, 'projects', { ...base('P'), name: 'School', status: 'active', contract_cents: 1_000_000_000 });
+    insertRow(old, 'expenses', { ...base('ex-1'), project_id: 'P', day: '2026-10-09', category: 'food', amount_cents: 4_200, method: 'cash' });
+    expect(old.getFirstSync<{ user_version: number }>('PRAGMA user_version')?.user_version).toBe(6);
+    const projects = old.getAllSync<Record<string, unknown>>('SELECT * FROM projects');
+    const expenses = old.getAllSync<Record<string, unknown>>('SELECT * FROM expenses');
+    old.closeSync();
+    return { projects, expenses };
+  }
+
+  it('has a newer schema than the data it is tested with (the test is not vacuous)', () => {
+    expect(LATEST()).toBeGreaterThan(6);
+  });
+
+  it('runs migration 7: the payments table and view exist, the project keeps its value and received starts at 0', () => {
+    const before = installVersion6();
+    expect(userVersion()).toBe(LATEST());
+    expect(all('SELECT * FROM projects')).toEqual(before.projects);
+    expect(all('SELECT * FROM expenses')).toEqual(before.expenses);
+    expect(all('SELECT * FROM project_receipts')).toEqual([]);
+    expect(all('SELECT project_id, contract_cents, received_cents, receipt_count, last_day FROM v_project_received')).toEqual([
+      { project_id: 'P', contract_cents: 1_000_000_000, received_cents: 0, receipt_count: 0, last_day: null },
+    ]);
+    expect(all('PRAGMA foreign_key_check')).toEqual([]);
+  });
+
+  it('the table refuses a zero amount, a bad day and an unknown method', () => {
+    installVersion6();
+    getDb();
+    const put = (over: Record<string, string | number>) =>
+      getDb().runSync(
+        'INSERT INTO project_receipts (id, created_at, updated_at, version, device_id, project_id, day, amount_cents, method) VALUES (?, ?, ?, 1, ?, ?, ?, ?, ?)',
+        ['r', stamp, stamp, 'dev', 'P', over.day ?? '2026-10-10', over.amount ?? 100, over.method ?? 'bank'],
+      );
+    expect(() => put({ amount: 0 })).toThrow();
+    expect(() => put({ day: 'yesterday' })).toThrow();
+    expect(() => put({ method: 'barter' })).toThrow();
+    expect(() => put({})).not.toThrow();
   });
 });

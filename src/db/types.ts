@@ -116,6 +116,24 @@ export interface Attachment extends Base {
   sha256: string;
 }
 
+/** Money the client paid towards a project, one row per payment. */
+export interface ProjectReceipt extends Base {
+  project_id: string;
+  day: string;
+  amount_cents: number;
+  method: PayMethod;
+  note: string | null;
+}
+
+/** A project's value, what the client has paid so far and how many payments that was (v_project_received). */
+export interface ProjectReceived {
+  project_id: string;
+  contract_cents: number | null;
+  received_cents: number;
+  receipt_count: number;
+  last_day: string | null;
+}
+
 export interface ProjectCost {
   project_id: string;
   name: string;

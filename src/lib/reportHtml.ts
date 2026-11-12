@@ -13,13 +13,14 @@
  *    starts with the title block and keeps clear of the header block, border and bottom band
  *    (see LETTERHEAD_MARGIN_MM)
  */
-import type { Expense, Project, ProjectCost, SiteNote, Tool, ToolMovement, WageEntry } from '@/db/types';
+import type { Expense, Project, ProjectCost, ProjectReceipt, SiteNote, Tool, ToolMovement, WageEntry } from '@/db/types';
 import type { TKey } from '@/i18n';
 
 import { LOGO_ASPECT, LOGO_DATA_URI } from './brandLogo';
 import { formatDay } from './dates';
 import { LETTERHEAD_MARGIN_MM, PLAIN_MARGIN_MM } from './letterhead';
 import { formatLKR } from './money';
+import { receiptSummary } from './receipts';
 import { fill } from './shareLabels';
 import { isSinglePiece, qtyText } from './toolStock';
 
@@ -30,6 +31,7 @@ export interface ReportTables {
   wage_entries?: Row[];
   tool_movements?: Row[];
   site_notes?: Row[];
+  project_receipts?: Row[];
   workers?: Row[];
   tools?: Row[];
 }
@@ -91,6 +93,8 @@ export function buildReportHtml(input: ReportInput): string {
   const wages = live<WageEntry>(tables.wage_entries);
   const moves = live<ToolMovement>(tables.tool_movements).sort((a, b) => a.day.localeCompare(b.day));
   const notes = live<SiteNote>(tables.site_notes).sort((a, b) => a.day.localeCompare(b.day));
+  // a bundle made before payments were recorded has none
+  const receipts = live<ProjectReceipt>(tables.project_receipts).sort((a, b) => a.day.localeCompare(b.day));
   const workerName = new Map(((tables.workers ?? []) as { id: string; name: string }[]).map((w) => [w.id, w.name]));
   // A bundle made before quantities existed has no count columns: every such tool and movement is one piece.
   const tools = new Map(
@@ -243,6 +247,27 @@ export function buildReportHtml(input: ReportInput): string {
             moves.map((mv) => [esc(formatDay(mv.day)), esc(toolName(mv.tool_id)), t(mv.kind === 'issue' ? 'issue' : 'return'), who(mv)]),
           ),
     );
+  }
+
+  // Money from the client: only when at least one payment was recorded, so reports without any look as they always did.
+  if (receipts.length) {
+    const money = receiptSummary(p.contract_cents, receipts.reduce((s, r) => s + r.amount_cents, 0));
+    sections.push(`<h2>${t('moneyFromClient')} <span class="count">${receipts.length}</span></h2>`);
+    sections.push(
+      table(
+        [{ label: t('date'), width: '18%' }, { label: t('method'), width: '16%' }, { label: t('note') }, { label: t('amount'), num: true, width: '24%' }],
+        receipts.map((r) => [esc(formatDay(r.day)), t(`method_${r.method}` as TKey), esc(r.note ?? ''), esc(formatLKR(r.amount_cents))]),
+        '',
+        ['', '', t('receivedSoFar'), esc(formatLKR(money.received))],
+      ),
+    );
+    if (money.value != null) {
+      sections.push(
+        `<div class="stock"><div>${t('projectValue')}: ${esc(formatLKR(money.value))}</div><div>${
+          money.over > 0 ? `${t('overValueBy')}: ${esc(formatLKR(money.over))}` : `${t('stillToReceive')}: ${esc(formatLKR(money.left ?? 0))}`
+        }</div></div>`,
+      );
+    }
   }
 
   if (notes.length) {
