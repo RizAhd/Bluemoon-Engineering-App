@@ -44,9 +44,10 @@ export function useElevation(level: keyof typeof elevation) {
   return useScheme() === 'light' ? elevation[level] : null;
 }
 
-/** Fonts loaded in the root layout. One Noto family per script so all three languages match. */
+/** Fonts loaded in the root layout: Manrope for English and every Latin run, Noto for Sinhala and Tamil. */
 export const FONT_MAP = {
-  en: { regular: 'NotoSans_400Regular', semibold: 'NotoSans_600SemiBold', bold: 'NotoSans_700Bold' },
+  // Manrope (the Blueprint design's face): 500 for body text, 700 for labels and titles, 800 for amounts.
+  en: { regular: 'Manrope_500Medium', semibold: 'Manrope_700Bold', bold: 'Manrope_800ExtraBold' },
   si: {
     regular: 'NotoSansSinhala_400Regular',
     semibold: 'NotoSansSinhala_600SemiBold',

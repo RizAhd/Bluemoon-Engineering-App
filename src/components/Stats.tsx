@@ -5,7 +5,7 @@ import { Pressable, View, type StyleProp, type ViewStyle } from 'react-native';
 import { Txt } from '@/components/ui/Txt';
 import { useT } from '@/i18n';
 import { formatLKR } from '@/lib/money';
-import { hairline, radius, space, useColors, useLayout } from '@/theme';
+import { radius, space, useColors, useElevation, useLayout, useScheme } from '@/theme';
 
 export type StatTone = 'text' | 'danger' | 'success' | 'warning';
 
@@ -22,6 +22,8 @@ export interface StatProps {
 /** Number tile: eyebrow label, title 20/700 numeric value; tappable tiles show a chevron. */
 export function Stat({ label, value, onPress, tone = 'text', caption, style }: StatProps) {
   const c = useColors();
+  const lift = useElevation('card');
+  const dark = useScheme() === 'dark';
   return (
     <Pressable
       disabled={!onPress}
@@ -38,19 +40,20 @@ export function Stat({ label, value, onPress, tone = 'text', caption, style }: S
           gap: space.xs,
           padding: space.lg,
           borderRadius: radius.lg,
-          borderWidth: hairline,
+          borderWidth: dark ? 1 : 0,
           borderColor: c.border,
           backgroundColor: pressed && onPress ? c.muted : c.card,
+          ...lift,
         },
         style,
       ]}>
       <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: space.xs }}>
-        <Txt eyebrow numberOfLines={2} style={{ flexShrink: 1 }}>
+        <Txt variant="caption" weight="semibold" color="textMuted" numberOfLines={2} style={{ flexShrink: 1 }}>
           {label}
         </Txt>
         {onPress ? <ChevronRight size={14} color={c.textMuted} strokeWidth={2} style={{ marginTop: 2 }} /> : null}
       </View>
-      <Txt variant="title" weight="bold" numeric adjustsFontSizeToFit minimumFontScale={0.7} numberOfLines={1} color={tone}>
+      <Txt variant="title" weight="bold" numeric adjustsFontSizeToFit minimumFontScale={0.7} numberOfLines={1} color={tone} style={{ fontSize: 20, lineHeight: 26 }}>
         {value}
       </Txt>
       {caption ? (
@@ -75,27 +78,32 @@ export function Tiles({ children, style }: { children: ReactNode; style?: StyleP
   return <View style={[{ flexDirection: stackTiles ? 'column' : 'row', flexWrap: stackTiles ? 'nowrap' : 'wrap', gap: space.md }, style]}>{children}</View>;
 }
 
-/** How much of the contract value has been spent. Colour plus a % label, never colour alone. */
-export function ContractBar({ spent, contract }: { spent: number; contract: number }) {
+/**
+ * How much of the contract value has been spent. Colour plus a % label, never colour alone.
+ * `onHero`: white on the blue hero (a white fill on a glass track; over the contract it turns amber).
+ */
+export function ContractBar({ spent, contract, onHero }: { spent: number; contract: number; onHero?: boolean }) {
   const t = useT();
   const c = useColors();
   const ratio = contract > 0 ? spent / contract : 0;
   // 99.5 % is not "100 %" and red: the figure only reaches 100 when the contract really is used up
   const over = ratio >= 1;
   const pct = over ? Math.round(ratio * 100) : Math.min(99, Math.round(ratio * 100));
-  const fill = over ? c.danger : ratio > 0.85 ? c.warning : c.slate;
+  const fill = onHero ? (over || ratio > 0.85 ? c.amber : c.heroWhite) : over ? c.danger : ratio > 0.85 ? c.warning : c.primary;
+  const track = onHero ? c.headerSoft : c.surface2;
+  const label = onHero ? 'onHeaderMuted' : over ? 'danger' : 'textMuted';
   return (
-    <View style={{ gap: space.xs }} accessibilityLabel={`${pct}% ${t('contract')}`}>
-      <View style={{ height: 10, borderRadius: 5, backgroundColor: c.border, overflow: 'hidden' }}>
+    <View style={{ gap: space.xs + 2 }} accessibilityLabel={`${pct}% ${t('contract')}`}>
+      <View style={{ height: onHero ? 8 : 10, borderRadius: 5, backgroundColor: track, overflow: 'hidden' }}>
         <View style={{ width: `${Math.min(100, pct)}%`, height: '100%', borderRadius: 5, backgroundColor: fill }} />
       </View>
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: space.sm }}>
-        <Txt variant="caption" color={over ? 'danger' : 'textMuted'} weight="semibold" numeric>
+        <Txt variant="caption" color={label} weight="semibold" numeric>
           {/* something spent but under half a percent reads "<1 %", never a misleading "0 %" */}
           {spent > 0 && pct === 0 ? '<1' : pct} %
         </Txt>
         {/* "කොන්ත්‍රාත්තුව Rs 9,999,999,999" is wider than a 320 phone leaves beside the %: it wraps on the right. */}
-        <Txt variant="caption" color="textMuted" weight="semibold" numeric style={{ flexShrink: 1, textAlign: 'right' }}>
+        <Txt variant="caption" color={onHero ? 'onHeaderMuted' : 'textMuted'} weight="semibold" numeric style={{ flexShrink: 1, textAlign: 'right' }}>
           {t('contract')} {formatLKR(contract)}
         </Txt>
       </View>
@@ -109,7 +117,7 @@ export function ReceivedBar({ percent, received, over }: { percent: number; rece
   const c = useColors();
   return (
     <View style={{ gap: space.xs }} accessibilityLabel={`${percent}% ${t('receivedSoFar')}`}>
-      <View style={{ height: 10, borderRadius: 5, backgroundColor: c.border, overflow: 'hidden' }}>
+      <View style={{ height: 10, borderRadius: 5, backgroundColor: c.surface2, overflow: 'hidden' }}>
         <View style={{ width: `${percent}%`, height: '100%', borderRadius: 5, backgroundColor: over ? c.warning : c.success }} />
       </View>
       <Txt variant="caption" color={over ? 'warning' : 'textMuted'} weight="semibold" numeric>
@@ -136,8 +144,8 @@ export function CategoryBars({ rows }: { rows: { label: string; cents: number }[
               {formatLKR(r.cents)}
             </Txt>
           </View>
-          <View style={{ height: 8, borderRadius: 4, backgroundColor: c.border, overflow: 'hidden' }}>
-            <View style={{ width: `${(r.cents / max) * 100}%`, height: '100%', borderRadius: 4, backgroundColor: c.slate }} />
+          <View style={{ height: 8, borderRadius: 4, backgroundColor: c.surface2, overflow: 'hidden' }}>
+            <View style={{ width: `${(r.cents / max) * 100}%`, height: '100%', borderRadius: 4, backgroundColor: c.primary }} />
           </View>
         </View>
       ))}

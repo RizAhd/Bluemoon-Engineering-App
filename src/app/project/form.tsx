@@ -1,7 +1,7 @@
 import { router, Stack, useLocalSearchParams } from 'expo-router';
 import { useState } from 'react';
 import { Alert, View } from 'react-native';
-import { Building2, MapPin, Trash2, UserRound } from 'lucide-react-native';
+import { Building2, Check, MapPin, Trash2, UserRound } from 'lucide-react-native';
 
 import { Button, HeaderButton } from '@/components/ui/Button';
 import { toast } from '@/components/ui/feedback';
@@ -90,7 +90,7 @@ function Inner({ existing }: { existing: Project | null }) {
           headerRight: form.isNew ? undefined : () => <HeaderButton icon={Trash2} tone="danger" label={t('delete')} onPress={onDelete} />,
         }}
       />
-      <Screen footer={<Button label={t('save')} onPress={onSave} full />}>
+      <Screen footer={<Button icon={Check} label={t('save')} onPress={onSave} full />}>
         <Field
           label={t('projectName')}
           icon={Building2}

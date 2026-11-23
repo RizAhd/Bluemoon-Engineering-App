@@ -99,7 +99,7 @@ export function Ring({ focus, children, style }: { focus: boolean; children: Rea
 function useBoxColors(opts: { focus: boolean; error?: string | null; disabled?: boolean }) {
   const c = useColors();
   return {
-    borderColor: opts.error ? c.danger : opts.focus ? c.primary : opts.disabled ? c.border : c.borderStrong,
+    borderColor: opts.error ? c.danger : opts.focus ? c.primary : c.border,
     backgroundColor: opts.disabled ? c.surface2 : c.field,
     color: opts.disabled ? c.textMuted : c.text,
   };
@@ -140,7 +140,7 @@ function InputBox({
               minHeight,
               paddingLeft: space.lg,
               borderRadius: radius.md,
-              borderWidth: hairline,
+              borderWidth: focus || error ? 1.5 : hairline,
               borderColor: box.borderColor,
               backgroundColor: box.backgroundColor,
               transitionProperty: ['borderColor', 'backgroundColor'],
@@ -392,16 +392,16 @@ function Chip<T extends string>({ option: o, on, numeric, onChange }: { option: 
         style={({ pressed }) => ({
           minHeight: touchMin,
           paddingHorizontal: space.lg,
-          borderRadius: radius.pill,
+          borderRadius: radius.md,
           borderWidth: hairline,
-          borderColor: on ? (pressed ? c.slatePressed : c.slate) : off ? c.border : c.borderStrong,
+          borderColor: on ? (pressed ? c.slatePressed : c.slate) : c.border,
           backgroundColor: on ? (pressed ? c.slatePressed : c.slate) : pressed ? c.muted : c.card,
           flexDirection: 'row',
           alignItems: 'center',
           gap: space.sm,
         })}>
-        {on ? <Check size={16} color={c.onSlate} strokeWidth={2.4} /> : o.icon}
-        <Txt weight={on ? 'semibold' : 'regular'} numeric={numeric} style={{ color: on ? c.onSlate : off ? c.placeholder : c.text, flexShrink: 1 }} numberOfLines={2}>
+        {o.icon}
+        <Txt weight="semibold" numeric={numeric} style={{ color: on ? c.onSlate : off ? c.placeholder : c.text, flexShrink: 1 }} numberOfLines={2}>
           {o.count != null ? `${o.label} ${o.count}` : o.label}
         </Txt>
       </Pressable>
@@ -409,7 +409,7 @@ function Chip<T extends string>({ option: o, on, numeric, onChange }: { option: 
   );
 }
 
-/** Single-choice chips that wrap onto several lines. Selected = ink (slate) fill with a tick. */
+/** Single-choice chips that wrap onto several lines. Selected = navy fill with white words. */
 export function Chips<T extends string>({
   label,
   options,
@@ -441,7 +441,7 @@ export function Chips<T extends string>({
 
 // ---------------------------------------------------------------- Segmented
 
-/** 2–4 short options in one 48-tall track; the chosen segment is ink. Use Chips for more. */
+/** 2–4 short options in one 48-tall grey track; the chosen segment is a white raised pill with blue words. Use Chips for more. */
 export function Segmented<T extends string>({
   options,
   value,
@@ -458,12 +458,13 @@ export function Segmented<T extends string>({
   style?: StyleProp<ViewStyle>;
 }) {
   const c = useColors();
+  const lift = useElevation('field');
   return (
     <View style={[{ gap: 6 }, style]}>
       {label ? <Label text={label} /> : null}
       <View
         accessibilityRole="radiogroup"
-        style={{ flexDirection: 'row', minHeight: touchMin, backgroundColor: c.surface2, borderRadius: radius.md, padding: 3, gap: 2 }}>
+        style={{ flexDirection: 'row', minHeight: touchMin + 4, backgroundColor: c.surface2, borderRadius: radius.md, padding: 4, gap: 2 }}>
         {options.map((o) => {
           const on = o.value === value;
           return (
@@ -480,14 +481,15 @@ export function Segmented<T extends string>({
               }}
               style={({ pressed }) => ({
                 flex: 1,
-                minHeight: 42,
-                borderRadius: radius.sm,
+                minHeight: 44,
+                borderRadius: radius.md - 3,
                 alignItems: 'center',
                 justifyContent: 'center',
                 paddingHorizontal: space.sm,
-                backgroundColor: on ? (pressed ? c.slatePressed : c.slate) : pressed ? c.muted : 'transparent',
+                backgroundColor: on ? c.card : pressed ? c.muted : 'transparent',
+                ...(on ? lift : null),
               })}>
-              <Txt weight="semibold" numeric={numeric} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.85} style={{ color: on ? c.onSlate : c.text }}>
+              <Txt weight={on ? 'bold' : 'semibold'} numeric={numeric} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.85} style={{ color: on ? c.primary : c.textMuted }}>
                 {o.label}
               </Txt>
             </Pressable>
@@ -535,12 +537,12 @@ export function Checkbox({
           height: 28,
           borderRadius: radius.sm,
           borderWidth: 2,
-          borderColor: checked ? c.slate : disabled ? c.border : c.borderStrong,
-          backgroundColor: checked ? c.slate : disabled ? c.surface2 : c.card,
+          borderColor: checked ? c.fill : disabled ? c.border : c.borderStrong,
+          backgroundColor: checked ? c.fill : disabled ? c.surface2 : c.card,
           alignItems: 'center',
           justifyContent: 'center',
         }}>
-        {checked ? <Check size={20} color={c.onSlate} strokeWidth={3} /> : null}
+        {checked ? <Check size={20} color={c.onFill} strokeWidth={3} /> : null}
       </View>
     </Pressable>
   );
@@ -548,8 +550,8 @@ export function Checkbox({
 
 // ---------------------------------------------------------------- SearchField
 
-/** The compact search box: 40 tall, for the top of a list (it sits above 48-tall chips, so it reads as lighter than them). */
-const SEARCH_COMPACT = 40;
+/** The compact search box at the top of a list: 52 tall in the Blueprint design, beside the 52 filter button. */
+const SEARCH_COMPACT = 52;
 
 /** 48-tall search box with a leading magnifier and a clear button. No label. `compact` is the 40-tall one at the top of every list. */
 export function SearchField({
@@ -574,9 +576,10 @@ export function SearchField({
   const font = useFont();
   const [focus, setFocus] = useState(false);
   const box = useBoxColors({ focus });
+  const lift = useElevation('field');
   const ph = placeholder ?? t('search');
   const height = compact ? SEARCH_COMPACT : touchMin;
-  const clear = compact ? SEARCH_COMPACT : 44;
+  const clear = 44;
   return (
     <Ring focus={focus} style={style}>
       <View
@@ -588,11 +591,12 @@ export function SearchField({
           borderWidth: hairline,
           borderColor: box.borderColor,
           backgroundColor: box.backgroundColor,
-          paddingLeft: compact ? space.sm : space.md,
-          paddingRight: compact ? 0 : space.xs,
-          gap: compact ? space.xs : space.sm,
+          paddingLeft: space.lg,
+          paddingRight: space.xs,
+          gap: space.md,
+          ...lift,
         }}>
-        <Search size={compact ? 16 : 18} color={c.textMuted} strokeWidth={2} />
+        <Search size={20} color={c.textMuted} strokeWidth={2} />
         <TextInput
           value={value}
           onChangeText={onChangeText}
@@ -604,7 +608,7 @@ export function SearchField({
           autoCorrect={false}
           onFocus={() => setFocus(true)}
           onBlur={() => setFocus(false)}
-          style={{ flex: 1, minHeight: height - 2, color: c.text, fontSize: type.body * k, fontFamily: font('regular'), paddingVertical: 0 }}
+          style={{ flex: 1, minHeight: height - 2, color: c.text, fontSize: type.bodyLg * k, fontFamily: font('regular'), paddingVertical: 0 }}
         />
         {value ? <IconButton icon={X} label={t('clearSearch')} size={clear} tone="textMuted" onPress={() => onChangeText('')} /> : <View style={{ width: clear }} />}
       </View>
@@ -693,16 +697,16 @@ function CalendarChip({ label, custom, value, onPress }: { label: string; custom
         style={({ pressed }) => ({
           minHeight: touchMin,
           paddingHorizontal: space.lg,
-          borderRadius: radius.pill,
+          borderRadius: radius.md,
           borderWidth: hairline,
-          borderColor: custom ? (pressed ? c.slatePressed : c.slate) : c.borderStrong,
+          borderColor: custom ? (pressed ? c.slatePressed : c.slate) : c.border,
           backgroundColor: custom ? (pressed ? c.slatePressed : c.slate) : pressed ? c.muted : c.card,
           flexDirection: 'row',
           alignItems: 'center',
           gap: space.sm,
         })}>
-        <Calendar size={16} color={custom ? c.onSlate : c.textMuted} strokeWidth={2} />
-        <Txt numeric weight={custom ? 'semibold' : 'regular'} style={{ color: custom ? c.onSlate : c.text }}>
+        <Calendar size={16} color={custom ? c.onSlate : c.text} strokeWidth={2} />
+        <Txt numeric weight="semibold" style={{ color: custom ? c.onSlate : c.text }}>
           {formatDay(value)}
         </Txt>
       </Pressable>
@@ -819,7 +823,7 @@ export function SheetPanel({ children, maxHeight = '85%', style }: { children: R
           backgroundColor: c.surface3,
           borderTopLeftRadius: radius.xl,
           borderTopRightRadius: radius.xl,
-          borderTopWidth: hairline,
+          borderTopWidth: 0,
           // a centred tablet sheet needs its sides drawn; a phone sheet runs edge to edge
           borderLeftWidth: wide ? hairline : 0,
           borderRightWidth: wide ? hairline : 0,
@@ -857,16 +861,16 @@ export function SheetHeader({ title, onClose, caption }: { title: string; onClos
   return (
     <View>
       <View style={{ alignItems: 'center', paddingTop: space.sm }}>
-        <View style={{ width: 36, height: 4, borderRadius: 2, backgroundColor: c.borderStrong }} />
+        <View style={{ width: 40, height: 5, borderRadius: 3, backgroundColor: c.border }} />
       </View>
-      <View style={{ flexDirection: 'row', alignItems: 'center', minHeight: 56, paddingLeft: space.lg, paddingRight: space.sm, gap: space.sm }}>
-        <Txt variant="title" weight="semibold" style={{ flex: 1, minWidth: 0 }} accessibilityRole="header" numberOfLines={2}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', minHeight: 64, paddingLeft: space.xl, paddingRight: space.lg, gap: space.sm }}>
+        <Txt variant="title" weight="bold" style={{ flex: 1, minWidth: 0, fontSize: 22, lineHeight: 28 }} accessibilityRole="header" numberOfLines={2}>
           {title}
         </Txt>
-        <IconButton icon={X} label={t('close')} size={44} onPress={onClose} />
+        <IconButton icon={X} label={t('close')} size={44} shape="boxed" onPress={onClose} style={{ backgroundColor: c.surface2, borderColor: 'transparent' }} />
       </View>
       {caption ? (
-        <Txt variant="caption" color="textMuted" style={{ paddingHorizontal: space.lg, paddingBottom: space.sm }}>
+        <Txt color="textMuted" style={{ paddingHorizontal: space.xl, paddingBottom: space.sm, marginTop: -space.sm }}>
           {caption}
         </Txt>
       ) : null}
@@ -951,8 +955,8 @@ const PickerRow = memo(function PickerRow({ item, on, onPick }: { item: PickerIt
         backgroundColor: pressed ? c.muted : on ? c.primarySoft : 'transparent',
       })}>
       {Icon ? (
-        <View style={{ width: 40, height: 40, borderRadius: radius.md, backgroundColor: c.surface2, alignItems: 'center', justifyContent: 'center' }}>
-          <Icon size={20} color={c.textMuted} strokeWidth={2} />
+        <View style={{ width: 44, height: 44, borderRadius: radius.md, backgroundColor: c.primarySoft, alignItems: 'center', justifyContent: 'center' }}>
+          <Icon size={21} color={c.primary} strokeWidth={1.9} />
         </View>
       ) : null}
       <View style={{ flex: 1, minWidth: 0 }}>

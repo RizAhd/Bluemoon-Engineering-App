@@ -162,7 +162,7 @@ Drive sign-in only works for an app registered in the owner's Google Cloud proje
 **Do not edit `.github/workflows/android-apk.yml`** unless the owner asks; it is the only working build route.
 
 1. Commit and push to `main`.
-2. Push a tag: `git tag apk-15 && git push origin apk-15` (next free number; `git tag | grep apk`).
+2. Push a tag: `git tag apk-17 && git push origin apk-17` (next free number; `git tag | grep apk`).
 3. GitHub Actions builds a release APK (≈15 min). It uploads the artifact **and** pushes the result to the
    `ci-result` branch: `status.txt` (job result, commit, run URL) and `Bluemoon-Site-<date>-<commit>.apk`.
 4. Fetch without opening GitHub:
@@ -285,6 +285,22 @@ Five additions, nothing rearranged. Audited first (code review of money maths, s
 Also checked with no problems in the final round: add / edit / delete for expenses, notes, workers, advances,
 estimates, projects; filters; tool issue and return; share sheets; PIN setup; restore picker; company details;
 Tamil and Sinhala; light and dark.
+
+### apk-17 (23 Nov 2026): Blueprint blue-and-white redesign
+
+Every screen restyled to the owner's design (`Bluemoon Site — Blue & White Redesign.html` / `.pdf`); data, routes and
+behaviour unchanged.
+
+- Tokens in `src/theme/tokens.ts`: blue `#1E4CDC` / `#2457F5`, navy `#0A1B4D`, ground `#F4F6FB`, radii 8/14/20/28.
+  English uses Manrope; Sinhala and Tamil keep Noto. Hero-only colours (`heroWhite`, `onHeroWhite`, `heroDanger`…) have the same value
+  in both schemes, because the hero is blue in dark mode too.
+- `src/components/Hero.tsx`: the blue header with the grid, the card that overlaps it, and its chips, tiles and buttons. When it is in
+  front, the status-bar icons turn white and `HeroStatusStrip` keeps a blue band behind them while the page scrolls.
+- `src/app/(tabs)/_layout.tsx`: custom floating navy tab bar with a raised "+". Projects has no tab and is opened from the
+  project chooser. The bar gets `emitter` + `navigateToTab` from expo-router (not `navigation`).
+- `src/components/ui/SplitAmount.tsx`: "Rs" small, figure large, as two texts. A nested Text cuts the digits off on Android.
+- Left out of the design: donut charts are shown as bars, there are no Overview/Money/Team/Tools tabs on the project page,
+  and tool condition stays a text field.
 
 ## 12. Open items
 

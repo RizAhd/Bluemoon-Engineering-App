@@ -4,12 +4,16 @@ import { useState } from 'react';
 import { ActivityIndicator, Pressable, View, type StyleProp, type ViewStyle } from 'react-native';
 import Animated from 'react-native-reanimated';
 
-import { hairline, radius, space, touch, touchMin, useColors, type Palette } from '@/theme';
+import { hairline, radius, space, touch, touchMin, useColors, useElevation, type Palette } from '@/theme';
 
 import { usePressScale } from './PressScale';
 import { Txt } from './Txt';
 
-export type ButtonKind = 'primary' | 'secondary' | 'ghost' | 'danger';
+/**
+ * primary = blue fill · navy = ink fill (Export PDF) · secondary = white outline · soft = blue-50 fill with blue words ·
+ * ghost = words only · danger = red outline · hero / heroSoft = the white and the glass button on the blue hero.
+ */
+export type ButtonKind = 'primary' | 'navy' | 'secondary' | 'soft' | 'ghost' | 'danger' | 'hero' | 'heroSoft';
 
 export interface ButtonProps {
   label: string;
@@ -36,16 +40,25 @@ export interface ButtonProps {
 export function Button({ label, onPress, kind = 'primary', icon: Icon, loading, disabled, full, compact, style, accessibilityLabel, testID }: ButtonProps) {
   const c = useColors();
   const press = usePressScale();
+  const lift = useElevation('field');
   const [focus, setFocus] = useState(false);
   const off = !!disabled || !!loading;
 
   const spec = {
-    primary: { bg: c.fill, pressed: c.fillPressed, fg: c.onFill, border: 'transparent', offBg: c.surface2, offBorder: 'transparent' },
-    secondary: { bg: c.card, pressed: c.muted, fg: c.text, border: c.borderStrong, offBg: c.card, offBorder: c.border },
-    ghost: { bg: 'transparent', pressed: c.primarySoft, fg: c.primary, border: 'transparent', offBg: 'transparent', offBorder: 'transparent' },
-    danger: { bg: c.card, pressed: c.dangerSoft, fg: c.danger, border: c.danger, offBg: c.card, offBorder: c.border },
+    // a disabled primary is a pale blue block with white words, as in the design (never opacity)
+    primary: { bg: c.fill, pressed: c.fillPressed, fg: c.onFill, border: 'transparent', offBg: c.primarySoft2, offBorder: 'transparent', offFg: c.onFill },
+    navy: { bg: c.slate, pressed: c.slatePressed, fg: c.onSlate, border: 'transparent', offBg: c.surface2, offBorder: 'transparent', offFg: c.placeholder },
+    secondary: { bg: c.card, pressed: c.muted, fg: c.text, border: c.borderStrong, offBg: c.card, offBorder: c.border, offFg: c.placeholder },
+    soft: { bg: c.primarySoft, pressed: c.primarySoft2, fg: c.primary, border: 'transparent', offBg: c.surface2, offBorder: 'transparent', offFg: c.placeholder },
+    ghost: { bg: 'transparent', pressed: c.primarySoft, fg: c.primary, border: 'transparent', offBg: 'transparent', offBorder: 'transparent', offFg: c.placeholder },
+    danger: { bg: c.card, pressed: c.dangerSoft, fg: c.danger, border: c.danger, offBg: c.card, offBorder: c.border, offFg: c.placeholder },
+    // the hero is blue in both schemes, so its white button keeps the light colours in dark mode too
+    hero: { bg: c.heroWhite, pressed: c.heroWhitePressed, fg: c.onHeroWhite, border: 'transparent', offBg: c.headerSoft, offBorder: 'transparent', offFg: c.onHeaderMuted },
+    heroSoft: { bg: c.headerSoft, pressed: c.headerDeep, fg: c.onHeader, border: c.headerLine, offBg: c.headerSoft, offBorder: 'transparent', offFg: c.onHeaderMuted },
   }[kind];
-  const fg = disabled ? c.placeholder : spec.fg;
+  const fg = disabled ? spec.offFg : spec.fg;
+  // solid and outlined buttons sit on a soft shadow in light mode; words-only and glass buttons do not
+  const shadow = kind === 'ghost' || kind === 'heroSoft' || kind === 'soft' || disabled ? null : lift;
 
   return (
     <View
@@ -88,10 +101,11 @@ export function Button({ label, onPress, kind = 'primary', icon: Icon, loading, 
             justifyContent: 'center',
             flexDirection: 'row',
             gap: space.sm,
+            ...shadow,
           })}>
-          {Icon ? <Icon size={compact ? 18 : 20} color={fg} strokeWidth={2} style={{ opacity: loading ? 0 : 1 }} /> : null}
+          {Icon ? <Icon size={compact ? 18 : 20} color={fg} strokeWidth={2.2} style={{ opacity: loading ? 0 : 1 }} /> : null}
           <View style={{ flexShrink: 1, opacity: loading ? 0 : 1 }}>
-            <Txt weight="semibold" variant={compact ? 'body' : 'bodyLg'} style={{ color: fg }} numberOfLines={2} center>
+            <Txt weight="bold" variant={compact ? 'body' : 'bodyLg'} style={{ color: fg }} numberOfLines={2} center>
               {label}
             </Txt>
           </View>
@@ -113,17 +127,25 @@ export interface IconButtonProps {
   onPress: () => void;
   /** 48 by default; 44 inside headers. */
   size?: number;
-  /** Icon colour token. `danger` for the form-header trash; `onHeader` inside TabHeader / native headers. */
+  /** Icon colour token. `danger` for the form-header trash; `onHeader` on the blue hero. */
   tone?: 'text' | 'textMuted' | 'onHeader' | 'danger' | 'primary';
-  /** Pressed background token; `headerDeep` inside headers. */
+  /** Pressed background token; `headerDeep` on the hero. */
   pressedBg?: keyof Palette;
+  /**
+   * round = no box (default) · glass = a translucent rounded square on the blue hero ·
+   * boxed = a white rounded square with a hairline edge (back button and actions on white screens).
+   */
+  shape?: 'round' | 'glass' | 'boxed';
   disabled?: boolean;
   style?: StyleProp<ViewStyle>;
 }
 
-/** Round icon button with a required label for screen readers. 48 × 48 (44 in headers), icon 22. */
-export function IconButton({ icon: Icon, label, onPress, size = touchMin, tone = 'text', pressedBg = 'muted', disabled, style }: IconButtonProps) {
+/** Icon button with a required label for screen readers. 48 × 48 (44 in headers), icon 22. */
+export function IconButton({ icon: Icon, label, onPress, size = touchMin, tone = 'text', pressedBg = 'muted', shape = 'round', disabled, style }: IconButtonProps) {
   const c = useColors();
+  const square = shape !== 'round';
+  const rest = shape === 'glass' ? c.headerSoft : shape === 'boxed' ? c.card : 'transparent';
+  const edge = shape === 'glass' ? c.headerLine : shape === 'boxed' ? c.border : null;
   const press = usePressScale();
   const [focus, setFocus] = useState(false);
   return (
@@ -145,22 +167,22 @@ export function IconButton({ icon: Icon, label, onPress, size = touchMin, tone =
           {
             width: size,
             height: size,
-            borderRadius: size / 2,
+            borderRadius: square ? radius.md : size / 2,
             alignItems: 'center',
             justifyContent: 'center',
-            backgroundColor: pressed ? c[pressedBg] : 'transparent',
-            borderWidth: 2,
-            borderColor: focus ? c.focusRing : 'transparent',
+            backgroundColor: pressed ? c[pressedBg] : rest,
+            borderWidth: square ? hairline : 2,
+            borderColor: focus ? c.focusRing : (edge ?? 'transparent'),
           },
           style,
         ]}>
-        <Icon size={22} color={disabled ? c.placeholder : c[tone]} strokeWidth={2} />
+        <Icon size={square ? 20 : 22} color={disabled ? c.placeholder : c[tone]} strokeWidth={2} />
       </Pressable>
     </Animated.View>
   );
 }
 
-/** Header icon button (44, `onHeader` icon, `headerDeep` pressed). Kept for existing screens; same as `IconButton size={44}`. */
-export function HeaderButton({ icon, label, onPress, tone = 'onHeader' }: { icon: LucideIcon; label: string; onPress: () => void; tone?: IconButtonProps['tone'] }) {
-  return <IconButton icon={icon} label={label} onPress={onPress} size={44} tone={tone} pressedBg="headerDeep" />;
+/** Action in a white stack header (44, boxed, `text` icon). On the blue hero use `IconButton shape="glass" tone="onHeader"`. */
+export function HeaderButton({ icon, label, onPress, tone = 'text' }: { icon: LucideIcon; label: string; onPress: () => void; tone?: IconButtonProps['tone'] }) {
+  return <IconButton icon={icon} label={label} onPress={onPress} size={44} tone={tone} shape="boxed" />;
 }

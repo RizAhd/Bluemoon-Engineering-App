@@ -1,5 +1,5 @@
 import { useFocusEffect } from 'expo-router';
-import { Bug, Share2, Trash2 } from 'lucide-react-native';
+import { Bug, CheckCircle2, Share2, Trash2 } from 'lucide-react-native';
 import { memo, useCallback, useMemo, useState } from 'react';
 import { Alert, View } from 'react-native';
 
@@ -124,7 +124,7 @@ export default function ProblemScreen() {
         keyOf={entryKey}
         renderRow={(e) => <LogRow e={e} onPress={show} />}
         inset
-        empty={<EmptyState icon={Bug} title={t('noErrors')} hint={t('appCrashedBody')} />}
+        empty={<EmptyState icon={CheckCircle2} title={t('noErrors')} hint={t('appCrashedBody')} />}
         stickyFooter={
           entries.length ? (
             <View style={{ gap: space.sm }}>
@@ -155,5 +155,5 @@ const entryKey = (e: LogEntry) => e.key;
 
 /** One logged error: where it happened, the message, the time. */
 const LogRow = memo(function LogRow({ e, onPress }: { e: LogEntry; onPress: (e: LogEntry) => void }) {
-  return <ListRow icon={Bug} title={e.context} subtitle={e.message} value={timeOf(e.at)} onPress={() => onPress(e)} accessibilityLabel={`${e.context}: ${e.message}`} />;
+  return <ListRow icon={Bug} iconTone="danger" title={e.context} subtitle={e.message} value={timeOf(e.at)} onPress={() => onPress(e)} accessibilityLabel={`${e.context}: ${e.message}`} />;
 });

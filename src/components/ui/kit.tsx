@@ -15,7 +15,7 @@ import { createContext, useContext, type ReactNode } from 'react';
 import { Pressable, View } from 'react-native';
 import { Avatar, Progress, Switch, TamaguiProvider } from 'tamagui';
 
-import { radius, space, touch, useColors, useScheme } from '@/theme';
+import { avatarTones, radius, space, touch, useColors, useScheme } from '@/theme';
 import { tamaguiConfig } from '@/theme/tamagui.config';
 
 import { Txt } from './Txt';
@@ -124,8 +124,8 @@ export function ToggleRow({
         backgroundColor: pressed ? c.muted : 'transparent',
       })}>
       {Icon ? (
-        <View style={{ width: 40, height: 40, borderRadius: radius.md, backgroundColor: value ? c.primarySoft : c.surface2, alignItems: 'center', justifyContent: 'center' }}>
-          <Icon size={20} color={value ? c.primary : c.textMuted} strokeWidth={2} />
+        <View style={{ width: 44, height: 44, borderRadius: radius.md, backgroundColor: c.primarySoft, alignItems: 'center', justifyContent: 'center' }}>
+          <Icon size={21} color={c.primary} strokeWidth={1.9} />
         </View>
       ) : null}
       <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
@@ -163,7 +163,7 @@ export function ProgressBar({ value, tone = 'primary', label, height = 8 }: { va
         accessibilityValue={{ min: 0, max: 100, now: Math.round(pct) }}
         height={height}
         borderRadius={height / 2}
-        backgroundColor="border"
+        backgroundColor="surface2"
         overflow="hidden">
         <Progress.Indicator transition="medium" backgroundColor={fill[tone]} borderRadius={height / 2} />
       </Progress>
@@ -188,17 +188,27 @@ export function initialsOf(name: string): string {
   return out;
 }
 
+/** The same soft colour for the same name, every time (a small string hash into `avatarTones`). */
+function toneOf(name: string, scheme: 'light' | 'dark'): readonly [string, string] {
+  let h = 0;
+  for (const ch of name.trim().toLowerCase()) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+  const tones = avatarTones[scheme];
+  return tones[h % tones.length];
+}
+
 /**
- * Round initials badge (Tamagui Avatar with a text fallback). Neutral by default, like every list slot;
- * `primary` only where the circle is the thing to tap.
+ * Round initials badge (Tamagui Avatar with a text fallback). Blueprint: each name has its own soft colour
+ * (`neutral`, the default); `primary` where the circle is the thing to tap.
  */
 export function Initials({ name, size = 44, tone = 'neutral' }: { name: string; size?: number; tone?: 'neutral' | 'primary' }) {
   const c = useColors();
+  const scheme = useScheme();
+  const [bg, fg] = tone === 'primary' ? [c.primarySoft2, c.primary] : toneOf(name, scheme);
   return (
     <Ensure>
       <Avatar circular size={size} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
-        <Avatar.Fallback backgroundColor={tone === 'primary' ? 'primarySoft' : 'surface2'} alignItems="center" justifyContent="center">
-          <Txt weight="semibold" numeric style={{ color: tone === 'primary' ? c.primary : c.textMuted, fontSize: Math.max(13, Math.round(size * 0.34)) }} numberOfLines={1}>
+        <Avatar.Fallback backgroundColor={bg as never} alignItems="center" justifyContent="center">
+          <Txt weight="bold" numeric style={{ color: fg, fontSize: Math.max(13, Math.round(size * 0.36)) }} numberOfLines={1}>
             {initialsOf(name)}
           </Txt>
         </Avatar.Fallback>

@@ -1,13 +1,15 @@
-import { BadgeCheck, Building2, Hash, Home, Landmark, Mail, MapPin, Phone, UserRound } from 'lucide-react-native';
+import { BadgeCheck, Building2, Check, Home, Landmark, LockKeyhole, Mail, Phone, UserRound } from 'lucide-react-native';
 import { useState } from 'react';
+import { View } from 'react-native';
 
 import { Button } from '@/components/ui/Button';
 import { Field } from '@/components/ui/form';
-import { Screen, SectionTitle } from '@/components/ui/layout';
+import { Card, Screen, SectionTitle } from '@/components/ui/layout';
 import { Txt } from '@/components/ui/Txt';
 import { useRecordForm } from '@/hooks/form';
 import { useT } from '@/i18n';
 import { saveCompanyProfile, useCompanyProfile } from '@/lib/company';
+import { radius, space, useColors } from '@/theme';
 
 /**
  * Company and bank details: printed on every estimate. Kept per phone in the settings table, so there is
@@ -15,6 +17,7 @@ import { saveCompanyProfile, useCompanyProfile } from '@/lib/company';
  */
 export default function CompanyScreen() {
   const t = useT();
+  const c = useColors();
   const profile = useCompanyProfile();
   const form = useRecordForm('company_profile', 'profile');
   const [name, setName] = useState(profile.name);
@@ -51,8 +54,18 @@ export default function CompanyScreen() {
   }
 
   return (
-    <Screen footer={<Button label={t('save')} onPress={onSave} full />}>
-      <Txt color="textMuted">{t('companyHint')}</Txt>
+    <Screen footer={<Button icon={Check} label={t('save')} onPress={onSave} full />}>
+      {/* where these details live and where they are printed: a soft blue note, as in the design */}
+      <Card tone="primarySoft" padding={space.lg}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.md }}>
+          <View style={{ width: 44, height: 44, borderRadius: radius.md, backgroundColor: c.card, alignItems: 'center', justifyContent: 'center' }}>
+            <LockKeyhole size={20} color={c.primary} strokeWidth={1.9} />
+          </View>
+          <Txt color="textMuted" style={{ flex: 1 }}>
+            {t('companyHint')}
+          </Txt>
+        </View>
+      </Card>
 
       <SectionTitle title={t('companyDetails')} first />
       <Field label={t('companyName')} icon={Building2} placeholder={t('phCompanyName')} value={name} onChangeText={setName} returnKeyType="next" />
@@ -64,8 +77,15 @@ export default function CompanyScreen() {
       <SectionTitle title={t('bankDetails')} />
       <Field label={t('bankName')} optional icon={Landmark} placeholder={t('phBank')} value={bank} onChangeText={setBank} returnKeyType="next" />
       <Field label={t('accountName')} optional icon={UserRound} placeholder={t('phAccountName')} value={accountName} onChangeText={setAccountName} returnKeyType="next" />
-      <Field label={t('accountNo')} optional icon={Hash} placeholder={t('phAccountNo')} value={accountNo} onChangeText={setAccountNo} keyboardType="numbers-and-punctuation" returnKeyType="next" />
-      <Field label={t('branch')} optional icon={MapPin} placeholder={t('phBranch')} value={branch} onChangeText={setBranch} returnKeyType="next" />
+      {/* branch and account number side by side (short values) */}
+      <View style={{ flexDirection: 'row', gap: space.md }}>
+        <View style={{ flex: 1, minWidth: 0 }}>
+          <Field label={t('branch')} optional placeholder={t('phBranch')} value={branch} onChangeText={setBranch} returnKeyType="next" />
+        </View>
+        <View style={{ flex: 1, minWidth: 0 }}>
+          <Field label={t('accountNo')} optional placeholder={t('phAccountNo')} value={accountNo} onChangeText={setAccountNo} keyboardType="numbers-and-punctuation" returnKeyType="next" />
+        </View>
+      </View>
 
       <SectionTitle title={t('estimates')} />
       <Field

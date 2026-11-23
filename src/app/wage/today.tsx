@@ -1,14 +1,16 @@
 import * as Haptics from 'expo-haptics';
 import { router, Stack, useLocalSearchParams } from 'expo-router';
-import { Building2, CheckCircle2, Info, UserPlus } from 'lucide-react-native';
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Banknote, Building2, CheckCircle2, Info, Share2, UserPlus } from 'lucide-react-native';
+import { memo, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Alert, FlatList, Keyboard, Platform, Pressable, View } from 'react-native';
 
-import { ShareHeaderButton, useShareSheet } from '@/components/ShareSheet';
+import { Hero, HeroAction } from '@/components/Hero';
+import { useShareSheet } from '@/components/ShareSheet';
 import { Button } from '@/components/ui/Button';
 import { Badge, EmptyState, toast } from '@/components/ui/feedback';
 import { AmountField, Checkbox, DateField, Segmented, SelectField } from '@/components/ui/form';
-import { InfoLine, ListCard, ListRow, Screen } from '@/components/ui/layout';
+import { Initials } from '@/components/ui/kit';
+import { Card, InfoLine, ListCard, ListRow, Screen } from '@/components/ui/layout';
 import { Txt } from '@/components/ui/Txt';
 import { useSetting } from '@/db';
 import type { ProjectWorkerBalance, WageDay } from '@/db/types';
@@ -23,7 +25,7 @@ import { formatDay, isValidDay } from '@/lib/dates';
 import { guard } from '@/lib/errors';
 import { centsToInput, formatLKR, parseCents } from '@/lib/money';
 import { exportDaySheetPdf } from '@/lib/reports/export';
-import { hairline, listTuning, radius, space, useColors, useLayout } from '@/theme';
+import { listTuning, radius, space, useColors, useElevation, useLayout } from '@/theme';
 
 const DAY_CHOICES = ['0.5', '1', '1.5', '2'] as const;
 const DAY_LABELS: Record<(typeof DAY_CHOICES)[number], { label: string; a11y: TKey }> = {
@@ -398,6 +400,12 @@ export default function TodaysWorkScreen() {
 
   const { gutter, column, short } = useLayout();
 
+  function openShare() {
+    Keyboard.dismiss();
+    flushAmounts();
+    share.open();
+  }
+
   const projectField = (
     <SelectField
       label={t('project')}
@@ -414,9 +422,9 @@ export default function TodaysWorkScreen() {
   if (!pid) {
     return (
       <>
-        <Stack.Screen options={{ title: t('todaysWork') }} />
+        <Stack.Screen options={{ title: t('todaysWork'), headerShown: false }} />
         <Screen>
-          {projectField}
+          <Hero back title={t('todaysWork')} card={<Card>{projectField}</Card>} />
           <EmptyState icon={Building2} title={t('noProjectSelected')} hint={t('chooseProjectFirstHint')} />
         </Screen>
       </>
@@ -424,70 +432,89 @@ export default function TodaysWorkScreen() {
   }
 
   const header = (
-    <View style={{ gap: space.lg, paddingBottom: space.md }}>
-      {projectField}
-      <DateField
-        label={t('date')}
-        value={day}
-        onChange={(d) => {
-          flushAmounts();
-          setDay(d);
-        }}
-        maxDay={td}
+    <View style={{ gap: space.md, paddingBottom: space.md }}>
+      <Hero
+        back
+        title={t('todaysWork')}
+        actions={<HeroAction icon={Share2} label={t('share')} onPress={openShare} />}
+        card={
+          <Card gap={space.lg}>
+            {projectField}
+            <DateField
+              label={t('date')}
+              value={day}
+              onChange={(d) => {
+                flushAmounts();
+                setDay(d);
+              }}
+              maxDay={td}
+            />
+          </Card>
+        }
       />
-      {alreadyRecorded ? (
-        <InfoLine icon={Info} text={t('dayAlreadyRecorded')} />
-      ) : null}
+      {alreadyRecorded ? <InfoLine icon={Info} text={t('dayAlreadyRecorded')} /> : null}
       {vms.length ? (
-        <View style={{ flexDirection: 'row', gap: space.sm, flexWrap: 'wrap' }}>
-          <Button compact kind="secondary" icon={CheckCircle2} label={t('markAllWorked')} onPress={markAll} />
-        </View>
+        // "Who came today?": how many are ticked, and one tap to tick everyone with a rate
+        <Card padding={space.lg} gap={space.sm}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.md }}>
+            <View style={{ flex: 1, minWidth: 0 }}>
+              <Txt variant="bodyLg" weight="bold" numberOfLines={2}>
+                {t('workersToday')}
+              </Txt>
+              <Txt variant="caption" color="textMuted" numeric>
+                {`${workedRows.length} / ${vms.length}`}
+              </Txt>
+            </View>
+            <Button compact kind="soft" icon={CheckCircle2} label={t('markAllWorked')} onPress={markAll} />
+          </View>
+        </Card>
       ) : null}
     </View>
   );
 
   const addWorker = () => router.push(`/worker/assign?projectId=${pid}`);
 
-  function openShare() {
-    Keyboard.dismiss();
-    flushAmounts();
-    share.open();
-  }
-
   const footer = (
     <>
       {kbOpen ? null : (
-              <View style={{ gap: space.xs }} accessibilityLiveRegion="polite">
-                <View style={{ flexDirection: 'row', gap: space.lg }}>
-                  <SummaryCell label={t('workersToday')} value={String(workedRows.length)} />
-                  <SummaryCell label={t('wages')} value={formatLKR(totalWages)} />
-                </View>
-                <View style={{ flexDirection: 'row', gap: space.lg }}>
-                  <SummaryCell label={t('wagesPaidToday')} value={formatLKR(totalPaid)} tone={totalPaid > 0 ? 'success' : 'text'} />
-                  <SummaryCell label={t('toPayToday')} value={formatLKR(totalToPay)} tone={totalToPay > 0 ? 'danger' : 'text'} />
-                </View>
-              </View>
-            )}
-            {payAllTotal > 0 ? (
-              <>
-                {/* "Pay all" only when this pays everything still owed; a typed part payment says just what it pays.
-                    Shown with the keyboard open too, so closing the keyboard never swaps the button under the finger. */}
-                <Button
-                  label={totalToPay > 0 && payAllTotal >= totalToPay ? `${t('payAll')} · ${formatLKR(payAllTotal)}` : t('payAmount', { amount: formatLKR(payAllTotal) })}
-                  onPress={onPayAll}
-                  loading={busy}
-                />
-                <Button compact kind="ghost" label={t('saveSheet')} onPress={onSave} disabled={busy} />
-              </>
-            ) : (
-              <Button label={t('saveSheet')} onPress={onSave} loading={busy} />
-            )}
+        <SummaryBox>
+          <View style={{ flexDirection: 'row', gap: space.lg }}>
+            <SummaryCell label={t('workersToday')} value={String(workedRows.length)} />
+            <SummaryCell label={t('wages')} value={formatLKR(totalWages)} />
+          </View>
+          <View style={{ flexDirection: 'row', gap: space.lg }}>
+            <SummaryCell label={t('wagesPaidToday')} value={formatLKR(totalPaid)} tone={totalPaid > 0 ? 'success' : 'text'} />
+            <SummaryCell label={t('toPayToday')} value={formatLKR(totalToPay)} tone={totalToPay > 0 ? 'danger' : 'text'} />
+          </View>
+        </SummaryBox>
+      )}
+      {payAllTotal > 0 ? (
+        // "Pay all" only when this pays everything still owed; a typed part payment says just what it pays.
+        // Shown with the keyboard open too, so closing the keyboard never swaps the button under the finger.
+        <View style={{ flexDirection: 'row', gap: space.md }}>
+          <View style={{ flex: 2 }}>
+            <Button kind="secondary" label={t('saveSheet')} onPress={onSave} disabled={busy} full />
+          </View>
+          <View style={{ flex: 3 }}>
+            <Button
+              icon={Banknote}
+              label={totalToPay > 0 && payAllTotal >= totalToPay ? `${t('payAll')} · ${formatLKR(payAllTotal)}` : t('payAmount', { amount: formatLKR(payAllTotal) })}
+              onPress={onPayAll}
+              loading={busy}
+              full
+            />
+          </View>
+        </View>
+      ) : (
+        <Button label={t('saveSheet')} onPress={onSave} loading={busy} />
+      )}
     </>
   );
 
   return (
     <>
-      <Stack.Screen options={{ title: t('todaysWork'), headerRight: () => <ShareHeaderButton onPress={openShare} /> }} />
+      {/* the hero draws its own back button and share */}
+      <Stack.Screen options={{ title: t('todaysWork'), headerShown: false }} />
       {/* On a short window (landscape, split screen) the totals and Save scroll with the sheet instead of covering it. */}
       <Screen scroll={false} footer={short ? undefined : footer}>
         <FlatList
@@ -539,6 +566,16 @@ function Gap() {
   return <View style={{ height: space.md }} />;
 }
 
+/** The day's totals above the buttons: one soft grey box. */
+function SummaryBox({ children }: { children: ReactNode }) {
+  const c = useColors();
+  return (
+    <View accessibilityLiveRegion="polite" style={{ gap: space.xs, padding: space.md, borderRadius: radius.md, backgroundColor: c.surface2 }}>
+      {children}
+    </View>
+  );
+}
+
 function SummaryCell({ label, value, tone = 'text' }: { label: string; value: string; tone?: 'text' | 'success' | 'danger' }) {
   return (
     <View style={{ flex: 1, minWidth: 0, flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: space.sm }}>
@@ -570,6 +607,7 @@ const WorkerRow = memo(function WorkerRow({
 }) {
   const c = useColors();
   const t = useT();
+  const lift = useElevation('card');
   const { row, worked, paid } = vm;
   const wage = vm.amountCents ?? 0;
   const noRate = row.rate_cents <= 0;
@@ -581,7 +619,7 @@ const WorkerRow = memo(function WorkerRow({
     : [row.trade, `${formatLKR(row.rate_cents)} / ${t('day')}`, row.balance_cents > 0 ? `${t('weOwe')} ${formatLKR(row.balance_cents)}` : null].filter(Boolean).join(' · ');
 
   return (
-    <View style={{ backgroundColor: c.card, borderRadius: radius.lg, borderWidth: hairline, borderColor: c.border, overflow: 'hidden' }}>
+    <View style={[{ backgroundColor: c.card, borderRadius: radius.lg, borderWidth: worked ? 1.5 : 1, borderColor: worked ? c.primary : c.border }, lift]}>
       <Pressable
         accessible={false}
         onPress={() => onToggle(vm, !worked)}
@@ -589,14 +627,17 @@ const WorkerRow = memo(function WorkerRow({
         style={({ pressed }) => ({
           flexDirection: 'row',
           alignItems: 'center',
-          minHeight: 64,
+          minHeight: 72,
           paddingRight: space.lg,
           paddingLeft: space.xs,
+          gap: space.sm,
+          borderRadius: radius.lg,
           backgroundColor: pressed ? c.muted : c.card,
         })}>
         <Checkbox checked={worked} label={row.name} onChange={(next) => onToggle(vm, next)} />
-        <View style={{ flex: 1, minWidth: 0, paddingVertical: space.sm, gap: 2 }}>
-          <Txt weight="semibold" numberOfLines={2}>
+        <Initials name={row.name} size={44} />
+        <View style={{ flex: 1, minWidth: 0, paddingVertical: space.md, gap: 2 }}>
+          <Txt variant="bodyLg" weight="bold" numberOfLines={2}>
             {row.name}
           </Txt>
           <Txt variant="caption" color={noRate ? 'warning' : 'textMuted'} numberOfLines={2}>
@@ -606,7 +647,7 @@ const WorkerRow = memo(function WorkerRow({
         <View style={{ alignItems: 'flex-end', gap: space.xs, marginLeft: space.sm, flexShrink: 0, maxWidth: '45%' }}>
           {worked ? (
             <>
-              <Txt weight="semibold" numeric numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>
+              <Txt variant="bodyLg" weight="bold" numeric color="primary" numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>
                 {formatLKR(wage)}
               </Txt>
               {wage > 0 && paid >= wage ? (
@@ -617,9 +658,11 @@ const WorkerRow = memo(function WorkerRow({
             </>
           ) : (
             <>
-              <Txt variant="caption" color="textMuted">
-                {t('notWorked')}
-              </Txt>
+              <View style={{ paddingHorizontal: space.sm + 2, minHeight: 28, justifyContent: 'center', borderRadius: radius.sm, backgroundColor: c.surface2 }}>
+                <Txt variant="caption" weight="semibold" color="textMuted" numberOfLines={1}>
+                  {t('notWorked')}
+                </Txt>
+              </View>
               {/* A payment outlives its work mark; keep it visible. */}
               {paid > 0 ? <Badge tone="warning" label={`${t('paidToday')} ${formatLKR(paid)}`} /> : null}
             </>
@@ -669,7 +712,19 @@ const WorkerRow = memo(function WorkerRow({
               />
             </View>
           </View>
-          {paid > 0 ? <InfoLine icon={CheckCircle2} tone="success" text={`${t('paidToday')} · ${formatLKR(paid)}`} /> : null}
+          {paid > 0 ? (
+            <InfoLine icon={CheckCircle2} tone="success" text={`${t('paidToday')} · ${formatLKR(paid)}`} />
+          ) : vm.remaining > 0 ? (
+            // nothing handed over yet for this day: an amber strip with what is still owed
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: space.sm, minHeight: 40, paddingHorizontal: space.md, borderRadius: radius.md - 4, backgroundColor: c.warningSoft }}>
+              <Txt variant="caption" weight="semibold" color="warning" style={{ flex: 1 }} numberOfLines={2}>
+                {t('unpaid')}
+              </Txt>
+              <Txt weight="bold" numeric color="warning" numberOfLines={1}>
+                {formatLKR(vm.remaining)}
+              </Txt>
+            </View>
+          ) : null}
         </View>
       ) : null}
     </View>

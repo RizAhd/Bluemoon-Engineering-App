@@ -1,19 +1,22 @@
 import * as Sharing from 'expo-sharing';
 import { router, Stack, useLocalSearchParams } from 'expo-router';
-import { CalendarRange, FileOutput, FileText, Hammer, HardHat, NotebookPen, Package, Pencil, Plus, Star, UserPlus } from 'lucide-react-native';
+import type { LucideIcon } from 'lucide-react-native';
+import { Banknote, CalendarRange, FileOutput, FileText, Hammer, HardHat, Landmark, MapPin, NotebookPen, Package, Pencil, Plus, Share2, Star, UserPlus, Wallet } from 'lucide-react-native';
 import { useState } from 'react';
 import { Pressable, View } from 'react-native';
 
+import { Hero, HeroAction, HeroAmount } from '@/components/Hero';
 import { PhotoStrip } from '@/components/PhotoStrip';
-import { ShareHeaderButton, useShareSheet } from '@/components/ShareSheet';
+import { useShareSheet } from '@/components/ShareSheet';
 import { CategoryBars, ContractBar, ReceivedBar, Stat, Tiles } from '@/components/Stats';
-import { Button, HeaderButton } from '@/components/ui/Button';
+import { Button } from '@/components/ui/Button';
 import { Badge, EmptyState, toast } from '@/components/ui/feedback';
 import { Checkbox } from '@/components/ui/form';
 import { Card, Divider, ListCard, ListRow, Screen, SectionTitle } from '@/components/ui/layout';
+import { SplitAmount } from '@/components/ui/SplitAmount';
 import { Txt } from '@/components/ui/Txt';
 import { setSetting, useFirst, useQuery, useSetting } from '@/db';
-import type { Estimate, ProjectCost, ToolHolder, ToolStock } from '@/db/types';
+import type { Estimate, PayMethod, ProjectCost, ToolHolder, ToolStock } from '@/db/types';
 import { setCurrentProject, useCurrentProjectId, useEstimateTotal, useProject, useProjectEstimates, useProjectReceipts, useProjectReceived, useProjectWorkers } from '@/hooks/data';
 import { useT, type TKey } from '@/i18n';
 import { formatDay } from '@/lib/dates';
@@ -28,6 +31,9 @@ import { radius, space, useColors } from '@/theme';
 type OutRow = ToolHolder & Pick<ToolStock, 'name' | 'code' | 'unit' | 'is_material' | 'quantity_milli'> & { worker_name: string | null; since: string | null };
 
 const MAX_ROWS = 5;
+
+/** The icon of a client payment by how it came: notes, a bank transfer, a cheque. */
+const METHOD_ICON: Record<PayMethod, LucideIcon> = { cash: Banknote, bank: Landmark, cheque: FileText };
 
 /** One export choice: a checkbox, a label and a one-line hint. The whole row is the tap target (48 dp+). */
 function ExportOption({ label, hint, checked, onChange }: { label: string; hint: string; checked: boolean; onChange: (next: boolean) => void }) {
@@ -55,14 +61,41 @@ function ExportOption({ label, hint, checked, onChange }: { label: string; hint:
 }
 
 /** One line of the "Money from client" card: the label on the left, the amount on the right. */
-function MoneyLine({ label, value, strong, tone = 'text' }: { label: string; value: string; strong?: boolean; tone?: 'text' | 'warning' | 'danger' }) {
+function MoneyLine({ label, value, strong, tone = 'text' }: { label: string; value: string; strong?: boolean; tone?: 'text' | 'warning' | 'danger' | 'success' }) {
   return (
     <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline', gap: space.sm }}>
-      <Txt variant="caption" color="textMuted" weight="semibold" style={{ flexShrink: 1 }}>
+      <Txt color="textMuted" weight="semibold" style={{ flexShrink: 1 }}>
         {label}
       </Txt>
-      <Txt weight={strong ? 'bold' : 'semibold'} color={tone} numeric style={{ flexShrink: 1, textAlign: 'right' }}>
+      <Txt variant="bodyLg" weight={strong ? 'bold' : 'semibold'} color={tone} numeric style={{ flexShrink: 1, textAlign: 'right' }}>
         {value}
+      </Txt>
+    </View>
+  );
+}
+
+/** "Rs" small and the figure large, side by side (it reads "Rs 3,000,000"). */
+function BigMoney({ cents }: { cents: number }) {
+  return <SplitAmount value={formatLKR(cents)} size={28} />;
+}
+
+/** The share of the project value received, in a soft round badge ("<1 %" for a little, never a misleading 0). */
+function PercentBadge({ percent, received, over }: { percent: number; received: number; over: boolean }) {
+  const c = useColors();
+  return (
+    <View
+      style={{
+        width: 64,
+        height: 64,
+        borderRadius: 32,
+        borderWidth: 5,
+        borderColor: over ? c.amber : c.success,
+        backgroundColor: over ? c.warningSoft : c.successSoft,
+        alignItems: 'center',
+        justifyContent: 'center',
+      }}>
+      <Txt weight="bold" numeric color={over ? 'warning' : 'success'} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>
+        {`${received > 0 && percent === 0 ? '<1' : percent}%`}
       </Txt>
     </View>
   );
@@ -162,6 +195,8 @@ export default function ProjectDetail() {
   const money = receiptSummary(pr.contract_cents, receivedRow?.received_cents ?? 0);
   const inactive = new Set(inactiveWorkerIds.map((r) => r.id));
   const activeWorkers = workers.filter((w) => w.active && !inactive.has(w.worker_id));
+  const wagesOwed = activeWorkers.reduce((a, w) => a + Math.max(0, w.balance_cents), 0);
+  const leftInContract = pr.contract_cents ? pr.contract_cents - total : 0;
 
   function work(path: '/(tabs)/expenses' | '/(tabs)/workers' | '/(tabs)/tools') {
     setCurrentProject(pr.id);
@@ -170,78 +205,84 @@ export default function ProjectDetail() {
 
   return (
     <>
-      <Stack.Screen
-        options={{
-          title: pr.name,
-          headerRight: () => (
-            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-              <ShareHeaderButton onPress={share.open} />
-              <HeaderButton icon={Pencil} label={t('editProject')} onPress={() => router.push(`/project/form?id=${pr.id}`)} />
-            </View>
-          ),
-        }}
-      />
+      {/* the blue hero carries the back button and the actions */}
+      <Stack.Screen options={{ title: pr.name, headerShown: false }} />
       <Screen>
-        <View style={{ gap: space.sm }}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.sm, flexWrap: 'wrap' }}>
-            <Badge tone={pr.status === 'active' ? 'success' : pr.status === 'on_hold' ? 'warning' : 'slate'} label={t(`status_${pr.status}`)} />
-            {current === pr.id ? <Badge tone="primary" label={t('thisProject')} /> : null}
-          </View>
-          {pr.client || pr.location ? (
-            <Txt variant="caption" color="textMuted">
-              {[pr.client, pr.location].filter(Boolean).join(' · ')}
+        <Hero
+          back
+          title={t('project')}
+          actions={
+            <>
+              <HeroAction icon={Share2} label={t('share')} onPress={share.open} />
+              <HeroAction icon={Pencil} label={t('editProject')} onPress={() => router.push(`/project/form?id=${pr.id}`)} />
+            </>
+          }>
+          <View style={{ gap: space.sm }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.sm, flexWrap: 'wrap' }}>
+              <Badge tone={pr.status === 'active' ? 'success' : pr.status === 'on_hold' ? 'warning' : 'slate'} label={t(`status_${pr.status}`)} />
+              {current === pr.id ? <Badge tone="primary" label={t('thisProject')} /> : null}
+            </View>
+            <Txt variant="heading" weight="bold" color="onHeader" numberOfLines={3}>
+              {pr.name}
             </Txt>
-          ) : null}
-          {pr.start_date || pr.end_date ? (
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.xs }}>
-              <CalendarRange size={14} color={c.textMuted} strokeWidth={2} />
-              <Txt variant="caption" color="textMuted" numeric>
-                {[pr.start_date ? formatDay(pr.start_date) : '…', pr.end_date ? formatDay(pr.end_date) : '…'].join(' – ')}
+            {pr.client || pr.location ? (
+              <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: space.xs }}>
+                <MapPin size={14} color={c.onHeaderMuted} strokeWidth={2} style={{ marginTop: 2 }} />
+                <Txt variant="caption" weight="semibold" color="onHeaderMuted" style={{ flex: 1 }}>
+                  {[pr.client, pr.location].filter(Boolean).join(' · ')}
+                </Txt>
+              </View>
+            ) : null}
+            {pr.start_date || pr.end_date ? (
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.xs }}>
+                <CalendarRange size={14} color={c.onHeaderMuted} strokeWidth={2} />
+                <Txt variant="caption" weight="semibold" color="onHeaderMuted" numeric>
+                  {[pr.start_date ? formatDay(pr.start_date) : '…', pr.end_date ? formatDay(pr.end_date) : '…'].join(' – ')}
+                </Txt>
+              </View>
+            ) : null}
+            {current !== pr.id ? (
+              <Button
+                kind="heroSoft"
+                compact
+                icon={Star}
+                label={t('setCurrent')}
+                onPress={() => {
+                  setCurrentProject(pr.id);
+                  toast(pr.name);
+                }}
+                style={{ alignSelf: 'flex-start' }}
+              />
+            ) : null}
+          </View>
+          <HeroAmount label={t('totalCost')} value={formatLKR(total)} />
+          {pr.contract_cents ? (
+            <View style={{ gap: space.xs }}>
+              <ContractBar spent={total} contract={pr.contract_cents} onHero />
+              <Txt variant="caption" color="onHeader" weight="semibold" numeric>
+                {t('balanceToContract')}: {formatLKR(leftInContract)}
               </Txt>
             </View>
           ) : null}
-          {current !== pr.id ? (
-            <Button
-              kind="ghost"
-              compact
-              icon={Star}
-              label={t('setCurrent')}
-              onPress={() => {
-                setCurrentProject(pr.id);
-                toast(pr.name);
-              }}
-              style={{ alignSelf: 'flex-start' }}
-            />
-          ) : null}
-        </View>
+        </Hero>
 
-        <SectionTitle title={t('overview')} first />
-        <Card>
-          <Txt eyebrow>{t('totalCost')}</Txt>
-          <Txt variant="amountXl" weight="bold" numeric adjustsFontSizeToFit minimumFontScale={0.7} numberOfLines={1}>
-            {formatLKR(total)}
-          </Txt>
-          {pr.contract_cents ? (
-            <>
-              <Divider />
-              <ContractBar spent={total} contract={pr.contract_cents} />
-              <Txt variant="caption" color={pr.contract_cents - total < 0 ? 'danger' : 'textMuted'} weight="semibold" numeric>
-                {t('balanceToContract')}: {formatLKR(pr.contract_cents - total)}
+        <SectionTitle title={t('moneyFromClient')} first />
+        <Card gap={space.md}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.lg }}>
+            {money.value != null ? <PercentBadge percent={money.percent} received={money.received} over={money.over > 0} /> : null}
+            <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
+              <Txt variant="caption" weight="semibold" color="textMuted">
+                {t('receivedSoFar')}
               </Txt>
-            </>
-          ) : null}
-        </Card>
-
-        <SectionTitle
-          title={t('moneyFromClient')}
-          action={<Button kind="ghost" compact icon={Plus} label={t('recordPayment')} onPress={() => router.push(`/project/receipt?projectId=${pr.id}`)} />}
-        />
-        <Card>
+              <BigMoney cents={money.received} />
+              {money.value != null ? (
+                <Txt variant="caption" color="textMuted" numeric>
+                  {`${t('projectValue')}: ${formatLKR(money.value)}`}
+                </Txt>
+              ) : null}
+            </View>
+          </View>
           {money.value != null ? <ReceivedBar percent={money.percent} received={money.received} over={money.over > 0} /> : null}
-          {money.value != null ? (
-            <MoneyLine label={t('projectValue')} value={formatLKR(money.value)} />
-          ) : null}
-          <MoneyLine label={t('receivedSoFar')} value={formatLKR(money.received)} strong />
           {money.value != null ? (
             money.over > 0 ? (
               <MoneyLine label={t('overValueBy')} value={formatLKR(money.over)} tone="warning" strong />
@@ -254,21 +295,17 @@ export default function ProjectDetail() {
             </Txt>
           )}
           {money.received > 0 ? (
-            <>
-              <Divider />
-              <MoneyLine
-                label={t('receivedMinusSpent')}
-                value={formatLKR(money.received - total)}
-                tone={money.received - total < 0 ? 'danger' : 'text'}
-              />
-            </>
+            <MoneyLine label={t('receivedMinusSpent')} value={formatLKR(money.received - total)} tone={money.received - total < 0 ? 'danger' : 'success'} />
           ) : null}
+          <Button icon={Plus} label={t('recordPayment')} onPress={() => router.push(`/project/receipt?projectId=${pr.id}`)} />
         </Card>
         {receipts.length ? (
           <ListCard inset>
             {receipts.map((r) => (
               <ListRow
                 key={r.id}
+                icon={METHOD_ICON[r.method] ?? Wallet}
+                iconTone="success"
                 title={formatLKR(r.amount_cents)}
                 subtitle={[formatDay(r.day), t(`method_${r.method}`), r.note].filter(Boolean).join(' · ')}
                 onPress={() => router.push(`/project/receipt?id=${r.id}`)}
@@ -281,6 +318,7 @@ export default function ProjectDetail() {
           </Txt>
         )}
 
+        <SectionTitle title={t('overview')} />
         {/* two even tiles; what was paid of the labour sits under it, not alone on a third row */}
         <Tiles>
           <Stat label={t('materialsAndOther')} value={formatLKR(cost.expense_cents)} onPress={() => work('/(tabs)/expenses')} />
@@ -306,30 +344,45 @@ export default function ProjectDetail() {
           action={<Button kind="ghost" compact icon={UserPlus} label={t('add')} onPress={() => router.push(`/worker/assign?projectId=${pr.id}`)} />}
         />
         {activeWorkers.length ? (
-          <ListCard inset>
-            {activeWorkers.slice(0, MAX_ROWS).map((w) => (
-              <ListRow
-                key={w.worker_id}
-                avatar={w.name}
-                title={w.name}
-                subtitle={[w.trade, `${formatLKR(w.rate_cents)} / ${t('day')}`].filter(Boolean).join(' · ')}
-                value={formatLKR(Math.abs(w.balance_cents))}
-                badge={
-                  w.balance_cents > 0 ? (
-                    <Badge tone="danger" label={t('weOwe')} />
-                  ) : w.balance_cents < 0 ? (
-                    <Badge tone="warning" label={t('workerOwes')} />
-                  ) : w.earned_cents > 0 || w.paid_cents > 0 ? (
-                    <Badge tone="success" label={t('settled')} />
-                  ) : undefined
-                }
-                onPress={() => router.push(`/worker/${w.worker_id}`)}
-              />
-            ))}
-            {activeWorkers.length > MAX_ROWS ? (
-              <ListRow icon={HardHat} title={t('seeAll')} value={String(activeWorkers.length)} onPress={() => work('/(tabs)/workers')} />
+          <>
+            {wagesOwed > 0 ? (
+              <Card tone="dangerSoft" padding={space.md} onPress={() => work('/(tabs)/workers')} accessibilityLabel={`${t('wagesToPay')} ${formatLKR(wagesOwed)}`}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: space.sm }}>
+                  <Txt weight="semibold" color="danger" style={{ flexShrink: 1 }}>
+                    {t('wagesToPay')}
+                  </Txt>
+                  <Txt variant="bodyLg" weight="bold" color="danger" numeric>
+                    {formatLKR(wagesOwed)}
+                  </Txt>
+                </View>
+              </Card>
             ) : null}
-          </ListCard>
+            <ListCard inset>
+              {activeWorkers.slice(0, MAX_ROWS).map((w) => (
+                <ListRow
+                  key={w.worker_id}
+                  avatar={w.name}
+                  title={w.name}
+                  subtitle={[w.trade, `${formatLKR(w.rate_cents)} / ${t('day')}`].filter(Boolean).join(' · ')}
+                  value={formatLKR(Math.abs(w.balance_cents))}
+                  valueTone={w.balance_cents > 0 ? 'danger' : 'text'}
+                  badge={
+                    w.balance_cents > 0 ? (
+                      <Badge tone="danger" label={t('weOwe')} />
+                    ) : w.balance_cents < 0 ? (
+                      <Badge tone="warning" label={t('workerOwes')} />
+                    ) : w.earned_cents > 0 || w.paid_cents > 0 ? (
+                      <Badge tone="success" label={t('settled')} />
+                    ) : undefined
+                  }
+                  onPress={() => router.push(`/worker/${w.worker_id}`)}
+                />
+              ))}
+              {activeWorkers.length > MAX_ROWS ? (
+                <ListRow icon={HardHat} title={t('seeAll')} value={String(activeWorkers.length)} onPress={() => work('/(tabs)/workers')} />
+              ) : null}
+            </ListCard>
+          </>
         ) : (
           <Card>
             <EmptyState
@@ -391,7 +444,14 @@ export default function ProjectDetail() {
 
         <SectionTitle title={t('exportPdf')} />
         <Card>
-          <Txt color="textMuted">{t('exportPdfHint')}</Txt>
+          <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: space.md }}>
+            <View style={{ width: 44, height: 44, borderRadius: radius.md, backgroundColor: c.primarySoft, alignItems: 'center', justifyContent: 'center' }}>
+              <FileText size={21} color={c.primary} strokeWidth={1.9} />
+            </View>
+            <Txt color="textMuted" style={{ flex: 1 }}>
+              {t('exportPdfHint')}
+            </Txt>
+          </View>
           <View>
             <ExportOption
               label={t('includePhotos')}
@@ -407,7 +467,7 @@ export default function ProjectDetail() {
               onChange={(v) => setSetting('export_letterhead', v ? '1' : '0')}
             />
           </View>
-          <Button icon={FileOutput} label={exporting ? t('exporting') : t('exportPdf')} loading={exporting} onPress={() => void onExport()} />
+          <Button kind="navy" icon={FileOutput} label={exporting ? t('exporting') : t('exportPdf')} loading={exporting} onPress={() => void onExport()} />
         </Card>
 
         <SectionTitle title={t('documents')} />

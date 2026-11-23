@@ -1,18 +1,18 @@
 import { router } from 'expo-router';
-import { Building2, ChevronLeft, ChevronRight } from 'lucide-react-native';
+import { Building2, ChevronLeft, ChevronRight, HardHat, Receipt, type LucideIcon } from 'lucide-react-native';
 import { useState } from 'react';
-import { View } from 'react-native';
+import { Pressable, View } from 'react-native';
 
-import { Stat, Tiles } from '@/components/Stats';
 import { IconButton } from '@/components/ui/Button';
 import { Segmented } from '@/components/ui/form';
 import { Card, Divider, ListRow } from '@/components/ui/layout';
+import { SplitAmount } from '@/components/ui/SplitAmount';
 import { Txt } from '@/components/ui/Txt';
 import { useQuery } from '@/db';
 import { useT } from '@/i18n';
 import { addDays, formatDay, monthName, periodRange, shiftPeriod, type Period } from '@/lib/dates';
 import { formatLKR } from '@/lib/money';
-import { space } from '@/theme';
+import { radius, space, useColors, useLayout } from '@/theme';
 
 interface Row {
   project_id: string;
@@ -29,6 +29,8 @@ interface Row {
  */
 export function PeriodSummary({ pid, today }: { pid: string | null; today: string }) {
   const t = useT();
+  const c = useColors();
+  const { stackTiles } = useLayout();
   const [period, setPeriod] = useState<Period>('day');
   // null follows today (so the card moves on at midnight); a date is a period the owner stepped back to
   const [picked, setPicked] = useState<string | null>(null);
@@ -78,8 +80,10 @@ export function PeriodSummary({ pid, today }: { pid: string | null; today: strin
   };
 
   return (
-    <Card>
-      <Txt eyebrow>{t('summary')}</Txt>
+    <Card gap={space.lg}>
+      <Txt variant="title" weight="bold" accessibilityRole="header">
+        {t('summary')}
+      </Txt>
       <Segmented
         options={[
           { value: 'day', label: t('periodDay') },
@@ -93,9 +97,9 @@ export function PeriodSummary({ pid, today }: { pid: string | null; today: strin
         }}
       />
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.sm }}>
-        <IconButton icon={ChevronLeft} label={t('previousPeriod')} onPress={() => step(-1)} />
+        <IconButton icon={ChevronLeft} label={t('previousPeriod')} size={44} shape="boxed" onPress={() => step(-1)} style={{ backgroundColor: c.surface2, borderColor: 'transparent' }} />
         <View style={{ flex: 1, alignItems: 'center' }} accessible accessibilityLiveRegion="polite">
-          <Txt weight="semibold" center numberOfLines={1}>
+          <Txt weight="bold" center numberOfLines={1}>
             {label}
           </Txt>
           {label !== range ? (
@@ -104,17 +108,34 @@ export function PeriodSummary({ pid, today }: { pid: string | null; today: strin
             </Txt>
           ) : null}
         </View>
-        <IconButton icon={ChevronRight} label={t('nextPeriod')} onPress={() => step(1)} disabled={isCurrent} />
+        <IconButton
+          icon={ChevronRight}
+          label={t('nextPeriod')}
+          size={44}
+          shape="boxed"
+          onPress={() => step(1)}
+          disabled={isCurrent}
+          style={{ backgroundColor: c.surface2, borderColor: 'transparent' }}
+        />
       </View>
-      <Tiles>
-        <Stat label={t('expenses')} value={formatLKR(sum.exp)} onPress={() => router.push('/(tabs)/expenses')} />
-        <Stat label={t('labour')} value={formatLKR(sum.labour)} caption={`${t('paidToWorkers')} ${formatLKR(sum.paid)}`} onPress={() => router.push('/(tabs)/workers')} />
-      </Tiles>
-      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline', gap: space.sm }}>
-        <Txt color="textMuted" weight="semibold">
+      {/* Blueprint: labour earned on a blue tile, expenses on a soft one; both open their tab */}
+      <View style={{ flexDirection: stackTiles ? 'column' : 'row', gap: space.md }}>
+        <SummaryTile
+          primary
+          icon={HardHat}
+          label={t('labour')}
+          value={formatLKR(sum.labour)}
+          caption={`${t('paidToWorkers')} ${formatLKR(sum.paid)}`}
+          onPress={() => router.push('/(tabs)/workers')}
+        />
+        <SummaryTile icon={Receipt} label={t('expenses')} value={formatLKR(sum.exp)} onPress={() => router.push('/(tabs)/expenses')} />
+      </View>
+      <Divider />
+      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: space.sm }}>
+        <Txt color="textMuted" weight="semibold" style={{ flexShrink: 1 }}>
           {t(`total_${period}`)}
         </Txt>
-        <Txt variant="title" weight="bold" numeric>
+        <Txt variant="title" weight="bold" numeric numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7} style={{ fontSize: 22, lineHeight: 28 }}>
           {formatLKR(sum.exp + sum.labour)}
         </Txt>
       </View>
@@ -139,5 +160,50 @@ export function PeriodSummary({ pid, today }: { pid: string | null; today: strin
         </Txt>
       ) : null}
     </Card>
+  );
+}
+
+/**
+ * One figure of the summary: an icon in a small square, the label, the amount ("Rs" smaller) and a caption.
+ * `primary` = the blue tile with white words (labour earned); otherwise a soft grey tile.
+ */
+function SummaryTile({ icon: Icon, label, value, caption, primary, onPress }: { icon: LucideIcon; label: string; value: string; caption?: string; primary?: boolean; onPress: () => void }) {
+  const c = useColors();
+  const muted = primary ? c.onFill : c.textMuted;
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={`${label} ${value}${caption ? ` ${caption}` : ''}`}
+      onPress={onPress}
+      style={({ pressed }) => ({
+        flex: 1,
+        minWidth: 0,
+        gap: space.xs,
+        padding: space.lg,
+        borderRadius: radius.lg - 2,
+        backgroundColor: primary ? (pressed ? c.fillPressed : c.fill) : pressed ? c.muted : c.surface2,
+      })}>
+      <View
+        style={{
+          width: 36,
+          height: 36,
+          borderRadius: radius.sm + 2,
+          marginBottom: space.sm,
+          alignItems: 'center',
+          justifyContent: 'center',
+          backgroundColor: primary ? c.primaryPressed : c.card,
+        }}>
+        <Icon size={18} color={primary ? c.onFill : c.primary} strokeWidth={1.9} />
+      </View>
+      <Txt variant="caption" weight="semibold" numberOfLines={2} style={{ color: muted, opacity: primary ? 0.85 : 1 }}>
+        {label}
+      </Txt>
+      <SplitAmount value={value} size={24} color={primary ? 'onFill' : 'text'} rsColor={primary ? 'onFill' : 'textMuted'} />
+      {caption ? (
+        <Txt variant="caption" weight="semibold" numeric numberOfLines={2} style={{ color: muted, opacity: primary ? 0.85 : 1 }}>
+          {caption}
+        </Txt>
+      ) : null}
+    </Pressable>
   );
 }

@@ -30,10 +30,10 @@ export function EmptyState({ icon: Icon, title, hint, action, compact }: EmptySt
   const tile = compact ? 48 : 56;
   return (
     <View style={{ alignItems: 'center', paddingVertical: compact ? space.xl : space.xxxl, paddingHorizontal: space.lg, gap: space.md }}>
-      <View style={{ width: tile, height: tile, borderRadius: radius.lg, backgroundColor: c.surface2, alignItems: 'center', justifyContent: 'center' }}>
-        <Icon size={compact ? 24 : 28} color={c.textMuted} strokeWidth={2} />
+      <View style={{ width: tile, height: tile, borderRadius: radius.lg, backgroundColor: c.primarySoft, alignItems: 'center', justifyContent: 'center' }}>
+        <Icon size={compact ? 24 : 28} color={c.primary} strokeWidth={1.9} />
       </View>
-      <Txt variant={compact ? 'bodyLg' : 'title'} weight="semibold" center>
+      <Txt variant="title" weight="bold" center>
         {title}
       </Txt>
       {hint ? (

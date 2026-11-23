@@ -1,15 +1,16 @@
 import { router } from 'expo-router';
-import { Hammer, Package, PackagePlus, Plus } from 'lucide-react-native';
+import { ArrowDownToLine, ArrowUpFromLine, Hammer, Package, PackagePlus, Plus, Settings, Share2 } from 'lucide-react-native';
 import { memo, useMemo, useState } from 'react';
 import { View } from 'react-native';
 
-import { HeaderAction, TabHeader } from '@/components/ProjectSwitcher';
-import { ShareHeaderButton, useShareSheet } from '@/components/ShareSheet';
+import { Hero, HeroAction, HeroButtons, HeroTile, HeroTiles } from '@/components/Hero';
+import { useShareSheet } from '@/components/ShareSheet';
 import { Button } from '@/components/ui/Button';
 import { CardList, type CardSection } from '@/components/ui/CardList';
 import { Badge, EmptyState } from '@/components/ui/feedback';
-import { Chips } from '@/components/ui/form';
-import { ListRow, Screen } from '@/components/ui/layout';
+import { Segmented } from '@/components/ui/form';
+import { Card, ListRow, Screen } from '@/components/ui/layout';
+import { Txt } from '@/components/ui/Txt';
 import { useQuery, useSetting } from '@/db';
 import type { ToolStock } from '@/db/types';
 import { useCurrentProjectId } from '@/hooks/data';
@@ -19,7 +20,7 @@ import { useT } from '@/i18n';
 import { formatDay } from '@/lib/dates';
 import { exportToolsRegisterPdf } from '@/lib/reports/export';
 import { isSinglePiece, qtyText } from '@/lib/toolStock';
-import { space, useColors } from '@/theme';
+import { radius, space, useColors } from '@/theme';
 
 /** One tool or material with its counts, and (for a single piece) where it is, as the tab has always shown. */
 type Row = ToolStock & {
@@ -41,8 +42,9 @@ type Filter = 'all' | 'out' | 'in';
 const toolFields = (r: Row) => [r.name, r.code, r.worker_name, r.project_name];
 
 /**
- * Tools tab. With a current project: "Out on this project" · "In store — available" ·
- * a collapsed "Other projects" group (out elsewhere). With "All projects": Out · In store.
+ * Tools tab (Blueprint): a blue hero with the project, what is in store and out, and Issue / Return; the search box
+ * over its edge; All · Out · In store. With a current project: "Out on this project" · a collapsed "Other projects"
+ * group (out elsewhere) · "In store — available" as a grid of tiles. With "All projects": Out · In store.
  * A tool with several pieces can be in two groups at once (3 out, 7 in store); a material counts what is left.
  */
 export default function ToolsScreen() {
@@ -98,15 +100,27 @@ export default function ToolsScreen() {
   // Tools out on another project are drawn muted, under the collapsible "Other projects" row.
   const renderRow = (item: Bucketed) => <ToolRow item={item} pid={pid} muted={item.bucket === 'elsewhere'} />;
 
+
   const showOut = active !== 'in';
   const showIn = active !== 'out';
 
+  // Section heads: the name in bold and the count beside it, as one text ("Out on this project (2)").
+  const head = (label: string, n: number) => (
+    <Txt variant="title" weight="bold" accessibilityRole="header" numberOfLines={2}>
+      {label}
+      <Txt variant="title" weight="semibold" color="textMuted" numeric>
+        {` (${n})`}
+      </Txt>
+    </Txt>
+  );
+
+  // Out on this project (or out anywhere) and the collapsible "Other projects" are list rows; what is in store is
+  // drawn as a two-column grid of tiles under them (the list's footer), as in the Blueprint design.
   const sections: CardSection<Bucketed>[] = [
-    { key: 'out', label: `${t(pid ? 'outHere' : 'out')} (${outHere.length})`, rows: showOut ? outHere : [] },
-    { key: 'in', label: `${t(pid ? 'availableToIssue' : 'inStore')} (${inStore.length})`, rows: showIn ? inStore : [] },
+    { key: 'out', title: head(t(pid ? 'outHere' : 'out'), outHere.length), rows: showOut ? outHere : [] },
     {
       key: 'elsewhere',
-      label: `${t('outElsewhere')} (${outElsewhere.length})`,
+      title: head(t('outElsewhere'), outElsewhere.length),
       rows: showOut && showElsewhere ? outElsewhere : [],
       before:
         showOut && outElsewhere.length
@@ -116,6 +130,7 @@ export default function ToolsScreen() {
                 node: (
                   <ListRow
                     icon={Hammer}
+                    iconTone="slate"
                     title={t('otherProjects')}
                     subtitle={showElsewhere ? t('hide') : t('showAll')}
                     value={String(outElsewhere.length)}
@@ -130,44 +145,72 @@ export default function ToolsScreen() {
     },
   ];
 
+  const storeGrid =
+    rows.length && showIn && inStore.length ? (
+      <View style={{ gap: space.md }}>
+        {head(t(pid ? 'availableToIssue' : 'inStore'), inStore.length)}
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: space.md }}>
+          {inStore.map((r) => (
+            <ToolTile key={toolKey(r)} item={r} />
+          ))}
+        </View>
+      </View>
+    ) : null;
+
+  const outPieces = out.reduce((a, r) => a + r.out_milli, 0);
+
   return (
     <View style={{ flex: 1, backgroundColor: c.bg }}>
-      <TabHeader
-        title={t('tools')}
-        allowAll
-        right={
-          // With no tools the empty state has the one "New tool" button; nothing to share yet either.
-          rows.length ? (
-            <>
-              <ShareHeaderButton onPress={share.open} />
-              {/* a tool-shaped "new", so it does not read as a second copy of the round + (which adds anything) */}
-              <HeaderAction icon={PackagePlus} label={t('newTool')} onPress={goNew} />
-            </>
-          ) : undefined
-        }
-      />
       <Screen hairlineTop={false} scroll={false}>
         <CardList
           sections={rows.length ? sections : []}
           keyOf={toolKey}
           renderRow={renderRow}
           inset
-          empty={rows.length === 0 ? <EmptyState icon={Hammer} title={t('noTools')} hint={t('noToolsHint')} action={<Button icon={Plus} label={t('newTool')} onPress={goNew} full />} /> : search.noResults}
+          gap={space.lg}
+          footer={storeGrid}
+          // the in-store grid is the footer: "nothing found" is only for a search that leaves no tool anywhere
+          empty={rows.length === 0 ? <EmptyState icon={Hammer} title={t('noTools')} hint={t('noToolsHint')} action={<Button icon={Plus} label={t('newTool')} onPress={goNew} full />} /> : storeGrid ? undefined : search.noResults}
           header={
-            rows.length ? (
-              <View style={{ gap: space.md }}>
-                {search.node}
-                <Chips
+            <View style={{ gap: space.lg }}>
+              <Hero
+                title={t('tools')}
+                project={{ allowAll: true }}
+                actions={
+                  <>
+                    {/* With no tools the empty state has the one "New tool" button; nothing to share yet either. */}
+                    {rows.length ? <HeroAction icon={Share2} label={t('share')} onPress={share.open} /> : null}
+                    {/* a tool-shaped "new", so it does not read as a second copy of the round + (which adds anything) */}
+                    {rows.length ? <HeroAction icon={PackagePlus} label={t('newTool')} onPress={goNew} /> : null}
+                    <HeroAction icon={Settings} label={t('settingsAndMore')} onPress={() => router.push('/more')} />
+                  </>
+                }
+                card={rows.length ? search.node : undefined}>
+                {rows.length ? (
+                  <>
+                    <HeroTiles>
+                      <HeroTile label={t('inStore')} value={String(inStore.length)} caption={t('toolsCount', { n: inStore.length })} dot={c.onHeader} />
+                      <HeroTile label={t(pid ? 'outHere' : 'out')} value={String(outHere.length)} caption={t('outCount', { n: qtyText(outPieces) })} dot={c.amber} />
+                    </HeroTiles>
+                    <HeroButtons>
+                      <Button kind="hero" icon={ArrowUpFromLine} label={t('issueTool')} onPress={() => router.push('/tool/move?kind=issue')} />
+                      <Button kind="heroSoft" icon={ArrowDownToLine} label={t('returnTool')} onPress={() => router.push('/tool/move?kind=return')} disabled={out.length === 0} />
+                    </HeroButtons>
+                  </>
+                ) : null}
+              </Hero>
+              {rows.length ? (
+                <Segmented
                   value={active}
                   onChange={setFilter}
                   options={[
-                    { value: 'all', label: t('all') },
-                    { value: 'out', label: t('out'), count: out.length, disabled: out.length === 0 },
-                    { value: 'in', label: t('inStore'), count: inStore.length, disabled: inStore.length === 0 },
+                    { value: 'all', label: `${t('all')} · ${rows.length}`, accessibilityLabel: t('all') },
+                    { value: 'out', label: `${t('out')} · ${out.length}`, accessibilityLabel: `${t('out')} ${out.length}` },
+                    { value: 'in', label: `${t('inStore')} · ${inStore.length}`, accessibilityLabel: `${t('inStore')} ${inStore.length}` },
                   ]}
                 />
-              </View>
-            ) : null
+              ) : null}
+            </View>
           }
         />
       </Screen>
@@ -182,10 +225,25 @@ const toolKey = (r: Bucketed) => `${r.bucket}-${r.tool_id}`;
 /** One tool or material: name and code, its counts, and for a single piece who has it and where. */
 const ToolRow = memo(function ToolRow({ item, pid, muted }: { item: Bucketed; pid: string | null; muted: boolean }) {
   const t = useT();
+  const { subtitle, badge } = describe(item, pid, t);
+  const out = item.out_milli > 0;
+  return (
+    <ListRow
+      icon={item.is_material ? Package : Hammer}
+      iconTone={out && item.bucket !== 'in' ? 'warning' : undefined}
+      muted={muted}
+      title={item.code ? `${item.name} · ${item.code}` : item.name}
+      subtitle={subtitle}
+      badge={<Badge tone={badge.tone} label={badge.label} />}
+      onPress={() => router.push(`/tool/${item.tool_id}`)}
+    />
+  );
+});
+
+/** The words under a tool and its status badge (shared by the rows and the in-store tiles). */
+function describe(item: Row, pid: string | null, t: ReturnType<typeof useT>) {
   const single = isSinglePiece(item);
   const out = item.out_milli > 0;
-  const material = !!item.is_material;
-
   let subtitle: string | undefined;
   let badge: { tone: 'success' | 'warning' | 'danger'; label: string };
   if (single) {
@@ -196,7 +254,7 @@ const ToolRow = memo(function ToolRow({ item, pid, muted }: { item: Bucketed; pi
           .join(' · ')
       : undefined;
     badge = { tone: out ? 'warning' : 'success', label: t(out ? 'out' : 'inStore') };
-  } else if (material) {
+  } else if (item.is_material) {
     subtitle = [t('leftCount', { n: qtyText(item.in_store_milli, item.unit) }), out ? t('issuedCount', { n: qtyText(item.out_milli, item.unit) }) : null].filter(Boolean).join(' · ');
     badge = item.in_store_milli > 0 ? { tone: 'success', label: t('leftCount', { n: qtyText(item.in_store_milli, item.unit) }) } : { tone: 'danger', label: t('outOfStock') };
   } else {
@@ -207,16 +265,55 @@ const ToolRow = memo(function ToolRow({ item, pid, muted }: { item: Bucketed; pi
         ? { tone: 'warning', label: t('out') }
         : { tone: 'warning', label: t('outCount', { n: qtyText(item.out_milli, item.unit) }) };
   }
+  return { subtitle, badge };
+}
 
+/** A tool in the store as a tile: icon, status, name, counts, and for several pieces a store / out bar. */
+const ToolTile = memo(function ToolTile({ item }: { item: Bucketed }) {
+  const t = useT();
+  const c = useColors();
+  const { subtitle, badge } = describe(item, null, t);
+  const pieces = !isSinglePiece(item) && !item.is_material && item.quantity_milli > 0;
+  const mostlyOut = pieces && item.out_milli > item.in_store_milli;
+  const Icon = item.is_material ? Package : Hammer;
+  const title = item.code ? `${item.name} · ${item.code}` : item.name;
   return (
-    <ListRow
-      icon={material ? Package : Hammer}
-      iconTone={out && item.bucket !== 'in' ? 'warning' : undefined}
-      muted={muted}
-      title={item.code ? `${item.name} · ${item.code}` : item.name}
-      subtitle={subtitle}
-      badge={<Badge tone={badge.tone} label={badge.label} />}
+    <Card
       onPress={() => router.push(`/tool/${item.tool_id}`)}
-    />
+      accessibilityLabel={[title, subtitle, badge.label].filter(Boolean).join('. ')}
+      padding={space.lg}
+      gap={space.sm}
+      style={{ flexGrow: 1, flexBasis: 140, maxWidth: '100%' }}>
+      <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: space.sm }}>
+        <View
+          style={{
+            width: 44,
+            height: 44,
+            borderRadius: radius.md,
+            backgroundColor: mostlyOut ? c.warningSoft : c.primarySoft,
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}>
+          <Icon size={21} color={mostlyOut ? c.warning : c.primary} strokeWidth={1.9} />
+        </View>
+        <View style={{ flexShrink: 1 }}>
+          <Badge tone={badge.tone} label={badge.label} />
+        </View>
+      </View>
+      <Txt variant="bodyLg" weight="bold" numberOfLines={2}>
+        {title}
+      </Txt>
+      {pieces ? (
+        <View style={{ flexDirection: 'row', height: 6, gap: 2 }} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
+          {item.in_store_milli > 0 ? <View style={{ flex: item.in_store_milli, borderRadius: 3, backgroundColor: c.primary }} /> : null}
+          {item.out_milli > 0 ? <View style={{ flex: item.out_milli, borderRadius: 3, backgroundColor: c.amber }} /> : null}
+        </View>
+      ) : null}
+      {subtitle ? (
+        <Txt variant="caption" color="textMuted" numberOfLines={2}>
+          {subtitle}
+        </Txt>
+      ) : null}
+    </Card>
   );
 });

@@ -1,5 +1,5 @@
 import { router, Stack, useLocalSearchParams } from 'expo-router';
-import { Phone, Trash2, UserRound, Wrench } from 'lucide-react-native';
+import { Check, Phone, Trash2, UserRound, Wrench } from 'lucide-react-native';
 import { useState } from 'react';
 
 import { Button, HeaderButton } from '@/components/ui/Button';
@@ -82,7 +82,7 @@ function Inner({ existing }: { existing: Worker | null }) {
             : () => <HeaderButton icon={Trash2} tone="danger" label={t('delete')} onPress={onDelete} />,
         }}
       />
-      <Screen footer={<Button label={t('save')} onPress={onSave} full />} gap={20}>
+      <Screen footer={<Button icon={Check} label={t('save')} onPress={onSave} full />} gap={20}>
         <Field
           label={t('name')}
           icon={UserRound}

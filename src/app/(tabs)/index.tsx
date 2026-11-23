@@ -3,24 +3,27 @@ import type { LucideIcon } from 'lucide-react-native';
 import {
   AlertTriangle,
   ArrowUpFromLine,
+  Banknote,
   Building2,
-  ChevronRight,
   ClipboardCheck,
   CloudOff,
   Hammer,
+  HandCoins,
   HardHat,
   NotebookPen,
   Plus,
   Receipt,
+  Settings,
   ShieldCheck,
+  TrendingUp,
 } from 'lucide-react-native';
 import { useMemo, useState } from 'react';
 import { Pressable, View } from 'react-native';
 
 import { BrandLogo } from '@/components/Brand';
+import { Hero, HeroAction, HeroAmount, HeroButtons, HeroChip, HeroChips } from '@/components/Hero';
 import { PeriodSummary } from '@/components/PeriodSummary';
-import { TabHeader } from '@/components/ProjectSwitcher';
-import { ContractBar, Stat, Tiles } from '@/components/Stats';
+import { ContractBar } from '@/components/Stats';
 import { Button } from '@/components/ui/Button';
 import { EmptyState } from '@/components/ui/feedback';
 import { PickerSheet } from '@/components/ui/form';
@@ -35,7 +38,7 @@ import { daysSince, formatDay, toDay } from '@/lib/dates';
 import { formatLKR } from '@/lib/money';
 import { qtyText } from '@/lib/toolStock';
 import { unpaidForDay } from '@/lib/wages';
-import { hairline, radius, space, useColors } from '@/theme';
+import { radius, space, useColors, useElevation } from '@/theme';
 
 function greetingKey(): TKey {
   const h = new Date().getHours();
@@ -43,7 +46,7 @@ function greetingKey(): TKey {
 }
 
 interface Activity {
-  kind: 'expense' | 'wage' | 'tool' | 'note';
+  kind: 'expense' | 'wage' | 'tool' | 'note' | 'receipt';
   id: string;
   title: string;
   sub: string | null;
@@ -57,10 +60,12 @@ interface Activity {
   unit: string | null;
 }
 
-/** Today dashboard: data safety, today's spend, work & pay, cost summary, quick actions, recent activity. */
+/**
+ * Today dashboard (Blueprint): a blue hero with the total cost and the two daily actions, the contract card over
+ * its edge, round quick actions, wages to pay, the day / week / month summary and recent activity.
+ */
 export default function TodayScreen() {
   const t = useT();
-  const c = useColors();
   const projects = useProjects();
   const pid = useCurrentProjectId();
   // moves on at midnight by itself, so the screen never shows yesterday as "today"
@@ -83,6 +88,7 @@ export default function TodayScreen() {
       args,
     )?.n ?? 0;
   const cost = useQuery<ProjectCost>(`SELECT * FROM v_project_cost ${pid ? 'WHERE project_id = ?' : "WHERE status != 'completed'"}`, args);
+  const received = useFirst<{ r: number }>('SELECT received_cents AS r FROM v_project_received WHERE project_id = ?', [pid ?? ''])?.r ?? 0;
   const dayRows = useWageDay(pid, td);
 
   const recent = useQuery<Activity>(
@@ -103,8 +109,12 @@ export default function TodayScreen() {
        SELECT 'note', n.id, 'note', n.body, NULL, n.day, n.created_at, n.id, p.name, NULL, NULL
          FROM site_notes n LEFT JOIN projects p ON p.id = n.project_id
          WHERE n.deleted_at IS NULL AND p.deleted_at IS NULL ${pid ? 'AND n.project_id = ?' : ''}
+       UNION ALL
+       SELECT 'receipt', r.id, r.method, r.note, r.amount_cents, r.day, r.created_at, r.id, p.name, NULL, NULL
+         FROM project_receipts r JOIN projects p ON p.id = r.project_id
+         WHERE r.deleted_at IS NULL AND p.deleted_at IS NULL ${pid ? 'AND r.project_id = ?' : ''}
      ) ORDER BY created_at DESC LIMIT 8`,
-    pid ? [pid, pid, pid, pid] : [],
+    pid ? [pid, pid, pid, pid, pid] : [],
   );
 
   const lastFull = useSetting('last_backup_at');
@@ -117,22 +127,27 @@ export default function TodayScreen() {
   const photosStale = photoCount > 0 && (fullDays == null || fullDays >= 7);
   const subtitle = formatDay(td);
 
+  const heroActions = (
+    <>
+      <HeroAction icon={ShieldCheck} label={t('backup')} onPress={() => router.push('/backup')} />
+      <HeroAction icon={Settings} label={t('settingsAndMore')} onPress={() => router.push('/more')} />
+    </>
+  );
+
   if (!projects.length) {
     return (
-      <View style={{ flex: 1 }}>
-        <TabHeader title={t(greetingKey())} subtitle={subtitle} showProject={false} brand />
-        <Screen hairlineTop={false} paddingBottom={24}>
-          <View style={{ alignItems: 'center', paddingTop: space.xl }}>
-            <BrandLogo width={180} />
-          </View>
-          <EmptyState
-            icon={Building2}
-            title={t('noProjects')}
-            hint={t('noProjectsHint')}
-            action={<Button icon={Plus} label={t('newProject')} onPress={() => router.push('/project/form')} full />}
-          />
-        </Screen>
-      </View>
+      <Screen hairlineTop={false}>
+        <Hero brand title={t(greetingKey())} subtitle={subtitle} actions={heroActions} />
+        <View style={{ alignItems: 'center', paddingTop: space.lg }}>
+          <BrandLogo width={180} />
+        </View>
+        <EmptyState
+          icon={Building2}
+          title={t('noProjects')}
+          hint={t('noProjectsHint')}
+          action={<Button icon={Plus} label={t('newProject')} onPress={() => router.push('/project/form')} full />}
+        />
+      </Screen>
     );
   }
 
@@ -146,6 +161,8 @@ export default function TodayScreen() {
   const worked = dayOnRoster.filter((r) => r.days != null).length;
   const toPay = unpaidForDay(dayOnRoster, roster);
   const noRoster = !!pid && roster.length === 0;
+  const hasContract = !!pid && totals.contract > 0;
+  const usedPct = hasContract ? Math.round((totals.spent / totals.contract) * 100) : 0;
 
   const workSubtitle = !pid
     ? t('noProjectSelected')
@@ -158,10 +175,58 @@ export default function TodayScreen() {
     else router.push('/wage/today');
   };
 
+  const card = (
+    <Card gap={space.md}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: space.sm }}>
+        <Txt variant="bodyLg" weight="bold" style={{ flexShrink: 1 }} numberOfLines={2}>
+          {pid ? t('contract') : t('projects')}
+        </Txt>
+        <Button
+          kind="ghost"
+          compact
+          label={pid ? t('costSummary') : t('projects')}
+          onPress={() => router.push(pid ? `/project/${pid}` : '/(tabs)/projects')}
+          style={{ marginVertical: -space.sm }}
+        />
+      </View>
+      {hasContract ? (
+        <ContractBar spent={totals.spent} contract={totals.contract} />
+      ) : (
+        <Txt variant="caption" color="textMuted">
+          {/* completed projects are not in this total: say so */}
+          {pid ? `${t('totalCost')} ${formatLKR(totals.spent)}` : t('runningProjectsCount', { n: cost.length })}
+        </Txt>
+      )}
+      {pid ? (
+        <>
+          <Divider />
+          <View style={{ flexDirection: 'row', gap: space.sm }}>
+            <MiniFigure label={t('receivedSoFar')} value={formatLKR(received)} />
+            {hasContract ? <MiniFigure label={t('balanceToContract')} value={formatLKR(Math.max(0, totals.contract - totals.spent))} /> : null}
+            {received > 0 ? (
+              <MiniFigure label={t('receivedMinusSpent')} value={formatLKR(received - totals.spent)} tone={received - totals.spent < 0 ? 'danger' : 'success'} />
+            ) : null}
+          </View>
+        </>
+      ) : null}
+    </Card>
+  );
+
   return (
     <View style={{ flex: 1 }}>
-      <TabHeader title={t(greetingKey())} subtitle={subtitle} brand />
       <Screen hairlineTop={false}>
+        <Hero brand title={t(greetingKey())} subtitle={subtitle} actions={heroActions} project card={card}>
+          <HeroAmount label={t('totalCost')} value={formatLKR(totals.spent)} />
+          <HeroChips>
+            {hasContract ? <HeroChip icon={TrendingUp} label={`${totals.spent > 0 && usedPct === 0 ? '<1' : usedPct}%`} /> : null}
+            {!pid ? <HeroChip icon={Building2} label={t('runningProjectsCount', { n: cost.length })} /> : null}
+          </HeroChips>
+          <HeroButtons>
+            <Button kind="hero" icon={Plus} label={t('newExpense')} onPress={() => router.push('/expense/form')} />
+            <Button kind="heroSoft" icon={ClipboardCheck} label={t('todaysWork')} onPress={openWork} />
+          </HeroButtons>
+        </Hero>
+
         {/* Data safety: red if the daily backup failed, amber if photos need a Drive copy, else a quiet green line. */}
         {autoError && !autoToday ? (
           <SafetyCard tone="danger" icon={AlertTriangle} text={t('autoBackupFailed')} action={t('runNow')} />
@@ -181,70 +246,28 @@ export default function TodayScreen() {
           />
         ) : null}
 
-        <PeriodSummary pid={pid} today={td} />
-
-        <Tiles>
-          <Stat
-            label={t('wagesToPay')}
-            value={formatLKR(wagesToPay)}
-            tone={wagesToPay > 0 ? 'danger' : 'text'}
-            onPress={() => router.push('/(tabs)/workers')}
-          />
-          <Stat label={t('toolsOut')} value={qtyText(toolsOutMilli)} tone={toolsOutMilli > 0 ? 'warning' : 'text'} onPress={() => router.push('/(tabs)/tools')} />
-        </Tiles>
-
-        <Card>
-          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: space.sm }}>
-            <Txt eyebrow style={{ flexShrink: 1 }}>
-              {t('totalCost')}
-            </Txt>
-          </View>
-          <Txt variant="amount" weight="bold" numeric adjustsFontSizeToFit minimumFontScale={0.7} numberOfLines={1}>
-            {formatLKR(totals.spent)}
-          </Txt>
-          {pid ? (
-            totals.contract > 0 ? (
-              <ContractBar spent={totals.spent} contract={totals.contract} />
-            ) : null
-          ) : (
-            <Txt variant="caption" color="textMuted">
-              {/* completed projects are not in this total: say so */}
-              {t('runningProjectsCount', { n: cost.length })}
-            </Txt>
-          )}
-          <Divider />
-          <View style={{ alignItems: 'flex-start' }}>
-            <Button
-              kind="ghost"
-              compact
-              label={pid ? t('costSummary') : t('projects')}
-              onPress={() => router.push(pid ? `/project/${pid}` : '/(tabs)/projects')}
-              // the 48 dp touch target stays; it just does not add a band of empty card under the link
-              style={{ marginTop: -space.xs, marginBottom: -space.md }}
-            />
-          </View>
-        </Card>
-
-        <Card onPress={openWork} accessibilityLabel={`${t('todaysWork')}. ${workSubtitle}`} padding={space.md}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.md }}>
-            <View style={{ width: 40, height: 40, borderRadius: radius.md, backgroundColor: c.primarySoft, alignItems: 'center', justifyContent: 'center' }}>
-              <ClipboardCheck size={22} color={c.primary} strokeWidth={2} />
-            </View>
-            <View style={{ flex: 1, gap: 2 }}>
-              <Txt weight="semibold">{t('todaysWork')}</Txt>
-              <Txt variant="caption" color="textMuted" numberOfLines={2}>
-                {workSubtitle}
-              </Txt>
-            </View>
-            <ChevronRight size={20} color={c.textMuted} strokeWidth={2} />
-          </View>
-        </Card>
-
-        <View style={{ flexDirection: 'row', gap: space.md }}>
-          <QuickAction icon={Receipt} label={t('newExpense')} onPress={() => router.push('/expense/form')} />
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: space.xs }}>
+          <QuickAction icon={Receipt} label={t('newExpense')} primary onPress={() => router.push('/expense/form')} />
+          {pid ? <QuickAction icon={Banknote} label={t('recordPayment')} onPress={() => router.push(`/project/receipt?projectId=${pid}`)} /> : null}
           <QuickAction icon={ArrowUpFromLine} label={t('issueTool')} onPress={() => router.push('/tool/move?kind=issue')} />
           <QuickAction icon={NotebookPen} label={t('newNote')} onPress={() => router.push('/note/form')} />
         </View>
+
+        <WagesStrip amount={wagesToPay} />
+
+        <ListCard inset>
+          <ListRow icon={ClipboardCheck} title={t('todaysWork')} subtitle={workSubtitle} onPress={openWork} accessibilityLabel={`${t('todaysWork')}. ${workSubtitle}`} />
+          <ListRow
+            icon={Hammer}
+            iconTone={toolsOutMilli > 0 ? 'warning' : undefined}
+            title={t('toolsOut')}
+            value={qtyText(toolsOutMilli)}
+            valueTone={toolsOutMilli > 0 ? 'warning' : 'text'}
+            onPress={() => router.push('/(tabs)/tools')}
+          />
+        </ListCard>
+
+        <PeriodSummary pid={pid} today={td} />
 
         <SectionTitle title={t('recent')} />
         {recent.length ? (
@@ -275,31 +298,68 @@ export default function TodayScreen() {
   );
 }
 
-function QuickAction({ icon: Icon, label, onPress }: { icon: LucideIcon; label: string; onPress: () => void }) {
-  const c = useColors();
+/** One figure of the contract card: a small label over a bold amount. */
+function MiniFigure({ label, value, tone = 'text' }: { label: string; value: string; tone?: 'text' | 'success' | 'danger' }) {
   return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityLabel={label}
-      onPress={onPress}
-      android_ripple={{ color: c.muted }}
-      style={({ pressed }) => ({
-        flex: 1,
-        minHeight: 84,
-        alignItems: 'center',
-        justifyContent: 'center',
-        gap: space.sm,
-        padding: space.md,
-        borderRadius: radius.lg,
-        borderWidth: hairline,
-        borderColor: c.border,
-        backgroundColor: pressed ? c.muted : c.card,
-      })}>
-      <Icon size={24} color={c.primary} strokeWidth={2} />
-      <Txt variant="caption" weight="semibold" center numberOfLines={2}>
+    <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
+      <Txt variant="caption" weight="semibold" color="textMuted" numberOfLines={2}>
         {label}
       </Txt>
+      <Txt weight="bold" numeric color={tone} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.6}>
+        {value}
+      </Txt>
+    </View>
+  );
+}
+
+/** A round quick action: a 60 dp tile (the first one blue) with its name under it. */
+function QuickAction({ icon: Icon, label, onPress, primary }: { icon: LucideIcon; label: string; onPress: () => void; primary?: boolean }) {
+  const c = useColors();
+  const lift = useElevation('card');
+  return (
+    <Pressable accessibilityRole="button" accessibilityLabel={label} onPress={onPress} style={{ flex: 1, minWidth: 0, alignItems: 'center', gap: space.sm }}>
+      {({ pressed }) => (
+        <>
+          <View
+            style={{
+              width: 60,
+              height: 60,
+              borderRadius: 30,
+              alignItems: 'center',
+              justifyContent: 'center',
+              backgroundColor: primary ? (pressed ? c.fillPressed : c.fill) : pressed ? c.muted : c.card,
+              ...lift,
+            }}>
+            <Icon size={24} color={primary ? c.onFill : c.primary} strokeWidth={1.9} />
+          </View>
+          <Txt variant="caption" weight="semibold" center numberOfLines={2}>
+            {label}
+          </Txt>
+        </>
+      )}
     </Pressable>
+  );
+}
+
+/** Wages still owed, with a Pay button that opens the Workers tab. */
+function WagesStrip({ amount }: { amount: number }) {
+  const c = useColors();
+  const t = useT();
+  return (
+    <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.md, padding: space.md, borderRadius: radius.lg, backgroundColor: c.primarySoft }}>
+      <View style={{ width: 44, height: 44, borderRadius: radius.md, backgroundColor: c.card, alignItems: 'center', justifyContent: 'center' }}>
+        <HandCoins size={22} color={c.primary} strokeWidth={1.9} />
+      </View>
+      <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
+        <Txt weight="bold" numberOfLines={2}>
+          {t('wagesToPay')}
+        </Txt>
+        <Txt variant="caption" weight="semibold" numeric color={amount > 0 ? 'danger' : 'textMuted'} numberOfLines={1}>
+          {formatLKR(amount)}
+        </Txt>
+      </View>
+      <Button kind="primary" compact label={t('payWages')} onPress={() => router.push('/(tabs)/workers')} />
+    </View>
   );
 }
 
@@ -333,10 +393,23 @@ function ActivityRow({ a, showProject }: { a: Activity; showProject: boolean }) 
       return (
         <ListRow
           icon={Hammer}
+          iconTone="warning"
           title={a.sub ?? ''}
           // a single piece reads as it always did; several pieces (or a material) say how many: "Issue · 3"
           subtitle={withProject(t(a.title === 'issue' ? 'issue' : 'return'), a.qty_milli != null && a.qty_milli !== 1000 ? qtyText(a.qty_milli, a.unit) : null)}
           onPress={() => router.push(`/tool/${a.ref}`)}
+        />
+      );
+    case 'receipt':
+      return (
+        <ListRow
+          icon={Banknote}
+          iconTone="success"
+          title={t('moneyFromClient')}
+          subtitle={withProject(t(`method_${a.title}` as TKey), a.sub)}
+          value={`+${formatLKR(a.amount_cents ?? 0)}`}
+          valueTone="success"
+          onPress={() => router.push(`/project/receipt?id=${a.ref}`)}
         />
       );
     default:

@@ -24,12 +24,13 @@ import {
   Trash2,
   XCircle,
 } from 'lucide-react-native';
-import { memo, useCallback, useRef, useState, type ReactNode } from 'react';
+import { memo, useCallback, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Alert, Pressable, ScrollView, View } from 'react-native';
 
 import { EstimateStatusBadge } from '@/components/EstimateBits';
-import { ShareHeaderButton, useShareSheet } from '@/components/ShareSheet';
-import { Button, HeaderButton } from '@/components/ui/Button';
+import { Hero, HeroAction, HeroAmount } from '@/components/Hero';
+import { useShareSheet } from '@/components/ShareSheet';
+import { Button } from '@/components/ui/Button';
 import { CardList } from '@/components/ui/CardList';
 import { EmptyState, toast } from '@/components/ui/feedback';
 import { BottomSheet, Checkbox, Chips, SheetHeader } from '@/components/ui/form';
@@ -173,10 +174,18 @@ function PdfShareSheet({
 
 const itemKey = (it: EstimateItem) => it.id;
 
-/** One price line: description, quantity × rate, line amount. Not tappable while the estimate is locked. */
-const ItemRow = memo(function ItemRow({ it, onOpen }: { it: EstimateItem; onOpen?: (id: string) => void }) {
+/** One price line: its number, description, quantity × rate, line amount. Not tappable while the estimate is locked. */
+const ItemRow = memo(function ItemRow({ it, n, onOpen }: { it: EstimateItem; n: number; onOpen?: (id: string) => void }) {
+  const c = useColors();
   return (
     <ListRow
+      leading={
+        <View style={{ width: 28, height: 28, borderRadius: radius.sm, backgroundColor: c.primarySoft, alignItems: 'center', justifyContent: 'center' }} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
+          <Txt variant="caption" weight="bold" color="primary" numeric>
+            {n}
+          </Txt>
+        </View>
+      }
       title={it.description}
       subtitle={`${[formatQty(it.qty_milli), it.unit].filter(Boolean).join(' ')} × ${formatLKR(it.rate_cents)}`}
       value={formatLKR(lineAmount(it.qty_milli, it.rate_cents))}
@@ -195,6 +204,8 @@ export default function EstimateHub() {
   const total = useEstimateTotal(id);
   const items = useEstimateItems(id);
   const payments = useEstimatePayments(id);
+  // the line numbers beside the items (1, 2, 3…), as they print on the estimate
+  const lineNo = useMemo(() => new Map(items.map((it, i) => [it.id, i + 1])), [items]);
   const company = useCompanyProfile();
   // The project this estimate became. A row that is not on this phone (imported from another phone) is not "deleted": it is elsewhere.
   const linked = useFirst<{ id: string; deleted_at: string | null }>('SELECT id, deleted_at FROM projects WHERE id = ?', [estimate?.project_id ?? '']);
@@ -297,6 +308,14 @@ export default function EstimateHub() {
     { label: t('branch'), value: company.branch, numeric: false },
   ].filter((line) => line.value.trim());
   const bankIncomplete = !company.bank_name.trim() || !company.account_no.trim();
+  // how to reach the client, on the card under the hero (only the lines that are filled in)
+  const contact = (
+    [
+      [Phone, est.client_phone ? formatPhone(est.client_phone) : null],
+      [Home, est.client_address],
+      [MapPin, est.location],
+    ] as const
+  ).filter((pair): pair is readonly [LucideIcon, string] => !!pair[1]);
 
   // ------------------------------------------------ actions
 
@@ -401,36 +420,24 @@ export default function EstimateHub() {
 
   return (
     <>
-      <Stack.Screen
-        options={{
-          title: est.number,
-          headerRight: () => (
-            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-              <ShareHeaderButton onPress={shareSheet.open} />
-              <HeaderButton icon={Pencil} label={t('editDetails')} onPress={() => router.push(`/estimate/form?id=${est.id}`)} />
-            </View>
-          ),
-        }}
-      />
+      {/* the blue hero carries the number, the client and the total; the native header steps aside */}
+      <Stack.Screen options={{ title: est.number, headerShown: false }} />
       <Screen scroll={false}>
         {/* One virtualised list: the cards above the price lines are its header, the rest of the hub its footer. */}
         <CardList
           sections={[{ key: 'items', rows: items }]}
           keyOf={itemKey}
-          renderRow={(it) => <ItemRow it={it} onOpen={locked ? undefined : openItem} />}
+          renderRow={(it) => <ItemRow it={it} n={lineNo.get(it.id) ?? 0} onOpen={locked ? undefined : openItem} />}
           gap={space.lg}
-          // The total stays in view while the lines scroll, with the one thing to do with it.
+          // the two ways out, always in view: the PDF (letterhead, language) and the message / PDF share sheet
           stickyFooter={
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.md }}>
-              <View style={{ flex: 1, minWidth: 0 }}>
-                <Txt variant="caption" color="textMuted">
-                  {t('total')}
-                </Txt>
-                <Txt variant="title" weight="bold" numeric numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>
-                  {formatLKR(total.total_cents)}
-                </Txt>
+            <View style={{ flexDirection: 'row', gap: space.md }}>
+              <View style={{ flex: 2, minWidth: 0 }}>
+                <Button kind="secondary" icon={FileText} label={t('sharePdf')} accessibilityLabel={t('shareEstimatePdf')} onPress={() => setSheetOpen(true)} disabled={!items.length} full />
               </View>
-              <Button icon={Share2} label={t('shareNow')} accessibilityLabel={t('shareEstimatePdf')} onPress={() => setSheetOpen(true)} disabled={!items.length} />
+              <View style={{ flex: 3, minWidth: 0 }}>
+                <Button icon={Share2} label={t('shareEstimate')} onPress={shareSheet.open} full />
+              </View>
             </View>
           }
           empty={
@@ -446,47 +453,47 @@ export default function EstimateHub() {
           }
           header={
             <View style={{ gap: space.lg }}>
-              {/* who it is for, and when */}
-              <Card>
-                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: space.md }}>
-                  <Txt variant="bodyLg" weight="semibold" numeric style={{ flex: 1 }} numberOfLines={1}>
-                    {est.number}
-                  </Txt>
-                  <EstimateStatusBadge status={est.status} />
-                </View>
-                <View style={{ flexDirection: 'row', gap: space.md, alignItems: 'flex-start' }}>
-                  <Initials name={withoutTitle(est.client_name)} size={48} />
-                  <View style={{ flex: 1, minWidth: 0, gap: space.xs }}>
-                    <Txt variant="title" weight="semibold" numberOfLines={2}>
+              {/* who it is for and the total on the blue; when, and how to reach them, on the card over its edge */}
+              <Hero
+                back
+                title={est.number}
+                actions={
+                  <>
+                    <HeroAction icon={Share2} label={t('share')} onPress={shareSheet.open} />
+                    <HeroAction icon={Pencil} label={t('editDetails')} onPress={() => router.push(`/estimate/form?id=${est.id}`)} />
+                  </>
+                }
+                card={
+                  <Card>
+                    <View style={{ flexDirection: 'row', gap: space.md }}>
+                      <Fact label={t('date')} value={formatDay(est.issue_day)} />
+                      <Fact label={t('validUntil')} value={formatDay(validUntil(est.issue_day, est.valid_days))} />
+                    </View>
+                    {contact.length ? <Divider /> : null}
+                    {contact.map(([Icon, line]) => (
+                      <View key={`${line}`} style={{ flexDirection: 'row', alignItems: 'flex-start', gap: space.sm }}>
+                        <Icon size={16} color={c.textMuted} strokeWidth={2} style={{ marginTop: 2 }} />
+                        <Txt color="textMuted" numberOfLines={2} style={{ flex: 1 }}>
+                          {line}
+                        </Txt>
+                      </View>
+                    ))}
+                  </Card>
+                }>
+                <View style={{ flexDirection: 'row', gap: space.md, alignItems: 'center' }}>
+                  <Initials name={withoutTitle(est.client_name)} size={56} />
+                  <View style={{ flex: 1, minWidth: 0, gap: space.xs, alignItems: 'flex-start' }}>
+                    <EstimateStatusBadge status={est.status} />
+                    <Txt variant="title" weight="bold" color="onHeader" numberOfLines={2} style={{ fontSize: 21, lineHeight: 27 }}>
                       {est.client_name}
                     </Txt>
-                    <Txt color="textMuted" numberOfLines={2}>
+                    <Txt variant="caption" weight="semibold" color="onHeaderMuted" numberOfLines={2}>
                       {est.title}
                     </Txt>
-                    {(
-                      [
-                        [Phone, est.client_phone ? formatPhone(est.client_phone) : null],
-                        [Home, est.client_address],
-                        [MapPin, est.location],
-                      ] as const
-                    )
-                      .filter(([, line]) => !!line)
-                      .map(([Icon, line]) => (
-                        <View key={`${line}`} style={{ flexDirection: 'row', alignItems: 'flex-start', gap: space.xs }}>
-                          <Icon size={14} color={c.textMuted} strokeWidth={2} style={{ marginTop: 2 }} />
-                          <Txt variant="caption" color="textMuted" numberOfLines={2} style={{ flex: 1 }}>
-                            {line}
-                          </Txt>
-                        </View>
-                      ))}
                   </View>
                 </View>
-                <Divider />
-                <View style={{ flexDirection: 'row', gap: space.md }}>
-                  <Fact label={t('date')} value={formatDay(est.issue_day)} />
-                  <Fact label={t('validUntil')} value={formatDay(validUntil(est.issue_day, est.valid_days))} />
-                </View>
-              </Card>
+                <HeroAmount label={t('total')} value={formatLKR(total.total_cents)} />
+              </Hero>
 
               {locked ? (
                 <Card tone="warningSoft">
@@ -513,8 +520,16 @@ export default function EstimateHub() {
                 <MoneyLine label={t('subtotal')} value={formatLKR(total.subtotal_cents)} />
                 {total.discount_cents > 0 ? <MoneyLine label={t('discount')} value={`−${formatLKR(total.discount_cents)}`} /> : null}
                 {est.tax_bp > 0 ? <MoneyLine label={`${t('tax')} (${formatPercent(est.tax_bp)} %)`} value={formatLKR(total.tax_cents)} /> : null}
-                {/* the total itself is in the sticky bar at the bottom, always in view next to Share */}
-                {!locked ? <Button kind="ghost" compact icon={Percent} label={t('discountAndTax')} onPress={() => router.push(`/estimate/form?id=${est.id}&more=1`)} style={{ alignSelf: 'flex-start' }} /> : null}
+                <Divider />
+                <View style={{ flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between', gap: space.md }}>
+                  <Txt color="textMuted" style={{ flex: 1, minWidth: 0 }} numberOfLines={1}>
+                    {t('total')}
+                  </Txt>
+                  <Txt variant="title" weight="bold" numeric numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7} style={{ flexShrink: 0, maxWidth: '70%' }}>
+                    {formatLKR(total.total_cents)}
+                  </Txt>
+                </View>
+                {!locked ? <Button kind="soft" compact icon={Percent} label={t('discountAndTax')} onPress={() => router.push(`/estimate/form?id=${est.id}&more=1`)} full /> : null}
               </Card>
 
 

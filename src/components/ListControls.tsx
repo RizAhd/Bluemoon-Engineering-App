@@ -9,7 +9,7 @@
  */
 import * as Haptics from 'expo-haptics';
 import type { LucideIcon } from 'lucide-react-native';
-import { Calendar, Check, ChevronDown, SlidersHorizontal, X } from 'lucide-react-native';
+import { Calendar, ChevronDown, SlidersHorizontal, X } from 'lucide-react-native';
 import { useEffect, useState, type ReactNode } from 'react';
 import { AppState, Pressable, ScrollView, View } from 'react-native';
 import Animated from 'react-native-reanimated';
@@ -22,7 +22,7 @@ import { setSetting, tx, useQuery } from '@/db';
 import { useT, type TKey } from '@/i18n';
 import { today } from '@/lib/dates';
 import { formatLKR } from '@/lib/money';
-import { hairline, radius, space, touchMin, useColors, useLayout } from '@/theme';
+import { hairline, radius, space, touchMin, useColors, useElevation, useLayout } from '@/theme';
 
 type T = ReturnType<typeof useT>;
 
@@ -164,7 +164,7 @@ export function amountRangeLabel(min: number | null, max: number | null, t: T): 
 
 // ---------------------------------------------------------------- chips
 
-/** One chip of the bar: 48 tall pill; chosen = ink fill with a tick, like the form chips. */
+/** One chip of the sheet and the month chooser: 48 tall rounded square; chosen = navy fill, like the form chips. */
 function BarChip({
   label,
   selected,
@@ -205,21 +205,77 @@ function BarChip({
         style={({ pressed }) => ({
           minHeight: touchMin,
           paddingHorizontal: space.lg,
-          borderRadius: radius.pill,
+          borderRadius: radius.md,
           borderWidth: hairline,
-          borderColor: selected ? (pressed ? c.slatePressed : c.slate) : disabled ? c.border : c.borderStrong,
+          borderColor: selected ? (pressed ? c.slatePressed : c.slate) : c.border,
           backgroundColor: selected ? (pressed ? c.slatePressed : c.slate) : pressed ? c.muted : c.card,
           flexDirection: 'row',
           alignItems: 'center',
           gap: space.sm,
         })}>
-        {selected && role !== 'button' ? <Check size={18} color={fg} strokeWidth={2.4} /> : Icon ? <Icon size={18} color={selected ? fg : c.textMuted} strokeWidth={2} /> : null}
-        <Txt weight={selected ? 'semibold' : 'regular'} numberOfLines={1} style={{ color: fg }}>
+        {Icon ? <Icon size={18} color={selected ? fg : c.text} strokeWidth={2} /> : null}
+        <Txt weight="semibold" numberOfLines={1} style={{ color: fg }}>
           {text}
         </Txt>
         {Trailing ? <Trailing size={18} color={selected ? fg : c.textMuted} strokeWidth={2} /> : null}
       </Pressable>
     </Animated.View>
+  );
+}
+
+/**
+ * One-of choices in a grey track; the chosen one is a white raised pill with blue words (Blueprint segmented).
+ * Each segment is as wide as its words (long Sinhala / Tamil labels never shrink); with `fill` the segments share
+ * the track's width when they fit. The row scrolls sideways when it does not.
+ */
+function SegTrack({
+  options,
+  value,
+  onChange,
+  fill,
+}: {
+  options: { value: string; label: string; count?: number; disabled?: boolean }[];
+  value: string | null;
+  onChange: (v: string) => void;
+  fill?: boolean;
+}) {
+  const c = useColors();
+  const lift = useElevation('field');
+  return (
+    <View
+      accessibilityRole="radiogroup"
+      style={{ flexDirection: 'row', flexGrow: fill ? 1 : 0, backgroundColor: c.surface2, borderRadius: radius.md, padding: 3, gap: 2 }}>
+      {options.map((o) => {
+        const on = o.value === value;
+        const text = o.count != null ? `${o.label} · ${o.count}` : o.label;
+        return (
+          <Pressable
+            key={o.value}
+            accessibilityRole="radio"
+            accessibilityState={{ checked: on, disabled: !!o.disabled }}
+            accessibilityLabel={o.count != null ? `${o.label} ${o.count}` : o.label}
+            disabled={o.disabled}
+            onPress={() => {
+              Haptics.selectionAsync().catch(() => {});
+              onChange(o.value);
+            }}
+            style={({ pressed }) => ({
+              flexGrow: fill ? 1 : 0,
+              minHeight: touchMin,
+              paddingHorizontal: space.lg,
+              borderRadius: radius.md - 3,
+              alignItems: 'center',
+              justifyContent: 'center',
+              backgroundColor: on ? c.card : pressed ? c.muted : 'transparent',
+              ...(on ? lift : null),
+            })}>
+            <Txt weight={on ? 'bold' : 'semibold'} numeric={o.count != null} numberOfLines={1} style={{ color: on ? c.primary : o.disabled ? c.placeholder : c.textMuted }}>
+              {text}
+            </Txt>
+          </Pressable>
+        );
+      })}
+    </View>
   );
 }
 
@@ -275,21 +331,76 @@ function FilterButton({ count, onPress }: { count: number; onPress: () => void }
           minHeight: touchMin,
           paddingLeft: space.md,
           paddingRight: count ? space.sm : space.lg,
-          borderRadius: radius.pill,
+          borderRadius: radius.md,
           borderWidth: hairline,
-          borderColor: count ? c.slate : c.borderStrong,
+          borderColor: count ? c.slate : c.border,
           backgroundColor: pressed ? c.muted : c.card,
           flexDirection: 'row',
           alignItems: 'center',
           gap: space.sm,
         })}>
         <SlidersHorizontal size={20} color={c.text} strokeWidth={2} />
-        <Txt weight="semibold" numberOfLines={1}>
+        <Txt weight="semibold" numberOfLines={1} style={{ flexShrink: 1 }}>
           {t('filterSort')}
         </Txt>
         {count ? (
           <View style={{ minWidth: 24, height: 24, paddingHorizontal: space.xs, borderRadius: radius.pill, backgroundColor: c.slate, alignItems: 'center', justifyContent: 'center' }}>
             <Txt variant="caption" weight="bold" numeric style={{ color: c.onSlate }}>
+              {String(count)}
+            </Txt>
+          </View>
+        ) : null}
+      </Pressable>
+    </Animated.View>
+  );
+}
+
+/** The square Filter & sort button beside the search box (Blueprint), with the number of choices made as a navy badge. */
+function SquareFilterButton({ count, onPress }: { count: number; onPress: () => void }) {
+  const c = useColors();
+  const t = useT();
+  const press = usePressScale();
+  const lift = useElevation('field');
+  return (
+    <Animated.View style={press.style}>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={count ? t('filterSortActive', { n: count }) : t('filterSort')}
+        {...press.handlers}
+        onPress={() => {
+          Haptics.selectionAsync().catch(() => {});
+          onPress();
+        }}
+        style={({ pressed }) => ({
+          width: 52,
+          height: 52,
+          minHeight: 52,
+          borderRadius: radius.md,
+          borderWidth: hairline,
+          borderColor: count ? c.slate : c.border,
+          backgroundColor: pressed ? c.muted : c.card,
+          alignItems: 'center',
+          justifyContent: 'center',
+          ...lift,
+        })}>
+        <SlidersHorizontal size={20} color={c.text} strokeWidth={2} />
+        {count ? (
+          <View
+            style={{
+              position: 'absolute',
+              top: -6,
+              right: -6,
+              minWidth: 22,
+              height: 22,
+              paddingHorizontal: 5,
+              borderRadius: 11,
+              borderWidth: 2,
+              borderColor: c.bg,
+              backgroundColor: c.slate,
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}>
+            <Txt variant="caption" weight="bold" numeric style={{ color: c.onSlate, fontSize: 11, lineHeight: 14 }}>
               {String(count)}
             </Txt>
           </View>
@@ -367,10 +478,15 @@ export interface ListControlsProps {
   applied: string[];
   /** Back to the defaults (the caption's Clear and the sheet's Reset). */
   onClear: () => void;
+  /**
+   * The list's search box (`useSearchBox().node`). Given, the bar is the Blueprint one: the search box with a square
+   * Filter & sort button beside it, then the period and quick choices as segmented tracks under them.
+   */
+  search?: ReactNode;
 }
 
 /** The control bar: chips row, applied caption with Clear, and the Filter & sort sheet. */
-export function ListControls({ period, quick, sort, children, sheetCount, applied, onClear }: ListControlsProps) {
+export function ListControls({ period, quick, sort, children, sheetCount, applied, onClear, search }: ListControlsProps) {
   const t = useT();
   const { gutter } = useLayout();
   const [open, setOpen] = useState(false);
@@ -405,31 +521,43 @@ export function ListControls({ period, quick, sort, children, sheetCount, applie
     />
   ) : null;
 
-  return (
-    <View style={{ gap: space.sm }}>
+  const barPeriod = period && !period.inSheet ? period : null;
+  const tracks =
+    barPeriod || quick ? (
       <ScrollView
         horizontal
         showsHorizontalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
         style={{ marginHorizontal: -gutter, flexGrow: 0 }}
-        contentContainerStyle={{ paddingHorizontal: gutter, gap: space.sm, alignItems: 'center' }}>
-        <FilterButton count={sheetCount} onPress={() => setOpen(true)} />
-        {period && !period.inSheet ? (
-          <View accessibilityRole="radiogroup" style={{ flexDirection: 'row', gap: space.sm }}>
-            {periodChoices.map((o) => (
-              <BarChip key={o.value} label={o.label} selected={period.value === o.value} onPress={() => period.onChange(o.value)} />
-            ))}
-            {monthChip}
-          </View>
+        contentContainerStyle={{ flexGrow: 1, paddingHorizontal: gutter, gap: space.sm, alignItems: 'center' }}>
+        {search ? null : <FilterButton count={sheetCount} onPress={() => setOpen(true)} />}
+        {barPeriod ? (
+          <SegTrack
+            fill={!!search}
+            // the chosen month is the month chip's, so no segment is lit then
+            value={fixedMonth ? null : barPeriod.value}
+            onChange={(v) => barPeriod.onChange(v as Period)}
+            options={search ? [periodChoices[2], periodChoices[0], periodChoices[1]] : periodChoices}
+          />
         ) : null}
-        {quick ? (
-          <View accessibilityRole="radiogroup" style={{ flexDirection: 'row', gap: space.sm }}>
-            {quick.options.map((o) => (
-              <BarChip key={o.value} label={o.label} count={o.count} disabled={o.disabled} selected={quick.value === o.value} onPress={() => quick.onChange(o.value)} />
-            ))}
-          </View>
-        ) : null}
+        {barPeriod ? monthChip : null}
+        {quick ? <SegTrack fill={!!search} value={quick.value} onChange={quick.onChange} options={quick.options} /> : null}
       </ScrollView>
+    ) : search ? null : (
+      <View style={{ flexDirection: 'row' }}>
+        <FilterButton count={sheetCount} onPress={() => setOpen(true)} />
+      </View>
+    );
+
+  return (
+    <View style={{ gap: space.md }}>
+      {search ? (
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.md }}>
+          <View style={{ flex: 1, minWidth: 0 }}>{search}</View>
+          <SquareFilterButton count={sheetCount} onPress={() => setOpen(true)} />
+        </View>
+      ) : null}
+      {tracks}
       {applied.length ? <AppliedCaption parts={applied} onClear={onClear} /> : null}
 
       <FilterSheet
@@ -494,14 +622,23 @@ function FilterSheet({
   return (
     <BottomSheet visible={visible} onClose={onClose}>
       <SheetHeader title={t('filterSort')} onClose={onClose} />
-      <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ paddingHorizontal: space.lg, paddingBottom: space.lg, gap: space.xl }}>
+      <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ paddingHorizontal: space.xl, paddingBottom: space.lg, gap: space.xl }}>
         {period}
-        <Chips label={t('sortBy')} options={sort.options} value={sort.value} onChange={sort.onChange} />
+        <View style={{ gap: space.sm }}>
+          <Label text={t('sortBy')} />
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} keyboardShouldPersistTaps="handled" contentContainerStyle={{ flexGrow: 1 }}>
+            <SegTrack fill options={sort.options} value={sort.value} onChange={sort.onChange} />
+          </ScrollView>
+        </View>
         {children}
       </ScrollView>
-      <View style={{ flexDirection: 'row', gap: space.md, paddingHorizontal: space.lg, paddingTop: space.md, borderTopWidth: hairline, borderTopColor: c.border }}>
-        <Button kind="secondary" compact label={t('reset')} onPress={onReset} style={{ flex: 1 }} />
-        <Button compact label={t('done')} onPress={onClose} style={{ flex: 1 }} />
+      <View style={{ flexDirection: 'row', gap: space.md, paddingHorizontal: space.xl, paddingTop: space.md, borderTopWidth: hairline, borderTopColor: c.divider }}>
+        <View style={{ flex: 1 }}>
+          <Button kind="secondary" label={t('reset')} onPress={onReset} full />
+        </View>
+        <View style={{ flex: 1.6 }}>
+          <Button label={t('done')} onPress={onClose} full />
+        </View>
       </View>
     </BottomSheet>
   );

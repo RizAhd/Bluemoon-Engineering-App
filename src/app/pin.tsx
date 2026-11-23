@@ -116,6 +116,9 @@ export default function PinScreen() {
   }
 
   const title: TKey = step === 'current' ? 'pinEnterCurrent' : step === 'new' ? 'pinChooseNew' : 'pinConfirm';
+  // the steps of this mode, for the bar at the top (one bar per step, the done and current ones blue)
+  const steps: Step[] = mode === 'set' ? ['new', 'confirm'] : mode === 'change' ? ['current', 'new', 'confirm'] : ['current'];
+  const at = steps.indexOf(step);
   const slots = step === 'current' ? lock.pinLength : step === 'confirm' ? first.length : null;
 
   return (
@@ -127,11 +130,18 @@ export default function PinScreen() {
           step === 'new' ? <Button label={t('next')} onPress={next} disabled={value.length < 4 || busy} full /> : undefined
         }>
         {/* what to do at the top, the keys low in the thumb zone */}
-        <View style={{ alignItems: 'center', gap: space.md, paddingTop: space.xl }}>
-          <View style={{ width: 56, height: 56, borderRadius: radius.lg, backgroundColor: c.primarySoft, alignItems: 'center', justifyContent: 'center' }}>
-            <LockKeyhole size={28} color={c.primary} strokeWidth={2} />
+        <View style={{ alignItems: 'center', gap: space.md, paddingTop: space.md }}>
+          {steps.length > 1 ? (
+            <View style={{ flexDirection: 'row', gap: space.sm, marginBottom: space.sm }} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
+              {steps.map((s, i) => (
+                <View key={s} style={{ width: 36, height: 6, borderRadius: 3, backgroundColor: i <= at ? c.primary : c.primarySoft2 }} />
+              ))}
+            </View>
+          ) : null}
+          <View style={{ width: 72, height: 72, borderRadius: radius.lg, backgroundColor: c.primarySoft, alignItems: 'center', justifyContent: 'center' }}>
+            <LockKeyhole size={32} color={c.primary} strokeWidth={1.9} />
           </View>
-          <Txt variant="title" weight="semibold" center>
+          <Txt variant="heading" weight="bold" center>
             {t(title)}
           </Txt>
           <Txt color={error ? 'danger' : 'textMuted'} weight={error ? 'semibold' : 'regular'} center accessibilityLiveRegion="polite">

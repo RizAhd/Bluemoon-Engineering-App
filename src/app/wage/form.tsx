@@ -1,10 +1,12 @@
 import { Stack, useLocalSearchParams } from 'expo-router';
-import { Building2, Trash2 } from 'lucide-react-native';
+import { Building2, Check, Trash2 } from 'lucide-react-native';
 import { useState } from 'react';
+import { View } from 'react-native';
 
 import { Button, HeaderButton } from '@/components/ui/Button';
-import { AmountField, Chips, DateField, Field, SelectField } from '@/components/ui/form';
-import { Screen } from '@/components/ui/layout';
+import { AmountField, DateField, Field, Segmented, SelectField } from '@/components/ui/form';
+import { Card, Divider, Screen } from '@/components/ui/layout';
+import { Txt } from '@/components/ui/Txt';
 import { useFirst } from '@/db';
 import { deleteRecord, recordWorkAndPay, saveWageEntry } from '@/db/repo';
 import type { WageEntry, WageKind } from '@/db/types';
@@ -15,6 +17,7 @@ import { confirmPayments } from '@/lib/confirmPay';
 import { today } from '@/lib/dates';
 import { centsToInput, formatLKR, parseCents } from '@/lib/money';
 import { dayWage } from '@/lib/wages';
+import { space } from '@/theme';
 
 const DAY_CHOICES: { value: string; label: string; a11y: TKey }[] = [
   { value: '0.5', label: '½', a11y: 'halfDay' },
@@ -149,18 +152,7 @@ function Inner({ existing, params }: { existing: WageEntry | null; params: { wor
             : undefined,
         }}
       />
-      <Screen gap={20} footer={<Button label={t('save')} onPress={onSave} />}>
-        <SelectField
-          label={t('project')}
-          items={projectItems}
-          value={projectValue}
-          onChange={(id) => {
-            setProjectId(id);
-            form.clearError('project_id');
-          }}
-          error={form.err('project_id')}
-          placeholder={t('chooseProject')}
-        />
+      <Screen gap={20} footer={<Button icon={Check} label={t('save')} onPress={onSave} />}>
         <SelectField
           label={t('worker')}
           items={items}
@@ -172,9 +164,21 @@ function Inner({ existing, params }: { existing: WageEntry | null; params: { wor
           error={form.err('worker_id')}
           placeholder={t('chooseWorker')}
         />
+        <SelectField
+          label={t('project')}
+          items={projectItems}
+          value={projectValue}
+          onChange={(id) => {
+            setProjectId(id);
+            form.clearError('project_id');
+          }}
+          error={form.err('project_id')}
+          placeholder={t('chooseProject')}
+        />
+        <DateField label={t('date')} value={day} onChange={setDay} maxDay={today()} error={form.err('day')} />
         {kind === 'work' ? (
           <>
-            <Chips
+            <Segmented
               label={t('days')}
               numeric
               value={DAY_CHOICES.some((d) => d.value === days) ? days : null}
@@ -183,10 +187,9 @@ function Inner({ existing, params }: { existing: WageEntry | null; params: { wor
                 form.clearError('days');
               }}
               options={DAY_CHOICES.map((d) => ({ value: d.value, label: d.label, accessibilityLabel: t(d.a11y) }))}
-              error={form.err('days')}
             />
             <Field
-              // labelled, so the box under the chips says what it is for (e.g. 3 or 2.5 days)
+              // labelled, so the box under the days says what it is for (e.g. 3 or 2.5 days)
               label={t('typeDays')}
               value={days}
               onChangeText={(s) => {
@@ -195,23 +198,27 @@ function Inner({ existing, params }: { existing: WageEntry | null; params: { wor
               }}
               keyboardType="decimal-pad"
               hint={rate > 0 ? `${t('dailyRate')} ${formatLKR(rate)}` : undefined}
+              error={form.err('days')}
             />
           </>
         ) : null}
-        <AmountField
-          label={t('amount')}
-          value={shownAmount}
-          onChangeText={(s) => {
-            // The box re-formats itself when it loses focus. That is not an edit, so the amount keeps following days × rate.
-            if (amountTouched || autoAmount == null || parseCents(s) !== autoAmount) setAmountTouched(true);
-            setAmount(s);
-            form.clearError('amount');
-          }}
-          hint={kind === 'work' && rate > 0 && nDays > 0 ? `${days} × ${formatLKR(rate)}` : moneyHint}
-          error={form.err('amount')}
-          // an advance or a payment is just an amount: the keypad opens at once (work starts from days × rate)
-          autoFocus={form.isNew && kind !== 'work'}
-        />
+        {/* the money of this entry in its own white card: what was earned (days × rate) or what is handed over */}
+        <Card>
+          <AmountField
+            label={t('amount')}
+            value={shownAmount}
+            onChangeText={(s) => {
+              // The box re-formats itself when it loses focus. That is not an edit, so the amount keeps following days × rate.
+              if (amountTouched || autoAmount == null || parseCents(s) !== autoAmount) setAmountTouched(true);
+              setAmount(s);
+              form.clearError('amount');
+            }}
+            hint={kind === 'work' && rate > 0 && nDays > 0 ? `${days} × ${formatLKR(rate)}` : moneyHint}
+            error={form.err('amount')}
+            // an advance or a payment is just an amount: the keypad opens at once (work starts from days × rate)
+            autoFocus={form.isNew && kind !== 'work'}
+          />
+        </Card>
         {canPayNow ? (
           <AmountField
             label={t('payNow')}
@@ -228,9 +235,42 @@ function Inner({ existing, params }: { existing: WageEntry | null; params: { wor
             error={form.err('pay')}
           />
         ) : null}
-        <DateField label={t('date')} value={day} onChange={setDay} maxDay={today()} error={form.err('day')} />
+        {canPayNow && workerValue ? (
+          // where the worker stands after this Save: owed before, plus this work, less what is paid now
+          <Card gap={space.sm}>
+            <SumLine label={t('owedBefore')} value={formatLKR(before)} />
+            <SumLine label={t('thisWork')} value={`+ ${formatLKR(parseCents(shownAmount) ?? 0)}`} />
+            <SumLine label={t('payNow')} value={`− ${formatLKR(Number.isFinite(payingCents) ? payingCents : 0)}`} />
+            <Divider />
+            {(() => {
+              const after = owedAfter - (Number.isFinite(payingCents) ? payingCents : 0);
+              return (
+                <SumLine
+                  label={t('balanceAfter')}
+                  value={after > 0 ? `${formatLKR(after)} · ${t('weOwe')}` : after < 0 ? `${formatLKR(-after)} · ${t('workerOwes')}` : `${formatLKR(0)} · ${t('settled')}`}
+                  tone={after > 0 ? 'danger' : after < 0 ? 'warning' : 'success'}
+                  strong
+                />
+              );
+            })()}
+          </Card>
+        ) : null}
         <Field label={t('note')} optional placeholder={t(kind === 'advance' ? 'phWageNote' : kind === 'work' ? 'phWorkNote' : 'phPayNote')} value={note} onChangeText={setNote} />
       </Screen>
     </>
+  );
+}
+
+/** One line of the balance card: a label on the left, the amount on the right. */
+function SumLine({ label, value, tone = 'text', strong }: { label: string; value: string; tone?: 'text' | 'danger' | 'warning' | 'success'; strong?: boolean }) {
+  return (
+    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: space.md }}>
+      <Txt color="textMuted" style={{ flex: 1 }} numberOfLines={2}>
+        {label}
+      </Txt>
+      <Txt weight="bold" numeric color={tone} variant={strong ? 'bodyLg' : 'body'} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7} style={{ flexShrink: 0, maxWidth: '60%' }}>
+        {value}
+      </Txt>
+    </View>
   );
 }

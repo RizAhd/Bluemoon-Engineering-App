@@ -1,7 +1,7 @@
 // Deep imports: the package index pulls in every weight (about 10 MB of fonts the app never uses).
-import { NotoSans_400Regular } from '@expo-google-fonts/noto-sans/400Regular';
-import { NotoSans_600SemiBold } from '@expo-google-fonts/noto-sans/600SemiBold';
-import { NotoSans_700Bold } from '@expo-google-fonts/noto-sans/700Bold';
+import { Manrope_500Medium } from '@expo-google-fonts/manrope/500Medium';
+import { Manrope_700Bold } from '@expo-google-fonts/manrope/700Bold';
+import { Manrope_800ExtraBold } from '@expo-google-fonts/manrope/800ExtraBold';
 import { NotoSansSinhala_400Regular } from '@expo-google-fonts/noto-sans-sinhala/400Regular';
 import { NotoSansSinhala_600SemiBold } from '@expo-google-fonts/noto-sans-sinhala/600SemiBold';
 import { NotoSansSinhala_700Bold } from '@expo-google-fonts/noto-sans-sinhala/700Bold';
@@ -11,6 +11,7 @@ import { NotoSansTamil_700Bold } from '@expo-google-fonts/noto-sans-tamil/700Bol
 import { useFonts } from 'expo-font';
 import { DarkTheme, DefaultTheme, router, Stack, ThemeProvider, usePathname, type ErrorBoundaryProps } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
+import { ArrowLeft } from 'lucide-react-native';
 import { StatusBar } from 'expo-status-bar';
 import * as SystemUI from 'expo-system-ui';
 import { useEffect, useState } from 'react';
@@ -22,15 +23,17 @@ import { AnimatedSplash } from '@/components/AnimatedSplash';
 import { AppLock } from '@/components/AppLock';
 import { AutoBackupRunner } from '@/components/AutoBackupRunner';
 import { ErrorScreen } from '@/components/ErrorScreen';
+import { HeroStatusStrip } from '@/components/HeroStatusStrip';
 import { RecoveryPrompt } from '@/components/RecoveryPrompt';
 import { ShareReceiver } from '@/components/ShareReceiver';
+import { IconButton } from '@/components/ui/Button';
 import { ToastHost } from '@/components/ui/feedback';
 import { TamaguiScope } from '@/components/ui/kit';
 import { getDb, getSetting } from '@/db';
 import { useT } from '@/i18n';
 import { installGlobalErrorHandlers, reportError, setFatalErrorListener } from '@/lib/errors';
 import { installKeyboardHygiene } from '@/lib/keyboard';
-import { motion, type, useColors, useFont, useScheme, useThemePref } from '@/theme';
+import { motion, space, type, useColors, useFont, useScheme, useThemePref } from '@/theme';
 
 SplashScreen.preventAutoHideAsync().catch(() => {});
 installGlobalErrorHandlers();
@@ -75,9 +78,9 @@ function recoveringAtStart(): boolean {
 
 export default function RootLayout() {
   const [fontsLoaded, fontError] = useFonts({
-    NotoSans_400Regular,
-    NotoSans_600SemiBold,
-    NotoSans_700Bold,
+    Manrope_500Medium,
+    Manrope_700Bold,
+    Manrope_800ExtraBold,
     NotoSansSinhala_400Regular,
     NotoSansSinhala_600SemiBold,
     NotoSansSinhala_700Bold,
@@ -174,9 +177,9 @@ function AppStack() {
   }, [pathname]);
 
   useEffect(() => {
-    // Android navigation bar follows the tab bar; the status bar follows the scheme.
-    SystemUI.setBackgroundColorAsync(c.tabBar).catch(() => {});
-  }, [c.tabBar]);
+    // Android navigation bar follows the page (the tab bar floats above it); the status bar follows the scheme.
+    SystemUI.setBackgroundColorAsync(c.bg).catch(() => {});
+  }, [c.bg]);
 
   useEffect(() => {
     // Native dialogs, pickers and the keyboard follow the app's own Light / Dark choice, not only the phone's.
@@ -197,11 +200,20 @@ function AppStack() {
       <StatusBar style={scheme === 'dark' ? 'light' : 'dark'} />
       <Stack
         screenOptions={{
-          headerStyle: { backgroundColor: c.header },
+          // Blueprint stack header: the page colour, a boxed back button, a bold title beside it
+          headerStyle: { backgroundColor: c.bg },
           headerShadowVisible: false,
           headerTintColor: c.text,
-          headerTitleStyle: { fontFamily: font('semibold'), fontSize: type.bodyLg, color: c.onHeader },
+          headerTitleAlign: 'left',
+          headerTitleStyle: { fontFamily: font('bold'), fontSize: type.title, color: c.text },
           headerBackButtonDisplayMode: 'minimal',
+          headerBackVisible: false,
+          headerLeft: ({ canGoBack }) =>
+            canGoBack ? (
+              <View style={{ marginRight: space.md }}>
+                <IconButton icon={ArrowLeft} label={t('back')} size={44} shape="boxed" onPress={() => router.back()} />
+              </View>
+            ) : null,
           contentStyle: { backgroundColor: c.bg },
           // the iOS-style push: the new screen slides in over the old one, which drifts left a little
           animation: 'ios_from_right',
@@ -237,6 +249,7 @@ function AppStack() {
         <Stack.Screen name="estimate/item" options={{ title: t('item') }} />
         <Stack.Screen name="estimate/payment" options={{ title: t('paymentStage') }} />
       </Stack>
+      <HeroStatusStrip />
       <ToastHost />
       <ShareReceiver />
       <AutoBackupRunner />

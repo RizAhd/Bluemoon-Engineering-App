@@ -1,8 +1,10 @@
 import { router } from 'expo-router';
-import { Camera, Plus, Receipt, Search } from 'lucide-react-native';
+import { Calendar, Camera, ChevronDown, ChevronUp, Plus, Receipt, Search, Settings, Share2 } from 'lucide-react-native';
 import { memo, useMemo, useState } from 'react';
-import { View } from 'react-native';
+import { Pressable, View } from 'react-native';
 
+import { CATEGORY_ICON } from '@/components/categoryIcons';
+import { Hero, HeroAction, HeroAmount, HeroChip, HeroChips } from '@/components/Hero';
 import {
   amountRangeLabel,
   centsOf,
@@ -16,24 +18,23 @@ import {
   useListPrefs,
   useToday,
 } from '@/components/ListControls';
-import { TabHeader } from '@/components/ProjectSwitcher';
-import { ShareHeaderButton, useShareSheet } from '@/components/ShareSheet';
-import { Stat, Tiles } from '@/components/Stats';
+import { useShareSheet } from '@/components/ShareSheet';
 import { Button } from '@/components/ui/Button';
 import { Badge, EmptyState } from '@/components/ui/feedback';
 import { CardList, type CardSection } from '@/components/ui/CardList';
 import { AmountField, HelperText, Label } from '@/components/ui/form';
-import { ListRow, Screen } from '@/components/ui/layout';
-import { useFirst, useSetting } from '@/db';
-import { EXPENSE_CATEGORIES, PAY_METHODS, type Expense } from '@/db/types';
-import { EXPENSE_SORTS, useAttachmentCounts, useCurrentProjectId, useExpenseList, useProject, type ExpenseFilter, type ExpenseSort } from '@/hooks/data';
+import { Card, ListRow, Screen } from '@/components/ui/layout';
+import { Txt } from '@/components/ui/Txt';
+import { useFirst, useQuery, useSetting } from '@/db';
+import { EXPENSE_CATEGORIES, PAY_METHODS, type Expense, type ExpenseCategory } from '@/db/types';
+import { EXPENSE_SORTS, expenseWhere, useAttachmentCounts, useCurrentProjectId, useExpenseList, useProject, type ExpenseFilter, type ExpenseSort } from '@/hooks/data';
 import { usePdfShare } from '@/hooks/pdfShare';
 import { useSearchBox } from '@/hooks/search';
 import { useT, type TKey } from '@/i18n';
 import { addDays, formatDay } from '@/lib/dates';
 import { centsToInput, formatLKR, parseCents } from '@/lib/money';
 import { exportExpensesPdf } from '@/lib/reports/export';
-import { space, useColors } from '@/theme';
+import { radius, space, useColors } from '@/theme';
 
 type Row = Expense & { project_name: string };
 type Group = { day: string; total: number; rows: Row[] };
@@ -43,6 +44,12 @@ const PAGE = 500;
 
 /** What the Expenses tab remembers (settings `list_expenses_<field>`); these are the defaults. */
 const DEFAULTS = { period: 'all', sort: 'newest', cats: '', methods: '', min: '', max: '' };
+
+/** The shade of each slice of the "By category" bar, largest share first (one blue, lighter and lighter). */
+const SHARE_OPACITY = [1, 0.62, 0.38, 0.22];
+
+/** Category tiles shown before "See all" opens the rest. */
+const TILES = 4;
 
 /** Minimum and maximum amount, typed in the sheet. A number is stored as soon as it reads as one. */
 function AmountRange({ min, max, onMin, onMax }: { min: number | null; max: number | null; onMin: (c: number | null) => void; onMax: (c: number | null) => void }) {
@@ -77,9 +84,9 @@ function AmountRange({ min, max, onMin, onMax }: { min: number | null; max: numb
 }
 
 /**
- * Expenses tab: the control bar (period chips, Filter & sort), tiles with the totals of what is shown, then one
- * card per day with the day total beside its label; sorted by amount it is one flat list instead.
- * Filtering, totals and order all happen in the database.
+ * Expenses tab (Blueprint): the blue hero with the total of what is shown and the "By category" card over its
+ * edge, then the search box with Filter & sort, the period track, and one card per day with the day total beside
+ * its date; sorted by amount it is one flat list instead. Filtering, totals and order all happen in the database.
  */
 export default function ExpensesScreen() {
   const t = useT();
@@ -105,6 +112,14 @@ export default function ExpensesScreen() {
   const filter: ExpenseFilter = { projectId: pid, range, categories: cats, methods, minCents: min, maxCents: max, q: search.query, categoryNames };
   const list = useExpenseList(filter, sort, limit);
   const projectName = useProject(pid)?.name ?? null;
+
+  // What the shown expenses add up to per category (the same filters as the list), largest first.
+  const w = expenseWhere(filter);
+  const byCategory = useQuery<{ category: ExpenseCategory; total: number }>(
+    `SELECT e.category AS category, COALESCE(SUM(e.amount_cents), 0) AS total FROM expenses e WHERE ${w.sql}
+     GROUP BY e.category HAVING total > 0 ORDER BY total DESC, e.category`,
+    w.args,
+  );
 
   // The PDF: every expense the filters and the search match (not only the page shown), with them named at the top.
   const letterhead = useSetting('export_letterhead') === '1';
@@ -181,23 +196,66 @@ export default function ExpensesScreen() {
     setLimit(PAGE);
   };
 
-  // Sorted by date the rows sit in one card per day under the day's total; sorted by amount they are one card and say their day.
+  // Sorted by date the rows sit in one card per day under the day and its total; sorted by amount they are one card and say their day.
   // (React Compiler memoises this, so the list only rebuilds when the rows or the labels change.)
   const sections: CardSection<Row>[] = byDate
-    ? groups.map((g) => ({ key: g.day, label: dayLabel(g.day), value: formatLKR(g.total), rows: g.rows }))
+    ? groups.map((g) => ({ key: g.day, title: <DayHeader label={dayLabel(g.day)} total={formatLKR(g.total)} />, rows: g.rows }))
     : [{ key: 'all', rows }];
 
   const renderRow = (item: Row) => <ExpenseRow item={item} photos={photos.get(item.id) ?? 0} withDay={!byDate} showProject={!pid} />;
 
+  const actions = (
+    <>
+      <HeroAction icon={Share2} label={t('share')} onPress={share.open} />
+      <HeroAction icon={Settings} label={t('settingsAndMore')} onPress={() => router.push('/more')} />
+    </>
+  );
+
+  // The hero's figure: everything on record, or (with a filter or a search) the total of what is shown. Each says the
+  // same to a screen reader as the tiles it replaces: "All expenses Rs 571,450 All projects".
+  const scope = pid ? '' : ` ${t('allProjects')}`;
+  const figure = filtered
+    ? { label: `${t('total')} · ${periodLabel(period, td, t)}`, value: formatLKR(list.total) }
+    : { label: t('allExpenses'), value: formatLKR(unfiltered.everything) };
+  const hero = (
+    <Hero
+      title={t('expenses')}
+      actions={actions}
+      project
+      card={unfiltered.n > 0 && list.total > 0 ? <CategoryCard rows={byCategory} total={list.total} /> : undefined}>
+      {unfiltered.n > 0 ? (
+        <>
+          <View accessible accessibilityLabel={`${figure.label} ${figure.value}${scope}`}>
+            <HeroAmount label={figure.label} value={figure.value} />
+          </View>
+          <HeroChips>
+            {filtered ? (
+              <View accessible accessibilityLabel={`${t('entries')} ${list.count}`}>
+                <HeroChip icon={Receipt} label={`${t('entries')} · ${list.count}`} />
+              </View>
+            ) : (
+              <>
+                <HeroChip icon={Receipt} label={t('recordsCount', { n: unfiltered.n })} />
+                <View accessible accessibilityLabel={`${t('thisMonth')} ${formatLKR(unfiltered.month)}`}>
+                  <HeroChip icon={Calendar} label={`${t('thisMonth')} ${formatLKR(unfiltered.month)}`} />
+                </View>
+              </>
+            )}
+          </HeroChips>
+        </>
+      ) : null}
+    </Hero>
+  );
+
   return (
     <View style={{ flex: 1, backgroundColor: c.bg }}>
-      <TabHeader title={t('expenses')} right={<ShareHeaderButton onPress={share.open} />} />
       <Screen hairlineTop={false} scroll={false}>
         {unfiltered.n === 0 ? (
           <CardList
             sections={[]}
             keyOf={rowKey}
             renderRow={renderRow}
+            header={hero}
             empty={<EmptyState icon={Receipt} title={t('noExpenses')} hint={t('noExpensesHint')} action={<Button icon={Plus} label={t('newExpense')} onPress={goNew} full />} />}
           />
         ) : (
@@ -209,9 +267,10 @@ export default function ExpensesScreen() {
             empty={search.noResults ?? <EmptyState icon={Search} title={t('noMatches')} hint={t('noMatchesHint')} action={<Button kind="secondary" compact label={t('clearFilters')} onPress={clear} />} compact />}
             footer={capped ? <Button kind="secondary" label={t('showAll')} onPress={() => setLimit(-1)} full /> : null}
             header={
-              <View style={{ gap: space.md }}>
-                {search.node}
+              <View style={{ gap: space.lg }}>
+                {hero}
                 <ListControls
+                  search={search.node}
                   period={{ value: period, onChange: (p) => set('period', p), months: list.months, today: td }}
                   sort={{ value: sort, onChange: (v) => set('sort', v), options: EXPENSE_SORTS.map((s) => ({ value: s, label: t(`sort_${s}`) })) }}
                   sheetCount={sheetCount}
@@ -231,17 +290,6 @@ export default function ExpensesScreen() {
                   />
                   <AmountRange min={min} max={max} onMin={(v) => set('min', v == null ? '' : String(v))} onMax={(v) => set('max', v == null ? '' : String(v))} />
                 </ListControls>
-                {filtered ? (
-                  <Tiles>
-                    <Stat label={`${t('total')} · ${periodLabel(period, td, t)}`} value={formatLKR(list.total)} caption={pid ? undefined : t('allProjects')} style={{ flex: 1 }} />
-                    <Stat label={t('entries')} value={String(list.count)} style={{ flex: 1 }} />
-                  </Tiles>
-                ) : (
-                  <Tiles>
-                    <Stat label={t('thisMonth')} value={formatLKR(unfiltered.month)} style={{ flex: 1 }} />
-                    <Stat label={t('allExpenses')} value={formatLKR(unfiltered.everything)} caption={pid ? undefined : t('allProjects')} style={{ flex: 1 }} />
-                  </Tiles>
-                )}
               </View>
             }
           />
@@ -254,16 +302,94 @@ export default function ExpensesScreen() {
 
 const rowKey = (r: Row) => r.id;
 
-/** One expense: paid to (or the category), the details, the amount, and a photo count badge. */
+/** The date over a day's card, with the day's total on the right. */
+function DayHeader({ label, total }: { label: string; total: string }) {
+  return (
+    <View accessibilityRole="header" style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: space.sm, paddingHorizontal: space.xs, paddingTop: space.xs }}>
+      <Txt weight="semibold" color="textMuted" numberOfLines={1} style={{ flexShrink: 1 }}>
+        {label}
+      </Txt>
+      <Txt weight="semibold" color="textMuted" numeric numberOfLines={1}>
+        {total}
+      </Txt>
+    </View>
+  );
+}
+
+/**
+ * "By category": one bar split by each category's share of what is shown, and a tile per category (the largest four,
+ * "See all" opens the rest). Shares are shades of the one blue; every tile names its category and amount in words.
+ */
+function CategoryCard({ rows, total }: { rows: { category: ExpenseCategory; total: number }[]; total: number }) {
+  const t = useT();
+  const c = useColors();
+  const [all, setAll] = useState(false);
+  const shown = all ? rows : rows.slice(0, TILES);
+  const shade = (i: number) => SHARE_OPACITY[Math.min(i, SHARE_OPACITY.length - 1)];
+  return (
+    <Card gap={space.md}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: space.sm, minHeight: 32 }}>
+        <Txt variant="bodyLg" weight="bold" accessibilityRole="header" style={{ flexShrink: 1 }}>
+          {t('byCategory')}
+        </Txt>
+        {rows.length > TILES ? (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityState={{ expanded: all }}
+            accessibilityLabel={t('seeAll')}
+            hitSlop={8}
+            onPress={() => setAll((v) => !v)}
+            style={{ flexDirection: 'row', alignItems: 'center', gap: 2, minHeight: 32 }}>
+            <Txt weight="bold" color="primary">
+              {t('seeAll')}
+            </Txt>
+            {all ? <ChevronUp size={18} color={c.primary} strokeWidth={2.2} /> : <ChevronDown size={18} color={c.primary} strokeWidth={2.2} />}
+          </Pressable>
+        ) : null}
+      </View>
+      {/* the share bar: decoration, the tiles below say the same in words */}
+      <View accessibilityElementsHidden importantForAccessibility="no-hide-descendants" style={{ flexDirection: 'row', height: 10, gap: 3 }}>
+        {rows.map((r, i) => (
+          <View key={r.category} style={{ flex: Math.max(r.total / Math.max(total, 1), 0.02), borderRadius: 3, backgroundColor: c.primary, opacity: shade(i) }} />
+        ))}
+      </View>
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: space.sm }}>
+        {shown.map((r, i) => {
+          const name = t(`cat_${r.category}` as TKey);
+          return (
+            <View
+              key={r.category}
+              accessible
+              accessibilityLabel={`${name} ${formatLKR(r.total)}`}
+              style={{ flexGrow: 1, flexBasis: '45%', minWidth: 132, gap: 2, paddingVertical: space.md, paddingHorizontal: space.md, borderRadius: radius.md, backgroundColor: c.bg }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: c.primary, opacity: shade(i) }} />
+                <Txt variant="caption" weight="semibold" color="textMuted" numberOfLines={1} style={{ flexShrink: 1 }}>
+                  {name}
+                </Txt>
+              </View>
+              <Txt variant="bodyLg" weight="bold" numeric numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>
+                {formatLKR(r.total)}
+              </Txt>
+            </View>
+          );
+        })}
+      </View>
+    </Card>
+  );
+}
+
+/** One expense: its category icon, paid to (or the category), the details, the amount out, and a photo count badge. */
 const ExpenseRow = memo(function ExpenseRow({ item, photos, withDay, showProject }: { item: Row; photos: number; withDay: boolean; showProject: boolean }) {
   const t = useT();
   const cat = t(`cat_${item.category}` as TKey);
   return (
     <ListRow
-      icon={Receipt}
+      icon={CATEGORY_ICON[item.category] ?? Receipt}
       title={item.paid_to || cat}
       subtitle={[withDay ? formatDay(item.day) : null, cat, showProject ? item.project_name : null, t(`method_${item.method}` as TKey)].filter(Boolean).join(' · ')}
-      value={formatLKR(item.amount_cents)}
+      // money out: "−Rs 4,200", as in the design (U+2212, the real minus sign)
+      value={`−${formatLKR(item.amount_cents)}`}
       badge={photos ? <Badge icon={Camera} label={String(photos)} /> : undefined}
       noChevron
       onPress={() => router.push(`/expense/form?id=${item.id}`)}

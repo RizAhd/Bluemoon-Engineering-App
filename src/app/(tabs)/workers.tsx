@@ -1,16 +1,17 @@
 import { router } from 'expo-router';
-import { Building2, ChevronRight, ClipboardCheck, HardHat, Plus, Search, UserPlus } from 'lucide-react-native';
+import { Banknote, Building2, Check, ChevronRight, ClipboardCheck, HardHat, Plus, Search, Settings, Share2, UserPlus, Users } from 'lucide-react-native';
 import { memo, useState } from 'react';
 import { View } from 'react-native';
 
+import { Hero, HeroAction, HeroAmount, HeroButtons, HeroChip, HeroChips } from '@/components/Hero';
 import { ListControls, oneOf, useListPrefs } from '@/components/ListControls';
-import { HeaderAction, TabHeader } from '@/components/ProjectSwitcher';
-import { ShareHeaderButton, useShareSheet } from '@/components/ShareSheet';
+import { useShareSheet } from '@/components/ShareSheet';
 import { Stat, Tiles } from '@/components/Stats';
 import { Button } from '@/components/ui/Button';
 import { CardList } from '@/components/ui/CardList';
 import { Badge, EmptyState } from '@/components/ui/feedback';
 import { Chips, PickerSheet } from '@/components/ui/form';
+import { Initials } from '@/components/ui/kit';
 import { Card, ListRow, Screen } from '@/components/ui/layout';
 import { Txt } from '@/components/ui/Txt';
 import { useSetting } from '@/db';
@@ -36,7 +37,7 @@ import { useT, type TKey } from '@/i18n';
 import { formatLKR } from '@/lib/money';
 import { exportWorkersListPdf } from '@/lib/reports/export';
 import { unpaidForDay } from '@/lib/wages';
-import { space, useColors } from '@/theme';
+import { radius, space, useColors } from '@/theme';
 
 /** What the Workers tab remembers (settings `list_workers_<field>`), the same with a project or "All projects". */
 const DEFAULTS = { balance: 'all', status: 'all', sort: 'name' };
@@ -44,11 +45,29 @@ const DEFAULTS = { balance: 'all', status: 'all', sort: 'name' };
 const BALANCE_LABEL: Record<Exclude<BalanceFilter, 'all'>, TKey> = { pay: 'weOwe', advance: 'workerOwes', settled: 'settled' };
 const STATUS_LABEL: Record<Exclude<WorkerStatusFilter, 'all'>, TKey> = { active: 'workerActive', left: 'workerLeft' };
 
-function BalanceBadge({ balance }: { balance: number }) {
+/** The worker's balance on the right of the row: the amount in its colour with the words under it, never colour alone. */
+function BalanceTrailing({ balance, showSettled }: { balance: number; showSettled: boolean }) {
   const t = useT();
-  if (balance > 0) return <Badge tone="danger" label={t('weOwe')} />;
-  if (balance < 0) return <Badge tone="warning" label={t('workerOwes')} />;
-  return <Badge tone="success" label={t('settled')} />;
+  const c = useColors();
+  const tone = balance > 0 ? 'danger' : balance < 0 ? 'warning' : 'success';
+  const words = balance > 0 ? t('weOwe') : balance < 0 ? t('workerOwes') : t('settled');
+  return (
+    <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.sm, flexShrink: 0, maxWidth: '50%' }}>
+      {balance || showSettled ? (
+        <View style={{ alignItems: 'flex-end', flexShrink: 1 }}>
+          {balance ? (
+            <Txt variant="bodyLg" weight="bold" numeric color={tone} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>
+              {formatLKR(Math.abs(balance))}
+            </Txt>
+          ) : null}
+          <Txt variant="caption" weight="semibold" color={tone} numberOfLines={1}>
+            {words}
+          </Txt>
+        </View>
+      ) : null}
+      <ChevronRight size={18} color={c.textMuted} strokeWidth={2} />
+    </View>
+  );
 }
 
 const workerKey = (r: WorkerListRow) => r.id;
@@ -62,39 +81,86 @@ const WorkerRow = memo(function WorkerRow({ r, showDays }: { r: WorkerListRow; s
       muted={!r.active}
       title={r.name}
       subtitle={[r.trade, r.rate ? `${formatLKR(r.rate)} / ${t('day')}` : null, showDays ? t('daysCount', { n: r.days }) : null].filter(Boolean).join(' · ')}
-      value={r.balance ? formatLKR(Math.abs(r.balance)) : undefined}
-      badge={
-        <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: space.xs }}>
-          {!r.active ? <Badge label={t('inactive')} /> : null}
-          {/* "Settled" only says something once there was work to settle. */}
-          {(r.active && r.days > 0) || r.balance ? <BalanceBadge balance={r.balance} /> : null}
-        </View>
-      }
+      badge={!r.active ? <Badge label={t('inactive')} /> : undefined}
+      // "Settled" only says something once there was work to settle.
+      trailing={<BalanceTrailing balance={r.balance} showSettled={!!r.active && r.days > 0} />}
       onPress={() => router.push(`/worker/${r.id}`)}
     />
   );
 });
 
-/** Entry card to "Today's work & pay": icon slot, title, one-line status, chevron. */
-function WorkPayCard({ subtitle, onPress }: { subtitle: string; onPress: () => void }) {
+/** How many faces the work & pay card shows before "+n". */
+const FACES = 5;
+
+/**
+ * Entry card to "Today's work & pay" (Blueprint: it sits half over the blue hero): title, one-line status, "Open",
+ * and the roster's faces with a tick on everyone who worked today. Without a roster it is a plain row.
+ */
+function WorkPayCard({ subtitle, onPress, people }: { subtitle: string; onPress: () => void; people: { id: string; name: string; worked: boolean }[] }) {
   const t = useT();
   const c = useColors();
+  const shown = people.slice(0, FACES);
+  const more = people.length - shown.length;
   return (
-    <Card onPress={onPress} accessibilityLabel={`${t('todaysWork')}. ${subtitle}`} padding={space.md}>
+    <Card onPress={onPress} accessibilityLabel={`${t('todaysWork')}. ${subtitle}`}>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.md }}>
-        <View style={{ width: 40, height: 40, borderRadius: 10, backgroundColor: c.primarySoft, alignItems: 'center', justifyContent: 'center' }}>
-          <ClipboardCheck size={22} color={c.primary} strokeWidth={2} />
-        </View>
+        {people.length ? null : (
+          <View style={{ width: 44, height: 44, borderRadius: radius.md, backgroundColor: c.primarySoft, alignItems: 'center', justifyContent: 'center' }}>
+            <ClipboardCheck size={22} color={c.primary} strokeWidth={1.9} />
+          </View>
+        )}
         <View style={{ flex: 1, gap: 2 }}>
-          <Txt weight="semibold" numberOfLines={2}>
+          <Txt variant="bodyLg" weight="bold" numberOfLines={2}>
             {t('todaysWork')}
           </Txt>
           <Txt variant="caption" color="textMuted" numberOfLines={2}>
             {subtitle}
           </Txt>
         </View>
-        <ChevronRight size={20} color={c.textMuted} strokeWidth={2} />
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 2 }}>
+          <Txt weight="bold" color="primary">
+            {t('open')}
+          </Txt>
+          <ChevronRight size={18} color={c.primary} strokeWidth={2.2} />
+        </View>
       </View>
+      {shown.length ? (
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: space.sm }} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
+          {shown.map((p) => (
+            <View key={p.id} style={{ flex: 1, maxWidth: 64, alignItems: 'center', gap: space.xs }}>
+              <View>
+                <Initials name={p.name} size={52} />
+                <View
+                  style={{
+                    position: 'absolute',
+                    right: -2,
+                    bottom: -2,
+                    width: 20,
+                    height: 20,
+                    borderRadius: 10,
+                    borderWidth: 2,
+                    borderColor: c.card,
+                    backgroundColor: p.worked ? c.success : c.surface2,
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  }}>
+                  {p.worked ? <Check size={11} color={c.card} strokeWidth={3.5} /> : null}
+                </View>
+              </View>
+              <Txt variant="caption" weight="semibold" numberOfLines={1}>
+                {p.name.split(' ')[0]}
+              </Txt>
+            </View>
+          ))}
+          {more > 0 ? (
+            <View style={{ flex: 1, maxWidth: 64, alignItems: 'center', gap: space.xs }}>
+              <View style={{ width: 52, height: 52, borderRadius: 26, backgroundColor: c.surface2, alignItems: 'center', justifyContent: 'center' }}>
+                <Txt weight="bold" color="textMuted" numeric>{`+${more}`}</Txt>
+              </View>
+            </View>
+          ) : null}
+        </View>
+      ) : null}
     </Card>
   );
 }
@@ -145,11 +211,16 @@ export default function WorkersScreen() {
   const everyone = useWorkerList(pid, { sort: 'name', balance: 'all', status: 'all' });
   const weOwe = everyone.rows.reduce((s, r) => s + Math.max(0, r.balance), 0);
   const workerOwes = everyone.rows.reduce((s, r) => s + Math.max(0, -r.balance), 0);
+  // the project's labour so far: what the roster earned and what has been handed over (pay and advances)
+  const earned = roster.reduce((s, r) => s + r.earned_cents, 0);
+  const handed = roster.reduce((s, r) => s + r.paid_cents + r.advance_cents, 0);
 
   // Same population as the wage sheet: only workers on the roster (a removed worker's day rows stay in v_wage_day).
   const onRoster = new Set(roster.map((r) => r.worker_id));
   const dayOnRoster = dayRows.filter((r) => onRoster.has(r.worker_id));
   const worked = dayOnRoster.filter((r) => r.days != null).length;
+  const workedIds = new Set(dayOnRoster.filter((r) => r.days != null).map((r) => r.worker_id));
+  const faces = roster.filter((r) => !!r.active).map((r) => ({ id: r.worker_id, name: r.name, worked: workedIds.has(r.worker_id) }));
   const toPayToday = unpaidForDay(dayOnRoster, roster);
   const workPaySubtitle = pid
     ? roster.length === 0
@@ -167,6 +238,7 @@ export default function WorkersScreen() {
   };
 
   const renderRow = (r: WorkerListRow) => <WorkerRow r={r} showDays={sort === 'days'} />;
+  const recordWork = () => router.push(pid ? `/wage/form?kind=work&projectId=${pid}` : '/wage/form?kind=work');
 
   const noProjects = projects.length === 0;
   const empty = list.total === 0;
@@ -184,20 +256,6 @@ export default function WorkersScreen() {
 
   return (
     <View style={{ flex: 1, backgroundColor: c.bg }}>
-      <TabHeader
-        title={t('workers')}
-        right={
-          <>
-            {/* With no worker anywhere there is nothing to share yet. */}
-            {list.total ? <ShareHeaderButton onPress={share.open} /> : null}
-            {pid ? (
-              <HeaderAction icon={UserPlus} label={t('addWorkerToProject')} onPress={addToProject} />
-            ) : (
-              <HeaderAction icon={UserPlus} label={t('newWorker')} onPress={newWorker} />
-            )}
-          </>
-        }
-      />
       <Screen hairlineTop={false} scroll={false}>
         <CardList
           keyOf={workerKey}
@@ -212,14 +270,47 @@ export default function WorkersScreen() {
                 ]
           }
           header={
-            noProjects && empty ? (
+            <View style={{ gap: space.md }}>
+              <Hero
+                title={t('workers')}
+                project={noProjects ? false : { allowAll: true }}
+                actions={
+                  <>
+                    {/* With no worker anywhere there is nothing to share yet. */}
+                    {list.total ? <HeroAction icon={Share2} label={t('share')} onPress={share.open} /> : null}
+                    {pid ? (
+                      <HeroAction icon={UserPlus} label={t('addWorkerToProject')} onPress={addToProject} />
+                    ) : (
+                      <HeroAction icon={UserPlus} label={t('newWorker')} onPress={newWorker} />
+                    )}
+                    <HeroAction icon={Settings} label={t('settingsAndMore')} onPress={() => router.push('/more')} />
+                  </>
+                }
+                card={!noProjects && (!pid || !empty) ? <WorkPayCard subtitle={workPaySubtitle} onPress={openWorkPay} people={faces} /> : undefined}>
+                {empty ? null : (
+                  <>
+                    {/* The amount totals the whole roster, whatever the list below is filtered to (and so matches Today's "Wages to pay"). */}
+                    <View accessible accessibilityLabel={`${t('weOwe')} ${formatLKR(weOwe)}`}>
+                      <HeroAmount label={t('wagesToPay')} value={formatLKR(weOwe)} />
+                    </View>
+                    <HeroChips>
+                      <HeroChip icon={Users} label={t('workersCount', { n: everyone.rows.length })} />
+                      <HeroChip label={`${t('workerOwes')} ${formatLKR(workerOwes)}`} />
+                    </HeroChips>
+                    {pid && roster.length ? (
+                      <HeroButtons>
+                        <Button kind="hero" icon={Banknote} label={t('payWages')} onPress={openWorkPay} full />
+                        <Button kind="heroSoft" icon={ClipboardCheck} label={t('recordWork')} onPress={recordWork} full />
+                      </HeroButtons>
+                    ) : null}
+                  </>
+                )}
+              </Hero>
+            {noProjects && empty ? (
               // Nothing can be recorded for a worker before there is a project: one empty state, one action.
               <EmptyState icon={Building2} title={t('addProjectFirst')} hint={t('addProjectFirstHint')} action={<Button icon={Plus} label={t('newProject')} onPress={newProject} full />} />
             ) : (
               <View style={{ gap: space.md }}>
-                {/* first in the header, above everything; with nobody on the roster there is nothing to search */}
-                {empty ? null : search.node}
-
                 {!pid && !noProjects ? (
                   <Card tone="warningSoft">
                     <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.md }}>
@@ -237,7 +328,15 @@ export default function WorkersScreen() {
                   </Card>
                 ) : null}
 
-                {!noProjects && (!pid || !empty) ? <WorkPayCard subtitle={workPaySubtitle} onPress={openWorkPay} /> : null}
+                {pid && !empty ? (
+                  <Tiles>
+                    <Stat label={t('labour')} value={formatLKR(earned)} />
+                    <Stat label={t('labourPaid')} value={formatLKR(handed)} caption={earned > 0 ? `${Math.min(100, Math.floor((handed * 100) / earned))}% · ${t('earned')}` : undefined} />
+                  </Tiles>
+                ) : null}
+
+                {/* with nobody on the roster there is nothing to search */}
+                {empty ? null : search.node}
 
                 {empty ? (
                   pid ? (
@@ -275,15 +374,6 @@ export default function WorkersScreen() {
                       />
                     </ListControls>
 
-                    <Tiles>
-                      <Stat label={t('weOwe')} value={formatLKR(weOwe)} tone={weOwe > 0 ? 'danger' : 'text'} />
-                      <Stat
-                        label={t('workerOwes')}
-                        value={formatLKR(workerOwes)}
-                        caption={everyone.counts.advance > 0 ? t('workersCount', { n: everyone.counts.advance }) : t('noAdvancesOver')}
-                      />
-                    </Tiles>
-
                     {!pid ? (
                       <Txt variant="caption" color="textMuted">
                         {t('balanceAllProjects')}
@@ -296,7 +386,8 @@ export default function WorkersScreen() {
                   </>
                 )}
               </View>
-            )
+            )}
+            </View>
           }
         />
       </Screen>

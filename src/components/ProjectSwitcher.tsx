@@ -1,22 +1,23 @@
 import { router } from 'expo-router';
-import { Building2, ChevronDown, LayoutGrid, Plus, Settings } from 'lucide-react-native';
+import { ArrowUpDown, Building2, ChevronDown, LayoutGrid, Plus, Settings } from 'lucide-react-native';
 import { useState, type ReactNode } from 'react';
 import { Pressable, View, type StyleProp, type ViewStyle } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { BrandMark } from '@/components/Brand';
-import { Button, IconButton } from '@/components/ui/Button';
+import { Hero, HeroAction } from '@/components/Hero';
+import { Button } from '@/components/ui/Button';
 import { PickerSheet } from '@/components/ui/form';
 import { Txt } from '@/components/ui/Txt';
 import { setCurrentProject, useCurrentProjectId, useProjects } from '@/hooks/data';
 import { useT } from '@/i18n';
-import { hairline, radius, sizes, space, useColors, useLayout } from '@/theme';
+import { hairline, radius, sizes, space, useColors } from '@/theme';
 
 export interface ProjectPillProps {
   /** Offer "All projects" (current = null). Screens that need one project pass false. */
   allowAll?: boolean;
   /** Called after the current project changes (the pill already saved it). */
   onChange?: (id: string | null) => void;
+  /** `hero`: the full-width glass bar on the blue hero (Blueprint); default: the small pill on white. */
+  variant?: 'pill' | 'hero';
   style?: StyleProp<ViewStyle>;
 }
 
@@ -24,7 +25,7 @@ export interface ProjectPillProps {
  * The current-project chooser: a 44-tall pill that opens the project PickerSheet.
  * The single source of truth for "current project" (`setCurrentProject`).
  */
-export function ProjectPill({ allowAll = true, onChange, style }: ProjectPillProps) {
+export function ProjectPill({ allowAll = true, onChange, variant = 'pill', style }: ProjectPillProps) {
   const c = useColors();
   const t = useT();
   const projects = useProjects();
@@ -37,6 +38,36 @@ export function ProjectPill({ allowAll = true, onChange, style }: ProjectPillPro
 
   return (
     <>
+      {variant === 'hero' ? (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={`${t('chooseProject')}: ${name}`}
+          accessibilityState={{ expanded: open }}
+          onPress={() => setOpen(true)}
+          style={({ pressed }) => [
+            {
+              flexDirection: 'row',
+              alignItems: 'center',
+              gap: space.md,
+              minHeight: 56,
+              paddingLeft: space.sm,
+              paddingRight: space.lg,
+              borderRadius: radius.md + 2,
+              backgroundColor: pressed ? c.headerDeep : c.headerSoft,
+              borderWidth: hairline,
+              borderColor: c.headerLine,
+            },
+            style,
+          ]}>
+          <View style={{ width: 40, height: 40, borderRadius: radius.md - 2, backgroundColor: c.headerSoft, alignItems: 'center', justifyContent: 'center' }}>
+            <Icon size={20} color={c.onHeader} strokeWidth={1.9} />
+          </View>
+          <Txt variant="bodyLg" weight="bold" color="onHeader" numberOfLines={1} style={{ flex: 1 }}>
+            {name}
+          </Txt>
+          <ArrowUpDown size={18} color={c.onHeader} strokeWidth={2} />
+        </Pressable>
+      ) : (
       <Pressable
         accessibilityRole="button"
         accessibilityLabel={`${t('chooseProject')}: ${name}`}
@@ -70,6 +101,7 @@ export function ProjectPill({ allowAll = true, onChange, style }: ProjectPillPro
         </Txt>
         <ChevronDown size={18} color={c.textMuted} strokeWidth={2} />
       </Pressable>
+      )}
 
       <PickerSheet
         visible={open}
@@ -93,15 +125,31 @@ export function ProjectPill({ allowAll = true, onChange, style }: ProjectPillPro
           onChange?.(next);
         }}
         footer={
-          <Button
-            kind="secondary"
-            icon={Plus}
-            label={t('newProject')}
-            onPress={() => {
-              setOpen(false);
-              router.push('/project/form');
-            }}
-          />
+          // Projects has no tab of its own in the Blueprint layout: the chooser is the way to the full list
+          <View style={{ flexDirection: 'row', gap: space.md }}>
+            <View style={{ flex: 1 }}>
+              <Button
+                kind="secondary"
+                icon={LayoutGrid}
+                label={t('projects')}
+                onPress={() => {
+                  setOpen(false);
+                  router.push('/(tabs)/projects');
+                }}
+              />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Button
+                kind="soft"
+                icon={Plus}
+                label={t('newProject')}
+                onPress={() => {
+                  setOpen(false);
+                  router.push('/project/form');
+                }}
+              />
+            </View>
+          </View>
         }
       />
     </>
@@ -121,6 +169,10 @@ export interface TabHeaderProps {
   hideMenu?: boolean;
   /** Show the Bluemoon logo mark before the title (the Today screen). */
   brand?: boolean;
+  /** Hero content under the title and project bar (amount, chips, buttons). */
+  children?: ReactNode;
+  /** A card that sits half over the blue. */
+  card?: ReactNode;
 }
 
 /**
@@ -130,59 +182,31 @@ export interface TabHeaderProps {
  * Expo Go's own floating tools button while testing). Screens without a project pill keep
  * the buttons on the title row.
  */
-export function TabHeader({ title, subtitle, allowAll = true, showProject = true, right, hideMenu, brand }: TabHeaderProps) {
-  const c = useColors();
+export function TabHeader({ title, subtitle, allowAll = true, showProject = true, right, hideMenu, brand, children, card }: TabHeaderProps) {
   const t = useT();
-  const insets = useSafeAreaInsets();
-  const { gutter, maxWidth } = useLayout();
-
-  const actions = (
-    <>
-      {right}
-      {hideMenu ? null : (
-        <IconButton icon={Settings} label={t('settingsAndMore')} size={sizes.headerButton} tone="onHeader" pressedBg="headerDeep" onPress={() => router.push('/more')} />
-      )}
-    </>
-  );
-
   return (
-    <View
-      style={{
-        paddingTop: insets.top + space.md,
-        paddingBottom: space.md,
-        backgroundColor: c.header,
-        borderBottomWidth: hairline,
-        borderBottomColor: c.border,
-      }}>
-      <View style={{ paddingHorizontal: gutter, gap: space.sm, maxWidth, width: '100%', alignSelf: 'center' }}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', minHeight: sizes.headerButton, gap: space.md }}>
-          {brand ? <BrandMark size={32} /> : null}
-          <View style={{ flex: 1, gap: 2 }}>
-            <Txt variant="heading" weight="semibold" accessibilityRole="header" color="onHeader" numberOfLines={1} maxFontSizeMultiplier={1.3}>
-              {title}
-            </Txt>
-            {subtitle ? (
-              <Txt variant="caption" weight="semibold" color="onHeaderMuted" numberOfLines={1}>
-                {subtitle}
-              </Txt>
-            ) : null}
-          </View>
-          {showProject ? null : actions}
-        </View>
-        {showProject ? (
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.xs }}>
-            <View style={{ flex: 1, flexDirection: 'row' }}>
-              <ProjectPill allowAll={allowAll} style={{ flexShrink: 1 }} />
-            </View>
-            {actions}
-          </View>
-        ) : null}
-      </View>
-    </View>
+    <Hero
+      // standalone above a list: not inside a padded container
+      flush
+      title={title}
+      subtitle={subtitle}
+      brand={brand}
+      project={showProject ? { allowAll } : false}
+      card={card}
+      actions={
+        right || !hideMenu ? (
+          <>
+            {right}
+            {hideMenu ? null : <HeroAction icon={Settings} label={t('settingsAndMore')} onPress={() => router.push('/more')} />}
+          </>
+        ) : undefined
+      }>
+      {children}
+    </Hero>
   );
 }
 
 /** Header action helper so screens don't repeat the sizing: `<TabHeader right={<HeaderAction icon={UserPlus} label=… onPress=… />} />`. */
 export function HeaderAction({ icon, label, onPress }: { icon: typeof Settings; label: string; onPress: () => void }) {
-  return <IconButton icon={icon} label={label} size={sizes.headerButton} tone="onHeader" pressedBg="headerDeep" onPress={onPress} />;
+  return <HeroAction icon={icon} label={label} onPress={onPress} />;
 }

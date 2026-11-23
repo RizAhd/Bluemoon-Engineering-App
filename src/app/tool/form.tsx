@@ -1,9 +1,10 @@
 import { router, Stack, useLocalSearchParams } from 'expo-router';
-import { Hammer, Hash, Ruler, Trash2 } from 'lucide-react-native';
+import { Check, Hammer, Hash, Package, Trash2 } from 'lucide-react-native';
 import { useState } from 'react';
 import { Alert } from 'react-native';
 
 import { PhotoStrip } from '@/components/PhotoStrip';
+import { QtyStepper } from '@/components/QtyStepper';
 import { Button, IconButton } from '@/components/ui/Button';
 import { toast } from '@/components/ui/feedback';
 import { Field, Segmented } from '@/components/ui/form';
@@ -74,14 +75,25 @@ function Inner({ existing }: { existing: Tool | null }) {
           headerRight: form.isNew
             ? undefined
             : () => (
-                <IconButton icon={Trash2} label={t('delete')} size={44} tone="danger" pressedBg="headerDeep" onPress={remove} />
+                <IconButton icon={Trash2} label={t('delete')} size={44} tone="danger" shape="boxed" onPress={remove} />
               ),
         }}
       />
-      <Screen footer={<Button label={t('save')} onPress={save} full />} gap={20}>
+      <Screen footer={<Button icon={Check} label={t('save')} onPress={save} full />} gap={20}>
+        {/* Blueprint order: what it is, a photo of it, its name, how many, its number, notes */}
+        <Segmented
+          options={[
+            { value: 'tool', label: t('kindTool') },
+            { value: 'material', label: t('kindMaterial') },
+          ]}
+          value={kind}
+          onChange={setKind}
+        />
+        {/* PhotoStrip already wraps capture in try/catch + showError (camera-off → settings / gallery). */}
+        <PhotoStrip ownerTable="tools" ownerId={form.id} label={t('photoProof')} />
         <Field
           label={t('toolName')}
-          icon={Hammer}
+          icon={kind === 'material' ? Package : Hammer}
           placeholder={t('phToolName')}
           value={name}
           onChangeText={(s) => {
@@ -92,31 +104,20 @@ function Inner({ existing }: { existing: Tool | null }) {
           autoFocus={form.isNew}
           returnKeyType="next"
         />
-        <Segmented
-          options={[
-            { value: 'tool', label: t('kindTool') },
-            { value: 'material', label: t('kindMaterial') },
-          ]}
-          value={kind}
-          onChange={setKind}
-        />
-        <Field
+        <QtyStepper
           label={t('howMany')}
-          icon={Ruler}
           placeholder={t('phHowManyTotal')}
           value={qty}
-          onChangeText={(s) => {
+          onChange={(s) => {
             setQty(s);
             form.clearError('qty');
           }}
-          keyboardType={kind === 'material' ? 'decimal-pad' : 'number-pad'}
+          decimal={kind === 'material'}
           hint={t('howManyTotalHint')}
           error={form.err('qty')}
         />
         {kind === 'material' ? <Field label={t('unit')} optional placeholder={t('phUnitTool')} value={unit} onChangeText={setUnit} autoCorrect={false} /> : null}
         <Field label={t('toolCode')} optional icon={Hash} placeholder={t('phToolCode')} value={code} onChangeText={setCode} autoCapitalize="characters" autoCorrect={false} />
-        {/* PhotoStrip already wraps capture in try/catch + showError (camera-off → settings / gallery). */}
-        <PhotoStrip ownerTable="tools" ownerId={form.id} label={t('photoProof')} />
         <Field label={t('notes')} optional placeholder={t('phToolNotes')} value={notes} onChangeText={setNotes} multiline style={{ marginTop: space.xs }} />
       </Screen>
     </>

@@ -92,12 +92,14 @@ export default function NotesScreen() {
           ListHeaderComponent={
             <View style={{ gap: space.md }}>
               {search.node}
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.sm, minHeight: 32 }} accessibilityRole="header">
-                <ScopeIcon size={20} color={project ? c.primary : c.textMuted} strokeWidth={2} />
-                <Txt weight="semibold" numberOfLines={1} style={{ flex: 1 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.md, minHeight: 32 }} accessibilityRole="header">
+                <View style={{ width: 36, height: 36, borderRadius: radius.md - 2, backgroundColor: c.primarySoft, alignItems: 'center', justifyContent: 'center' }}>
+                  <ScopeIcon size={18} color={c.primary} strokeWidth={1.9} />
+                </View>
+                <Txt variant="bodyLg" weight="bold" numberOfLines={1} style={{ flex: 1 }}>
                   {scopeName}
                 </Txt>
-                <Txt variant="caption" color="textMuted" numeric>
+                <Txt variant="caption" weight="semibold" color="textMuted" numeric>
                   {t('notesCount', { n: search.filtered.length })}
                 </Txt>
               </View>
@@ -126,29 +128,50 @@ const NoteCard = memo(function NoteCard({ item, pics, showProject }: { item: Not
   const w = item.weather && item.weather in WEATHER ? (item.weather as WeatherKey) : null;
   const W = w ? WEATHER[w] : null;
   const dayText = item.day === today() ? t('today') : formatDay(item.day);
+  // the date tile: the day of the month large, the month small under it ("22 / OCT")
+  const [dd, mon] = formatDay(item.day).split(' ');
+  const sunny = w === 'sunny';
   return (
-    <Card onPress={() => router.push(`/note/form?id=${item.id}`)} accessibilityLabel={`${dayText}${showProject ? ` · ${item.project_name}` : ''}: ${item.body}`} gap={space.sm}>
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.sm }}>
+    <Card onPress={() => router.push(`/note/form?id=${item.id}`)} accessibilityLabel={`${dayText}${showProject ? ` · ${item.project_name}` : ''}: ${item.body}`} gap={space.md}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.md }}>
+        <View style={{ width: 48, height: 52, borderRadius: radius.md, backgroundColor: c.primarySoft, alignItems: 'center', justifyContent: 'center' }} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
+          <Txt variant="title" weight="bold" color="primary" numeric style={{ lineHeight: 22 }}>
+            {dd}
+          </Txt>
+          <Txt variant="caption" weight="bold" color="primary" numeric style={{ fontSize: 10.5, lineHeight: 13 }}>
+            {(mon ?? '').toUpperCase()}
+          </Txt>
+        </View>
         <View style={{ flex: 1, minWidth: 0 }}>
-          <Txt weight="semibold" numeric>
+          <Txt variant="bodyLg" weight="bold" numeric>
             {dayText}
           </Txt>
-          {showProject ? (
-            <Txt variant="caption" color="textMuted" numberOfLines={1}>
-              {item.project_name}
-            </Txt>
-          ) : null}
+          <Txt variant="caption" color="textMuted" numberOfLines={1}>
+            {item.project_name}
+          </Txt>
         </View>
         {W && w ? (
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.xs, flexShrink: 0 }}>
-            <W size={18} color={c.textMuted} strokeWidth={2} />
-            <Txt variant="caption" color="textMuted">
+          <View
+            style={{
+              flexDirection: 'row',
+              alignItems: 'center',
+              gap: space.xs,
+              flexShrink: 0,
+              minHeight: 28,
+              paddingHorizontal: space.sm,
+              borderRadius: radius.sm,
+              backgroundColor: sunny ? c.warningSoft : c.primarySoft,
+            }}>
+            <W size={15} color={sunny ? c.warning : c.primary} strokeWidth={2.2} />
+            <Txt variant="caption" weight="semibold" style={{ color: sunny ? c.warning : c.primary }}>
               {t(`weather_${w}` as TKey)}
             </Txt>
           </View>
         ) : null}
       </View>
-      <Txt numberOfLines={6}>{item.body}</Txt>
+      <Txt variant="bodyLg" numberOfLines={6}>
+        {item.body}
+      </Txt>
       {pics.length ? (
         // Four 64 dp thumbnails and a "+n" tile need 352 dp: on a 320 phone they wrap instead of running off the card.
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: space.sm }}>

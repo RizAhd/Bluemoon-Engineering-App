@@ -63,7 +63,7 @@ export function PdfOptionsSheet({ visible, title, busy, letterhead, onLetterhead
   return (
     <BottomSheet visible={visible} onClose={close}>
       <SheetHeader title={title} onClose={close} />
-      <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ paddingHorizontal: space.lg, gap: space.lg }}>
+      <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ paddingHorizontal: space.xl, gap: space.lg }}>
         <TickOption label={t('letterheadOption')} hint={t('estimateLetterheadHint')} checked={letterhead} onChange={onLetterhead} />
         {lang ? <Chips<Lang> label={lang.label} value={lang.value} onChange={lang.onChange} options={(Object.keys(LANG_NAMES) as Lang[]).map((l) => ({ value: l, label: LANG_NAMES[l] }))} /> : null}
         <Button icon={Share2} label={busy ? t('exporting') : t('shareNow')} loading={busy} onPress={onShare} full />

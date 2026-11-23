@@ -95,7 +95,17 @@ jest.mock('expo-router', () => {
   }
   const passThrough = ({ children }: { children?: React.ReactNode }) => React.createElement(React.Fragment, null, children);
   const Stack = Object.assign(passThrough, { Screen: StackScreen });
-  const Tabs = Object.assign(() => null, { Screen: () => null });
+  // Tabs draws only its custom tab bar (the scenes are tested on their own), on the first tab
+  const TAB_ROUTES = ['index', 'expenses', 'workers', 'tools', 'projects'].map((name) => ({ key: name, name }));
+  const tabEmitter = { emit: () => ({ defaultPrevented: false }) };
+  const Tabs = Object.assign(
+    ({ tabBar }: { tabBar?: (props: unknown) => React.ReactNode }) => {
+      if (!tabBar) return null;
+      const Bar = () => tabBar({ state: { index: 0, routes: TAB_ROUTES }, emitter: tabEmitter, navigateToTab: () => {}, descriptors: {} }) as React.ReactElement | null;
+      return React.createElement(Bar);
+    },
+    { Screen: () => null },
+  );
 
   const colors = { primary: '#000', background: '#fff', card: '#fff', text: '#000', border: '#ccc', notification: '#f00' };
   return {
@@ -235,6 +245,11 @@ jest.mock('expo-splash-screen', () => ({
   hideAsync: jest.fn(async () => true),
 }));
 
-jest.mock('expo-status-bar', () => ({ __esModule: true, StatusBar: () => null }));
+jest.mock('expo-status-bar', () => ({ __esModule: true, StatusBar: () => null, setStatusBarStyle: () => {} }));
+// the hero's gradient: a plain view in tests
+jest.mock('expo-linear-gradient', () => {
+  const { View } = jest.requireActual('react-native');
+  return { __esModule: true, LinearGradient: View };
+});
 
 jest.mock('expo-system-ui', () => ({ __esModule: true, setBackgroundColorAsync: jest.fn(async () => undefined) }));

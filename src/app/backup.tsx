@@ -1,11 +1,12 @@
 import { File } from 'expo-file-system';
-import { useLocalSearchParams } from 'expo-router';
+import { Stack, useLocalSearchParams } from 'expo-router';
 import * as Sharing from 'expo-sharing';
-import { AlertTriangle, CheckCircle2, CloudUpload, History, KeyRound, LockKeyhole, RotateCcw, Share2, ShieldCheck } from 'lucide-react-native';
+import { AlertTriangle, CheckCircle2, CloudUpload, FileArchive, History, KeyRound, LockKeyhole, RotateCcw, Share2, ShieldCheck } from 'lucide-react-native';
 import { useEffect, useMemo, useState } from 'react';
 import { Alert, View } from 'react-native';
 
 import { BackupPlaces, driveErrorKey } from '@/components/BackupPlaces';
+import { Hero } from '@/components/Hero';
 import { Button, IconButton } from '@/components/ui/Button';
 import { toast } from '@/components/ui/feedback';
 import { BottomSheet, Field, SheetHeader } from '@/components/ui/form';
@@ -20,7 +21,7 @@ import { daysSince, formatDay, toDay, today } from '@/lib/dates';
 import { driveConnected, uploadToDrive } from '@/lib/drive';
 import { guard, reportError, showError } from '@/lib/errors';
 import { copyFileToPhoneFolder } from '@/lib/phoneFolder';
-import { space, useColors } from '@/theme';
+import { radius, space, useColors } from '@/theme';
 
 function timeOf(iso: string) {
   return new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
@@ -249,32 +250,50 @@ export default function BackupScreen() {
   const autoWord = autoFailed ? t('autoBackupFailed') : autoToday ? t('dataSafe') : `${t('autoBackupLast')}: ${autoAt ? `${formatDay(toDay(new Date(autoAt)))} ${timeOf(autoAt)}` : t('never')}`;
 
   return (
-    <Screen footer={<Button icon={CloudUpload} label={progress ?? t('backupNow')} loading={busy === 'full'} disabled={!!busy && busy !== 'full'} onPress={() => void fullBackup()} full />}>
-      {/* Daily automatic backup: status card (colour + icon + word) */}
-      <Card tone={autoSoft}>
-        <View style={{ flexDirection: 'row', gap: space.md, alignItems: 'center' }}>
-          <AutoIcon size={24} color={c[autoTone]} strokeWidth={2} />
-          <Txt weight="semibold" color={autoTone} style={{ flex: 1 }}>
-            {autoWord}
-          </Txt>
+    <>
+    <Stack.Screen options={{ headerShown: false }} />
+    <Screen hairlineTop={false} footer={<Button icon={CloudUpload} label={progress ?? t('backupNow')} loading={busy === 'full'} disabled={!!busy && busy !== 'full'} onPress={() => void fullBackup()} full />}>
+      {/* Daily automatic backup: the hero says how safe the records are (icon + words), with Run now under it */}
+      <Hero
+        back
+        center
+        title={t('backup')}
+        card={
+          <ListCard>
+            <ToggleRow
+              icon={History}
+              title={t('autoBackup')}
+              hint={t('autoBackupHint', { days: KEEP_DAYS })}
+              value={autoOn}
+              onChange={(v) => void guard('backup.toggle', t, () => setSetting('auto_backup', v ? 'on' : 'off'))}
+            />
+          </ListCard>
+        }>
+        <View
+          style={{
+            width: 72,
+            height: 72,
+            borderRadius: radius.lg,
+            backgroundColor: autoTone === 'success' ? c.headerSoft : c[autoSoft],
+            borderWidth: 1,
+            borderColor: c.headerLine,
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}>
+          <AutoIcon size={34} color={autoTone === 'success' ? c.onHeader : c[autoTone]} strokeWidth={1.9} />
         </View>
+        <Txt variant="title" weight="bold" color="onHeader" center style={{ fontSize: 22, lineHeight: 28 }}>
+          {autoWord}
+        </Txt>
         {autoFailed && autoError ? (
-          <Txt variant="caption" color="textMuted" numeric>
+          <Txt variant="caption" color="onHeaderMuted" numeric center>
             {autoError.slice(25)}
           </Txt>
         ) : null}
-        <Button kind="secondary" compact icon={ShieldCheck} label={t('runNow')} onPress={() => void runNow()} loading={busy === 'auto'} disabled={!!busy && busy !== 'auto'} />
-      </Card>
-
-      <ListCard>
-        <ToggleRow
-          icon={History}
-          title={t('autoBackup')}
-          hint={t('autoBackupHint', { days: KEEP_DAYS })}
-          value={autoOn}
-          onChange={(v) => void guard('backup.toggle', t, () => setSetting('auto_backup', v ? 'on' : 'off'))}
-        />
-      </ListCard>
+        <View style={{ alignSelf: 'stretch', marginTop: space.xs }}>
+          <Button kind="hero" icon={ShieldCheck} label={t('runNow')} onPress={() => void runNow()} loading={busy === 'auto'} disabled={!!busy && busy !== 'auto'} full />
+        </View>
+      </Hero>
 
       <BackupPlaces />
 
@@ -285,12 +304,14 @@ export default function BackupScreen() {
             {autos.map((b) => (
               <ListRow
                 key={b.day}
+                icon={FileArchive}
+                iconTone="slate"
                 title={b.day === today() ? t('today') : formatDay(b.day)}
                 subtitle={kb(b.size)}
                 trailing={
-                  <View style={{ flexDirection: 'row', gap: space.xs }}>
-                    <IconButton icon={Share2} label={t('shareBackup', { day: formatDay(b.day) })} tone="textMuted" size={44} onPress={() => shareAuto(b.file.uri)} disabled={!!busy} />
-                    <IconButton icon={RotateCcw} label={t('restoreThisBackup', { day: formatDay(b.day) })} tone="textMuted" size={44} onPress={() => confirmRestore([b.file.uri])} disabled={!!busy} />
+                  <View style={{ flexDirection: 'row', gap: space.sm }}>
+                    <IconButton icon={Share2} label={t('shareBackup', { day: formatDay(b.day) })} tone="text" shape="boxed" size={44} onPress={() => shareAuto(b.file.uri)} disabled={!!busy} />
+                    <IconButton icon={RotateCcw} label={t('restoreThisBackup', { day: formatDay(b.day) })} tone="primary" shape="boxed" size={44} onPress={() => confirmRestore([b.file.uri])} disabled={!!busy} />
                   </View>
                 }
               />
@@ -423,5 +444,6 @@ export default function BackupScreen() {
         </View>
       </BottomSheet>
     </Screen>
+    </>
   );
 }

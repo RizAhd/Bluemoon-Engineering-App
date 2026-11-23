@@ -1,14 +1,15 @@
 import { router } from 'expo-router';
 import { FileText, Plus, Search } from 'lucide-react-native';
 import { memo, useMemo } from 'react';
-import { View } from 'react-native';
+import { Pressable, View } from 'react-native';
 
 import { EstimateStatusBadge } from '@/components/EstimateBits';
 import { ListControls, oneOf, periodLabel, periodRange, toPeriod, useListPrefs, useToday } from '@/components/ListControls';
 import { Button } from '@/components/ui/Button';
 import { CardList } from '@/components/ui/CardList';
 import { EmptyState } from '@/components/ui/feedback';
-import { ListRow, Screen } from '@/components/ui/layout';
+import { Initials } from '@/components/ui/kit';
+import { Screen } from '@/components/ui/layout';
 import { Txt } from '@/components/ui/Txt';
 import { ESTIMATE_STATUSES, type EstimateListRow, type EstimateStatus } from '@/db/types';
 import { ESTIMATE_SORTS, useEstimateList, type EstimateSort } from '@/hooks/data';
@@ -17,7 +18,7 @@ import { useT } from '@/i18n';
 import { formatDay } from '@/lib/dates';
 import { formatLKR } from '@/lib/money';
 import { withoutTitle } from '@/lib/names';
-import { space } from '@/theme';
+import { radius, space, useColors } from '@/theme';
 
 type Filter = 'all' | EstimateStatus;
 
@@ -84,10 +85,11 @@ export default function EstimatesScreen() {
   return (
     <Screen scroll={false}>
       <CardList
-        sections={[{ key: 'all', rows: visible }]}
+        // one card per estimate, as in the design (a section of one row each)
+        sections={visible.map((e) => ({ key: e.id, rows: [e] }))}
         keyOf={estimateKey}
         renderRow={renderRow}
-        inset
+        inset={false}
         stickyFooter={<Button icon={Plus} label={t('newEstimate')} onPress={goNew} full />}
         empty={search.noResults ?? <EmptyState icon={Search} title={`0 ${t('estimates')}`} />}
         header={
@@ -121,25 +123,37 @@ export default function EstimatesScreen() {
 
 const estimateKey = (e: EstimateListRow) => e.id;
 
-/** One estimate: client, title, status badge, number and date, total. */
+/** One estimate card: avatar, client and title, the status badge; a grey strip with the number, date and total. */
 const EstimateRow = memo(function EstimateRow({ e }: { e: EstimateListRow }) {
   const t = useT();
+  const c = useColors();
   return (
-    <ListRow
-      avatar={withoutTitle(e.client_name)}
-      title={e.client_name}
-      subtitle={e.title}
-      value={formatLKR(e.total_cents)}
+    <Pressable
+      accessibilityRole="button"
       accessibilityLabel={`${e.client_name}, ${e.title}, ${e.number}, ${t(`estStatus_${e.status}`)}, ${formatLKR(e.total_cents)}`}
-      badge={
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.sm, flexWrap: 'wrap' }}>
-          <EstimateStatusBadge status={e.status} />
-          <Txt variant="caption" color="textMuted" numeric>
-            {`${e.number} · ${formatDay(e.issue_day)}`}
+      android_ripple={{ color: c.muted }}
+      onPress={() => router.push(`/estimate/${e.id}`)}
+      style={({ pressed }) => ({ padding: space.lg, gap: space.md, backgroundColor: pressed ? c.muted : c.card })}>
+      <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: space.md }}>
+        <Initials name={withoutTitle(e.client_name)} size={48} />
+        <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
+          <Txt variant="bodyLg" weight="bold" numberOfLines={2}>
+            {e.client_name}
+          </Txt>
+          <Txt variant="caption" color="textMuted" numberOfLines={2}>
+            {e.title}
           </Txt>
         </View>
-      }
-      onPress={() => router.push(`/estimate/${e.id}`)}
-    />
+        <EstimateStatusBadge status={e.status} />
+      </View>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.sm, minHeight: 44, paddingHorizontal: space.md, borderRadius: radius.md, backgroundColor: c.surface2 }}>
+        <Txt variant="caption" weight="semibold" color="textMuted" numeric numberOfLines={1} style={{ flex: 1 }}>
+          {`${e.number} · ${formatDay(e.issue_day)}`}
+        </Txt>
+        <Txt variant="bodyLg" weight="bold" numeric numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7} style={{ flexShrink: 0, maxWidth: '60%' }}>
+          {formatLKR(e.total_cents)}
+        </Txt>
+      </View>
+    </Pressable>
   );
 });

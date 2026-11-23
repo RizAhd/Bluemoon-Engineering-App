@@ -1,14 +1,15 @@
 import { router } from 'expo-router';
-import { Building2, Plus, Search } from 'lucide-react-native';
-import { memo, useMemo } from 'react';
-import { View } from 'react-native';
+import { Building2, Check, Plus, Search, Settings } from 'lucide-react-native';
+import { memo, useMemo, type ReactNode } from 'react';
+import { Pressable, View } from 'react-native';
 
+import { Hero, HeroAction, HeroTiles } from '@/components/Hero';
 import { ListControls, oneOf, useListPrefs } from '@/components/ListControls';
-import { TabHeader } from '@/components/ProjectSwitcher';
 import { Button } from '@/components/ui/Button';
 import { CardList, type CardSection } from '@/components/ui/CardList';
 import { Badge, EmptyState } from '@/components/ui/feedback';
-import { ListRow, Screen } from '@/components/ui/layout';
+import { GroupLabel, Screen } from '@/components/ui/layout';
+import { Txt } from '@/components/ui/Txt';
 import type { ProjectCost, ProjectStatus } from '@/db/types';
 import { PROJECT_SORTS, useCurrentProjectId, useProjectList, type ProjectSort } from '@/hooks/data';
 import { useListSearch } from '@/hooks/search';
@@ -31,17 +32,22 @@ function total(p: Row) {
   return p.expense_cents + p.labour_cents;
 }
 
-/** Thin contract progress bar: ink fill, warning above 85 %, danger at/over 100 %. */
-function MiniBar({ spent, contract }: { spent: number; contract: number }) {
+/** Percent of the contract used: "<1" when something is spent but under half a percent, never a misleading "0". */
+function usedPct(spent: number, contract: number): string {
+  const pct = Math.round((spent / contract) * 100);
+  return spent > 0 && pct === 0 ? '<1' : String(pct);
+}
+
+/** Thin contract progress bar: blue fill (white on the navy card), warning above 85 %, danger at/over 100 %. */
+function MiniBar({ spent, contract, onDark }: { spent: number; contract: number; onDark?: boolean }) {
   const c = useColors();
   const ratio = contract > 0 ? spent / contract : 0;
-  const fill = ratio >= 1 ? c.danger : ratio > 0.85 ? c.warning : c.slate;
+  const fill = ratio >= 1 ? c.danger : ratio > 0.85 ? c.amber : onDark ? c.onSlate : c.primary;
   return (
     <View
       accessible
-      // read out like the Today card: something spent but under half a percent is "<1 %", not "0 %"
-      accessibilityLabel={`${spent > 0 && Math.round(ratio * 100) === 0 ? '<1' : Math.round(ratio * 100)} %`}
-      style={{ marginTop: space.sm, height: 6, borderRadius: radius.sm, backgroundColor: c.border, overflow: 'hidden' }}>
+      accessibilityLabel={`${usedPct(spent, contract)} %`}
+      style={{ height: 6, borderRadius: radius.sm, backgroundColor: onDark ? c.headerSoft : c.surface2, overflow: 'hidden' }}>
       <View style={{ width: `${Math.min(100, Math.max(0, ratio * 100))}%`, height: 6, borderRadius: radius.sm, backgroundColor: fill }} />
     </View>
   );
@@ -49,7 +55,7 @@ function MiniBar({ spent, contract }: { spent: number; contract: number }) {
 
 /**
  * Projects tab: the full list, grouped by status, in the chosen order (name, newest, highest cost, most of the
- * contract used). Tapping a row opens its hub and does not change the current project; the hub's actions do.
+ * contract used). Tapping a card opens its hub and does not change the current project; the hub's actions do.
  *
  * There is no month filter here on purpose: a project's figures are its whole-life totals, so "projects with records
  * in March" next to all-time totals would read as March's costs. Month views live on Expenses and in the project hub.
@@ -67,6 +73,15 @@ export default function ProjectsScreen() {
 
   const goNew = () => router.push('/project/form');
 
+  // the hero's tiles count every project, whatever the search or chip shows
+  const all = useMemo(() => {
+    const n: Record<ProjectStatus, number> = { active: 0, on_hold: 0, completed: 0 };
+    rows.forEach((r) => {
+      n[r.status] += 1;
+    });
+    return n;
+  }, [rows]);
+
   const { counts, visible, activeFilter } = useMemo(() => {
     // The chips count what the search leaves, so a chip never promises rows the search has already hidden.
     const counts: Record<ProjectStatus, number> = { active: 0, on_hold: 0, completed: 0 };
@@ -83,27 +98,44 @@ export default function ProjectsScreen() {
 
   const applied = [activeFilter !== 'all' ? t(`status_${activeFilter}`) : null, sort !== 'name' ? t(`sort_${sort}`) : null].filter((s): s is string => !!s);
 
-  const renderRow = (p: Row) => <ProjectRow p={p} current={p.project_id === pid} onOpen={open} />;
+  const renderRow = (p: Row) => <ProjectCard p={p} current={p.project_id === pid} onOpen={open} />;
 
-  // Grouped by status with each group's total under "All"; one card when a status chip is chosen.
+  // Every project is a card of its own; under "All" each status group opens with its label and total.
   const sections: CardSection<Row>[] =
     activeFilter === 'all'
-      ? STATUSES.map((s) => {
+      ? STATUSES.flatMap((s) => {
           const group = visible.filter((r) => r.status === s);
-          return { key: s, label: `${t(`status_${s}`)} (${group.length})`, value: formatLKR(group.reduce((n, r) => n + total(r), 0)), rows: group };
+          const title = <GroupLabel label={`${t(`status_${s}`)} (${group.length})`} value={formatLKR(group.reduce((n, r) => n + total(r), 0))} />;
+          return group.map((r, i) => ({ key: `${s}:${r.project_id}`, title: i === 0 ? title : undefined, rows: [r] }));
         })
-      : [{ key: activeFilter, rows: visible }];
+      : visible.map((r) => ({ key: r.project_id, rows: [r] }));
+
+  const hero = (card?: ReactNode) => (
+    <Hero
+      title={t('projects')}
+      subtitle={t('projectsSubtitle')}
+      actions={<HeroAction icon={Settings} label={t('settingsAndMore')} onPress={() => router.push('/more')} />}
+      card={card}>
+      {rows.length ? (
+        <HeroTiles>
+          {(['active', 'completed', 'on_hold'] as const).map((s) => (
+            <StatusTile key={s} label={t(`status_${s}`)} count={all[s]} on={activeFilter === s} onPress={() => set('status', activeFilter === s ? 'all' : s)} />
+          ))}
+        </HeroTiles>
+      ) : null}
+    </Hero>
+  );
 
   return (
     <View style={{ flex: 1, backgroundColor: c.bg }}>
-      <TabHeader title={t('projects')} showProject={false} />
       <Screen hairlineTop={false} scroll={false}>
         {rows.length === 0 ? (
-          // The floating "New project" button is the screen's one primary action here, so the empty state's own is secondary.
+          // The "+" in the tab bar is the screen's primary action here, so the empty state's own is secondary.
           <CardList
             sections={[]}
             keyOf={projectKey}
             renderRow={renderRow}
+            header={hero()}
             empty={<EmptyState icon={Building2} title={t('noProjects')} hint={t('noProjectsHint')} action={<Button kind="secondary" icon={Plus} label={t('newProject')} onPress={goNew} full />} />}
           />
         ) : (
@@ -111,11 +143,12 @@ export default function ProjectsScreen() {
             sections={sections}
             keyOf={projectKey}
             renderRow={renderRow}
-            inset
+            inset={false}
+            gap={space.md}
             empty={search.noResults ?? <EmptyState icon={Search} title={`0 ${t('projects')}`} />}
             header={
               <View style={{ gap: space.md }}>
-                {search.node}
+                {hero(search.node)}
                 <ListControls
                   quick={{
                     value: activeFilter,
@@ -141,35 +174,152 @@ export default function ProjectsScreen() {
 
 const projectKey = (p: Row) => p.project_id;
 
-/** One project: name, client and place, status badges, whole-life cost and the contract bar. */
-const ProjectRow = memo(function ProjectRow({ p, current, onOpen }: { p: Row; current: boolean; onOpen: (p: Row) => void }) {
-  const t = useT();
-  const label = `${p.name}${current ? ` (${t('thisProject')})` : ''}, ${t(`status_${p.status}`)}, ${formatLKR(total(p))}`;
+/**
+ * A glass count tile on the hero (Active 2 · Completed 1 · On hold 0). Tapping it shows only that status (again: all).
+ * Its spoken label has a colon ("Completed: 4"), so it is never mistaken for the filter chip "Completed 4".
+ */
+function StatusTile({ label, count, on, onPress }: { label: string; count: number; on: boolean; onPress: () => void }) {
+  const c = useColors();
   return (
-    <ListRow
-      icon={Building2}
-      iconTone={current ? 'primary' : undefined}
-      title={p.name}
-      subtitle={
-        [
-          p.client,
-          p.location,
-          // what the client has paid, only once something was received and a value is known
-          p.contract_cents && p.received_cents ? t('receivedOfValue', { received: formatLKR(p.received_cents), value: formatLKR(p.contract_cents) }) : null,
-        ]
-          .filter(Boolean)
-          .join(' · ') || undefined
-      }
-      value={formatLKR(total(p))}
+    <Pressable
+      accessibilityRole="button"
+      accessibilityState={{ selected: on, disabled: count === 0 }}
+      accessibilityLabel={`${label}: ${count}`}
+      disabled={count === 0}
+      onPress={onPress}
+      style={({ pressed }) => ({
+        flex: 1,
+        minWidth: 0,
+        gap: 4,
+        padding: space.md + 2,
+        borderRadius: radius.md + 2,
+        backgroundColor: pressed || on ? c.headerDeep : c.headerSoft,
+        borderWidth: 1,
+        borderColor: on ? c.onHeader : c.headerLine,
+      })}>
+      <Txt variant="caption" weight="semibold" color="onHeader" numberOfLines={1}>
+        {label}
+      </Txt>
+      <Txt variant="heading" weight="bold" color="onHeader" numeric numberOfLines={1}>
+        {String(count)}
+      </Txt>
+    </Pressable>
+  );
+}
+
+/**
+ * One project as a card: icon, badges, name, client and place, what the client paid, then the cost. The current
+ * project is the navy card with the contract bar; the others are white with their cost in a soft box.
+ */
+const ProjectCard = memo(function ProjectCard({ p, current, onOpen }: { p: Row; current: boolean; onOpen: (p: Row) => void }) {
+  const t = useT();
+  const c = useColors();
+  const label = `${p.name}${current ? ` (${t('thisProject')})` : ''}, ${t(`status_${p.status}`)}, ${formatLKR(total(p))}`;
+  const fg = current ? c.onSlate : c.text;
+  const muted = current ? c.onSlate : c.textMuted;
+  const sub = [
+    p.client,
+    p.location,
+    // what the client has paid, only once something was received and a value is known
+    p.contract_cents && p.received_cents ? t('receivedOfValue', { received: formatLKR(p.received_cents), value: formatLKR(p.contract_cents) }) : null,
+  ]
+    .filter(Boolean)
+    .join(' · ');
+  const contract = p.contract_cents ?? 0;
+  return (
+    <Pressable
+      accessibilityRole="button"
       accessibilityLabel={label}
-      badge={
-        <View style={{ flexDirection: 'row', gap: space.sm, flexWrap: 'wrap' }}>
-          <Badge tone={p.status === 'active' ? 'success' : p.status === 'on_hold' ? 'warning' : 'slate'} label={t(`status_${p.status}`)} />
-          {current ? <Badge tone="primary" label={t('thisProject')} /> : null}
+      onPress={() => onOpen(p)}
+      android_ripple={{ color: current ? c.slatePressed : c.muted }}
+      style={({ pressed }) => ({ padding: space.lg, gap: space.md, backgroundColor: current ? (pressed ? c.slatePressed : c.slate) : pressed ? c.muted : c.card })}>
+      <View style={{ flexDirection: 'row', gap: space.md, alignItems: 'flex-start' }}>
+        <View
+          style={{
+            width: 48,
+            height: 48,
+            borderRadius: radius.md,
+            alignItems: 'center',
+            justifyContent: 'center',
+            backgroundColor: current ? c.headerSoft : c.primarySoft,
+          }}>
+          <Building2 size={22} color={current ? c.onSlate : c.primary} strokeWidth={1.9} />
         </View>
-      }
-      onPress={() => onOpen(p)}>
-      {p.contract_cents ? <MiniBar spent={total(p)} contract={p.contract_cents} /> : null}
-    </ListRow>
+        <View style={{ flex: 1, minWidth: 0, gap: 4 }}>
+          <View style={{ flexDirection: 'row', gap: space.sm, flexWrap: 'wrap' }}>
+            {current ? <Badge tone="primary" icon={Check} label={t('thisProject')} /> : null}
+            <Badge tone={p.status === 'active' ? 'success' : p.status === 'on_hold' ? 'warning' : 'slate'} label={t(`status_${p.status}`)} />
+          </View>
+          <Txt variant="title" weight="bold" numberOfLines={2} style={{ color: fg }}>
+            {p.name}
+          </Txt>
+          {sub ? (
+            <Txt variant="caption" numberOfLines={2} style={{ color: muted, opacity: current ? 0.8 : 1 }}>
+              {sub}
+            </Txt>
+          ) : null}
+        </View>
+      </View>
+
+      {current ? (
+        <View style={{ gap: space.sm }}>
+          <View style={{ flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between', gap: space.md }}>
+            <View style={{ flexShrink: 1, gap: 2 }}>
+              <Txt variant="caption" weight="semibold" style={{ color: muted, opacity: 0.8 }}>
+                {t('totalCost')}
+              </Txt>
+              <Txt variant="title" weight="bold" numeric numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.6} style={{ color: fg, fontSize: 24, lineHeight: 30 }}>
+                {formatLKR(total(p))}
+              </Txt>
+            </View>
+            {contract > 0 ? (
+              <View style={{ flexShrink: 1, alignItems: 'flex-end', gap: 2 }}>
+                <Txt variant="caption" weight="semibold" style={{ color: muted, opacity: 0.8 }}>
+                  {t('contract')}
+                </Txt>
+                <Txt weight="bold" numeric numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.6} style={{ color: fg }}>
+                  {formatLKR(contract)}
+                </Txt>
+              </View>
+            ) : null}
+          </View>
+          {contract > 0 ? (
+            <>
+              <MiniBar spent={total(p)} contract={contract} onDark />
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: space.sm }}>
+                <Txt variant="caption" weight="semibold" numeric style={{ color: muted, opacity: 0.8 }}>
+                  {`${usedPct(total(p), contract)}%`}
+                </Txt>
+                <Txt variant="caption" weight="semibold" numeric numberOfLines={1} style={{ color: muted, opacity: 0.8, flexShrink: 1, textAlign: 'right' }}>
+                  {`${t('balanceToContract')} ${formatLKR(Math.max(0, contract - total(p)))}`}
+                </Txt>
+              </View>
+            </>
+          ) : null}
+        </View>
+      ) : (
+        <View style={{ gap: space.sm }}>
+          <View
+            style={{
+              flexDirection: 'row',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: space.md,
+              paddingHorizontal: space.md,
+              paddingVertical: space.sm + 2,
+              borderRadius: radius.md,
+              backgroundColor: c.surface2,
+            }}>
+            <Txt variant="caption" weight="semibold" color="textMuted" numberOfLines={2} style={{ flexShrink: 1 }}>
+              {contract > 0 ? `${t('totalCost')} · ${usedPct(total(p), contract)}%` : t('totalCost')}
+            </Txt>
+            <Txt variant="bodyLg" weight="bold" numeric numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7} style={{ flexShrink: 0, maxWidth: '60%' }}>
+              {formatLKR(total(p))}
+            </Txt>
+          </View>
+          {contract > 0 ? <MiniBar spent={total(p)} contract={contract} /> : null}
+        </View>
+      )}
+    </Pressable>
   );
 });

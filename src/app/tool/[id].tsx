@@ -1,10 +1,11 @@
 import { router, Stack, useLocalSearchParams } from 'expo-router';
-import { ArrowDownToLine, ArrowUpFromLine, Building2, Camera, CheckCircle2, Hammer, History, Package, Pencil } from 'lucide-react-native';
+import { AlertCircle, ArrowDownToLine, ArrowUpFromLine, Camera, Hammer, History, Package, Pencil } from 'lucide-react-native';
 import { memo } from 'react';
 import { Alert, View } from 'react-native';
 
+import { Hero, HeroAction, HeroButtons, HeroChip } from '@/components/Hero';
 import { PhotoStrip } from '@/components/PhotoStrip';
-import { Button, HeaderButton } from '@/components/ui/Button';
+import { Button } from '@/components/ui/Button';
 import { CardList } from '@/components/ui/CardList';
 import { Badge, EmptyState, toast } from '@/components/ui/feedback';
 import { Card, ListCard, ListRow, Screen, SectionTitle } from '@/components/ui/layout';
@@ -18,7 +19,7 @@ import { useT } from '@/i18n';
 import { formatDay } from '@/lib/dates';
 import { showError } from '@/lib/errors';
 import { isSinglePiece, qtyText } from '@/lib/toolStock';
-import { space, useColors } from '@/theme';
+import { hairline, radius, space, useColors } from '@/theme';
 
 type Move = ToolMovement & { worker_name: string | null; project_name: string | null };
 
@@ -94,14 +95,13 @@ export default function ToolDetail() {
     ]);
   }
 
+  // a tool with several pieces whose most are out says so under the blue, in amber (never a single piece or a material)
+  const mostOut = !single && !material && stock.out_milli > stock.in_store_milli;
+  const Icon = material ? Package : Hammer;
+
   return (
     <>
-      <Stack.Screen
-        options={{
-          title,
-          headerRight: () => <HeaderButton icon={Pencil} label={t('editTool')} onPress={() => router.push(`/tool/form?id=${tool.id}`)} />,
-        }}
-      />
+      <Stack.Screen options={{ title, headerShown: false }} />
       <Screen scroll={false}>
         <CardList
           sections={[{ key: 'moves', rows: search.filtered }]}
@@ -116,74 +116,110 @@ export default function ToolDetail() {
           }
           header={
             <View style={{ gap: space.lg }}>
-              {/* Status card: colour + icon + word, never colour alone. A single piece reads as it always did. */}
-              {single ? (
-              <Card tone={out ? 'warningSoft' : 'successSoft'}>
+              <Hero
+                back
+                title={t('tool')}
+                actions={<HeroAction icon={Pencil} label={t('editTool')} onPress={() => router.push(`/tool/form?id=${tool.id}`)} />}
+                card={
+                  mostOut ? (
+                    <Card tone="warningSoft">
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.md }}>
+                        <View style={{ width: 44, height: 44, borderRadius: radius.md, backgroundColor: c.card, alignItems: 'center', justifyContent: 'center' }}>
+                          <AlertCircle size={22} color={c.warning} strokeWidth={2} />
+                        </View>
+                        <View style={{ flex: 1, gap: 2 }}>
+                          <Txt weight="bold">{t('mostOut')}</Txt>
+                          <Txt variant="caption" color="textMuted">
+                            {t('mostOutHint', { n: qtyText(stock.in_store_milli, stock.unit) })}
+                          </Txt>
+                        </View>
+                      </View>
+                    </Card>
+                  ) : undefined
+                }>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.md }}>
-                  {out ? <ArrowUpFromLine size={24} color={c.warning} strokeWidth={2} /> : <CheckCircle2 size={24} color={c.success} strokeWidth={2} />}
-                  <View style={{ flex: 1, gap: space.xs }}>
-                    <Txt weight="semibold" color={out ? 'warning' : 'success'}>
+                  <View
+                    style={{
+                      width: 56,
+                      height: 56,
+                      borderRadius: radius.md + 2,
+                      backgroundColor: c.headerSoft,
+                      borderWidth: hairline,
+                      borderColor: c.headerLine,
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                    }}>
+                    <Icon size={26} color={c.onHeader} strokeWidth={1.9} />
+                  </View>
+                  <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
+                    <Txt variant="title" weight="bold" color="onHeader" numberOfLines={2} style={{ fontSize: 22, lineHeight: 28 }}>
+                      {title}
+                    </Txt>
+                    <Txt variant="caption" weight="semibold" color="onHeaderMuted" numberOfLines={1}>
+                      {t(material ? 'kindMaterial' : 'kindTool')}
+                    </Txt>
+                  </View>
+                </View>
+
+                {/* Status: words first, the bar and the chip only add to them. A single piece reads as it always did. */}
+                {single ? (
+                  <View style={{ gap: space.xs }}>
+                    <Txt variant="heading" weight="bold" color="onHeader" numberOfLines={2}>
                       {out ? `${t('outWith')} ${status.worker_name ?? status.taken_by ?? ''}`.trim() : t('inStore')}
                     </Txt>
                     {out ? (
-                      <Txt variant="caption" color="textMuted">
-                        {[status.project_name, status.last_day ? formatDay(status.last_day) : null].filter(Boolean).join(' · ')}
-                      </Txt>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.sm, flexWrap: 'wrap' }}>
+                        <HeroChip icon={ArrowUpFromLine} label={t('out')} />
+                        <Txt variant="caption" weight="semibold" color="onHeaderMuted" style={{ flexShrink: 1 }}>
+                          {[status.project_name, status.last_day ? formatDay(status.last_day) : null].filter(Boolean).join(' · ')}
+                        </Txt>
+                      </View>
                     ) : status.last_day ? (
-                      <Txt variant="caption" color="textMuted" numeric>
+                      <Txt variant="caption" weight="semibold" color="onHeaderMuted" numeric>
                         {formatDay(status.last_day)}
                       </Txt>
                     ) : null}
                   </View>
-                  {/* in store, the line itself says so; out, the badge adds the word next to who has it */}
-                  {out ? <Badge tone="warning" label={t('out')} /> : null}
-                </View>
-              </Card>
-              ) : (
-                <Card tone={canIssue ? 'successSoft' : 'warningSoft'}>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.md }}>
-                    {material ? (
-                      <Package size={24} color={canIssue ? c.success : c.warning} strokeWidth={2} />
-                    ) : canIssue ? (
-                      <CheckCircle2 size={24} color={c.success} strokeWidth={2} />
-                    ) : (
-                      <ArrowUpFromLine size={24} color={c.warning} strokeWidth={2} />
-                    )}
-                    <View style={{ flex: 1, gap: space.xs }}>
-                      <Txt weight="semibold" color={canIssue ? 'success' : 'warning'} numeric>
-                        {material
-                          ? canIssue
-                            ? t('leftCount', { n: qtyText(stock.in_store_milli, stock.unit) })
-                            : t('outOfStock')
-                          : t('inStoreOf', { n: qtyText(stock.in_store_milli), total: qtyText(stock.quantity_milli, stock.unit) })}
-                      </Txt>
-                      {out ? (
-                        <Txt variant="caption" color="textMuted" numeric>
+                ) : (
+                  <View style={{ gap: space.sm }}>
+                    <Txt variant="heading" weight="bold" color="onHeader" numeric numberOfLines={2}>
+                      {material
+                        ? canIssue
+                          ? t('leftCount', { n: qtyText(stock.in_store_milli, stock.unit) })
+                          : t('outOfStock')
+                        : t('inStoreOf', { n: qtyText(stock.in_store_milli), total: qtyText(stock.quantity_milli, stock.unit) })}
+                    </Txt>
+                    {!material && stock.quantity_milli > 0 ? (
+                      // in store (white) and out on site (amber), side by side
+                      <View style={{ flexDirection: 'row', height: 10, gap: 3 }} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
+                        {stock.in_store_milli > 0 ? <View style={{ flex: stock.in_store_milli, borderRadius: 5, backgroundColor: c.onHeader }} /> : null}
+                        {stock.out_milli > 0 ? <View style={{ flex: stock.out_milli, borderRadius: 5, backgroundColor: c.amber }} /> : null}
+                      </View>
+                    ) : null}
+                    {out ? (
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                        <View style={{ width: 8, height: 8, borderRadius: 2, backgroundColor: c.amber }} />
+                        <Txt variant="caption" weight="semibold" color="onHeaderMuted" numeric>
                           {t(material ? 'issuedCount' : 'outCount', { n: qtyText(stock.out_milli, stock.unit) })}
                         </Txt>
-                      ) : null}
-                    </View>
+                      </View>
+                    ) : null}
                   </View>
-                </Card>
-              )}
+                )}
 
-              {single ? (
-                out ? (
-                  <Button icon={ArrowDownToLine} label={t('returnTool')} onPress={() => openMove('return')} />
-                ) : (
-                  <Button icon={ArrowUpFromLine} label={t('issueTool')} onPress={() => openMove('issue')} />
-                )
-              ) : (
-                // several pieces: issue more while some are in store, and take back what is out, side by side
-                <View style={{ flexDirection: 'row', gap: space.sm }}>
-                  {canIssue ? (
-                    <Button icon={ArrowUpFromLine} label={t(material ? 'issueMaterial' : 'issueTool')} onPress={() => openMove('issue')} style={{ flex: 1 }} />
+                <HeroButtons>
+                  {single ? (
+                    out ? (
+                      <Button kind="hero" icon={ArrowDownToLine} label={t('returnTool')} onPress={() => openMove('return')} />
+                    ) : (
+                      <Button kind="hero" icon={ArrowUpFromLine} label={t('issueTool')} onPress={() => openMove('issue')} />
+                    )
                   ) : null}
-                  {out ? (
-                    <Button kind={canIssue ? 'secondary' : 'primary'} icon={ArrowDownToLine} label={t('returnTool')} onPress={() => openMove('return')} style={{ flex: 1 }} />
-                  ) : null}
-                </View>
-              )}
+                  {/* several pieces: issue more while some are in store, and take back what is out, side by side */}
+                  {!single && canIssue ? <Button kind="hero" icon={ArrowUpFromLine} label={t(material ? 'issueMaterial' : 'issueTool')} onPress={() => openMove('issue')} /> : null}
+                  {!single && out ? <Button kind={canIssue ? 'heroSoft' : 'hero'} icon={ArrowDownToLine} label={t('returnTool')} onPress={() => openMove('return')} /> : null}
+                </HeroButtons>
+              </Hero>
 
               {!single && holders.length ? (
                 <>
@@ -192,7 +228,7 @@ export default function ToolDetail() {
                     {holders.map((h) => (
                       <ListRow
                         key={`${h.project_id ?? ''}-${h.worker_id ?? ''}-${h.taken_by ?? ''}`}
-                        icon={Building2}
+                        avatar={h.worker_name ?? h.taken_by ?? '—'}
                         title={h.worker_name ?? h.taken_by ?? '—'}
                         subtitle={h.project_name ?? undefined}
                         value={qtyText(h.qty_milli, stock.unit)}
@@ -204,7 +240,9 @@ export default function ToolDetail() {
 
               {tool.notes ? (
                 <Card>
-                  <Txt eyebrow>{t('notes')}</Txt>
+                  <Txt variant="caption" weight="semibold" color="textMuted">
+                    {t('notes')}
+                  </Txt>
                   <Txt>{tool.notes}</Txt>
                 </Card>
               ) : null}

@@ -166,7 +166,7 @@ describe('SearchField sizes', () => {
     resetDb();
   });
 
-  it('compact is 40 tall with a 40 clear button and keeps the clear button; the default stays 48 / 44', async () => {
+  it('compact is 52 tall (the Blueprint list search) with a 44 clear button; the default stays 48 / 44', async () => {
     setSetting('lang', 'en');
     const seen: { box: number | undefined; clear: number | undefined }[] = [];
     for (const compact of [false, true]) {
@@ -178,7 +178,7 @@ describe('SearchField sizes', () => {
     }
     expect(seen).toEqual([
       { box: 48, clear: 44 },
-      { box: 40, clear: 40 },
+      { box: 52, clear: 44 },
     ]);
   });
 

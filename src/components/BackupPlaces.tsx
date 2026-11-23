@@ -133,7 +133,7 @@ export function BackupPlaces() {
       <ListCard inset>
         <ListRow
           icon={FolderOpen}
-          iconTone={folderFailed ? 'warning' : folderUri ? 'success' : 'primary'}
+          iconTone={folderFailed || !folderUri ? 'warning' : 'success'}
           title={t('phoneFolder')}
           subtitle={
             folderUri
@@ -153,7 +153,7 @@ export function BackupPlaces() {
         />
         <ListRow
           icon={email ? Cloud : CloudOff}
-          iconTone={driveFailed ? 'warning' : email ? 'success' : 'primary'}
+          iconTone={driveFailed || !email ? 'warning' : 'success'}
           title={t('googleDrive')}
           subtitle={
             email

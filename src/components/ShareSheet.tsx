@@ -7,41 +7,41 @@
  *   {share.sheet}
  *
  * Opening the sheet builds the message once (buildShareMessage, in the app's language unless the screen
- * passes another, as the estimate does with the client's language). What the preview shows is exactly what
- * is sent. The rows hand it on:
+ * passes another, as the estimate does with the client's language). The language switch at the top writes
+ * it again in another language. What the preview shows is exactly what is sent. The tiles hand it on:
  *   WhatsApp     shareToWhatsApp; when WhatsApp cannot be opened the phone's share sheet is used and a short
  *                message says so
  *   Other apps   the phone's share sheet (SMS, e-mail, any app), with the message's first line as the subject
  *   PDF          only when the screen has one: the screen's own PDF export, with its remembered choices
  *
- * One thing at a time: while a row is working every row is disabled and the sheet cannot be closed (closing
+ * One thing at a time: while a tile is working every tile is disabled and the sheet cannot be closed (closing
  * it would hide the only sign that something is happening). The sheet closes once the message or the file
  * was handed to the phone; a share sheet the person closed leaves it open for another choice. Failures are
  * logged and shown in the person's language (showError).
  */
+import * as Haptics from 'expo-haptics';
 import type { LucideIcon } from 'lucide-react-native';
 import { FileText, MessageCircle, Share2 } from 'lucide-react-native';
 import { useRef, useState, type ReactElement } from 'react';
-import { ActivityIndicator, ScrollView, View } from 'react-native';
+import { ActivityIndicator, Pressable, ScrollView, View } from 'react-native';
 
 import { HeaderButton } from '@/components/ui/Button';
 import { toast } from '@/components/ui/feedback';
-import { BottomSheet, SheetHeader } from '@/components/ui/form';
-import { ListCard, ListRow } from '@/components/ui/layout';
+import { BottomSheet, Segmented, SheetHeader } from '@/components/ui/form';
 import { Txt } from '@/components/ui/Txt';
 import { LANG_NAMES, useLang, useT, type Lang } from '@/i18n';
 import { showError } from '@/lib/errors';
 import { shareText, shareToWhatsApp } from '@/lib/share';
 import { buildShareMessage, type ShareKind, type ShareOptions } from '@/lib/shareLoad';
 import { messageTitle } from '@/lib/shareText';
-import { hairline, radius, space, useColors } from '@/theme';
+import { hairline, radius, space, useColors, type Palette } from '@/theme';
 
 /** How many lines of the message the preview shows. */
 export const PREVIEW_LINES = 3;
 
-/** The screen's PDF, offered as the last row of the sheet. */
+/** The screen's PDF, offered as the last tile of the sheet. */
 export interface SharePdf {
-  /** One line under the row: the remembered choices the PDF is made with ("English · Plain paper"). */
+  /** One line under the tile: the remembered choices the PDF is made with ("English · Plain paper"). */
   hint?: string;
   /**
    * Make the PDF and hand it to the phone (expo-sharing). Call `handOff` once the file is made, right before
@@ -74,23 +74,53 @@ export function previewOf(message: string, lines = PREVIEW_LINES): string {
     .join('\n');
 }
 
-/** One way to send: 56 dp row with its icon; a spinner on the row that is working, the others disabled meanwhile. */
-function ShareRow({ which, busy, icon, title, subtitle, onPress }: { which: Busy; busy: Busy | null; icon: LucideIcon; title: string; subtitle: string; onPress: () => void }) {
+/** The tint of each way to send: WhatsApp green, other apps blue, the PDF red (always beside its name). */
+const TILE_TONE: Record<Busy, { bg: keyof Palette; fg: keyof Palette }> = {
+  whatsapp: { bg: 'successSoft', fg: 'success' },
+  other: { bg: 'primarySoft', fg: 'primary' },
+  pdf: { bg: 'dangerSoft', fg: 'danger' },
+};
+
+/** One way to send, as a tile: icon, name, a short hint. A spinner on the tile that is working, the others disabled meanwhile. */
+function ShareRow({ which, busy, icon: Icon, title, subtitle, onPress }: { which: Busy; busy: Busy | null; icon: LucideIcon; title: string; subtitle: string; onPress: () => void }) {
   const c = useColors();
   const t = useT();
   const working = busy === which;
+  const off = busy != null && !working;
+  const tone = TILE_TONE[which];
   return (
-    <ListRow
-      icon={icon}
-      iconTone={which === 'whatsapp' ? 'primary' : undefined}
-      title={title}
-      subtitle={subtitle}
-      accessibilityLabel={working ? `${title}. ${t('shareWorking')}` : title}
-      disabled={busy != null && !working}
-      onPress={onPress}
-      trailing={working ? <ActivityIndicator color={c.primary} accessibilityLabel={t('shareWorking')} /> : undefined}
+    <Pressable
       testID={`share-row-${which}`}
-    />
+      accessibilityRole="button"
+      accessibilityLabel={working ? `${title}. ${t('shareWorking')}` : title}
+      accessibilityHint={subtitle}
+      accessibilityState={{ disabled: off, busy: working }}
+      disabled={off}
+      onPress={() => {
+        Haptics.selectionAsync().catch(() => {});
+        onPress();
+      }}
+      style={({ pressed }) => ({
+        flex: 1,
+        minWidth: 0,
+        minHeight: 112,
+        alignItems: 'center',
+        gap: space.sm,
+        paddingVertical: space.md,
+        paddingHorizontal: space.sm,
+        borderRadius: radius.lg - 4,
+        backgroundColor: pressed ? c.muted : c.surface2,
+      })}>
+      <View style={{ width: 48, height: 48, borderRadius: radius.md, backgroundColor: c[tone.bg], alignItems: 'center', justifyContent: 'center' }}>
+        {working ? <ActivityIndicator color={c[tone.fg]} accessibilityLabel={t('shareWorking')} /> : <Icon size={22} color={off ? c.placeholder : c[tone.fg]} strokeWidth={2} />}
+      </View>
+      <Txt weight="bold" center numberOfLines={1} color={off ? 'textMuted' : 'text'}>
+        {title}
+      </Txt>
+      <Txt variant="caption" color="textMuted" center numberOfLines={3}>
+        {subtitle}
+      </Txt>
+    </Pressable>
   );
 }
 
@@ -104,10 +134,12 @@ export interface ShareSheetProps {
   kind: ShareKind;
   pdf?: SharePdf;
   onClose: () => void;
+  /** Offers the three languages above the preview: the message is written again in the one chosen. */
+  onLang?: (lang: Lang) => void;
 }
 
-/** The bottom sheet: caption with the language, a preview of the message, then WhatsApp · Other apps · PDF. */
-export function ShareSheet({ visible, message, lang, kind, pdf, onClose }: ShareSheetProps) {
+/** The bottom sheet: caption with the language, the language switch, a preview of the message, then WhatsApp · Other apps · PDF. */
+export function ShareSheet({ visible, message, lang, kind, pdf, onClose, onLang }: ShareSheetProps) {
   const c = useColors();
   const t = useT();
   const [busy, setBusy] = useState<Busy | null>(null);
@@ -153,26 +185,35 @@ export function ShareSheet({ visible, message, lang, kind, pdf, onClose }: Share
   return (
     <BottomSheet visible={visible} onClose={close}>
       <SheetHeader title={t('shareTitle')} onClose={close} caption={t('sharePreview', { lang: LANG_NAMES[lang] })} />
-      <ScrollView contentContainerStyle={{ paddingHorizontal: space.lg, gap: space.lg }}>
+      <ScrollView contentContainerStyle={{ paddingHorizontal: space.xl, gap: space.lg }}>
+        {onLang ? (
+          <Segmented<Lang>
+            value={lang}
+            onChange={(l) => {
+              if (!busy && l !== lang) onLang(l);
+            }}
+            options={(Object.keys(LANG_NAMES) as Lang[]).map((l) => ({ value: l, label: LANG_NAMES[l] }))}
+          />
+        ) : null}
         {/* what goes out: the first lines, as the chat will show them */}
         <View
           accessibilityLabel={`${t('sharePreview', { lang: LANG_NAMES[lang] })}: ${previewOf(message)}`}
-          style={{ backgroundColor: c.surface2, borderRadius: radius.md, borderWidth: hairline, borderColor: c.border, padding: space.md }}>
-          <Txt color="textMuted" numberOfLines={PREVIEW_LINES} testID="share-preview">
+          style={{ backgroundColor: c.surface2, borderRadius: radius.md, borderWidth: hairline, borderColor: c.border, padding: space.lg }}>
+          <Txt numberOfLines={PREVIEW_LINES} testID="share-preview">
             {previewOf(message)}
           </Txt>
         </View>
-        <ListCard inset>
+        <View style={{ flexDirection: 'row', gap: space.sm }}>
           <ShareRow which="whatsapp" busy={busy} icon={MessageCircle} title={t('viaWhatsApp')} subtitle={t('viaWhatsAppHint')} onPress={() => void toWhatsApp()} />
           <ShareRow which="other" busy={busy} icon={Share2} title={t('otherApps')} subtitle={t('otherAppsHint')} onPress={() => void toOtherApps()} />
           {pdf ? <ShareRow which="pdf" busy={busy} icon={FileText} title={t('sharePdf')} subtitle={pdf.hint || t('sharePdfHint')} onPress={() => void toPdf()} /> : null}
-        </ListCard>
+        </View>
       </ScrollView>
     </BottomSheet>
   );
 }
 
-/** The Share icon button for a header (stack header or tab header): 44 dp, like the other header actions. */
+/** The Share icon button for a white stack header: 44 dp, boxed, like the other header actions. */
 export function ShareHeaderButton({ onPress }: { onPress: () => void }) {
   const t = useT();
   return <HeaderButton icon={Share2} label={t('share')} onPress={onPress} />;
@@ -189,18 +230,24 @@ export function useShareSheet(target: ShareTarget): { open: () => void; sheet: R
   const [visible, setVisible] = useState(false);
   const lang = target.lang ?? appLang;
 
-  function open() {
+  /** Build the message in `l` and show it in the sheet; false when there is nothing to send (said in a toast). */
+  function build(l: Lang): boolean {
     try {
-      const message = buildShareMessage(target.kind, target.id, lang, target.options);
+      const message = buildShareMessage(target.kind, target.id, l, target.options);
       if (!message) {
         toast(t('nothingToShare'), { tone: 'danger' });
-        return;
+        return false;
       }
-      setShown({ message, lang });
-      setVisible(true);
+      setShown({ message, lang: l });
+      return true;
     } catch (e) {
-      showError(e, `share.${target.kind}.build`, t, { id: target.id, lang });
+      showError(e, `share.${target.kind}.build`, t, { id: target.id, lang: l });
+      return false;
     }
+  }
+
+  function open() {
+    if (build(lang)) setVisible(true);
   }
 
   const sheet = (
@@ -211,6 +258,7 @@ export function useShareSheet(target: ShareTarget): { open: () => void; sheet: R
       kind={target.kind}
       pdf={target.pdf}
       onClose={() => setVisible(false)}
+      onLang={(l) => void build(l)}
     />
   );
   return { open, sheet };

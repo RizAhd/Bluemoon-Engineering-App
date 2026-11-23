@@ -1,15 +1,16 @@
 import { router, Stack, useFocusEffect, useLocalSearchParams } from 'expo-router';
-import { Banknote, Building2, CalendarCheck, FileText, HandCoins, Pencil, Phone, Trash2, UserX } from 'lucide-react-native';
+import { Banknote, Building2, CalendarCheck, FileText, HandCoins, Pencil, Phone, Share2, Trash2, UserCheck, UserX } from 'lucide-react-native';
 import { memo, useCallback, useMemo, useState } from 'react';
 import { Alert, Linking, View } from 'react-native';
 
+import { Hero, HeroAction, HeroAmount, HeroButtons, HeroChip, HeroChips } from '@/components/Hero';
 import { PdfOptionsSheet } from '@/components/PdfOptionsSheet';
-import { ShareHeaderButton, useShareSheet } from '@/components/ShareSheet';
-import { Stat, Tiles } from '@/components/Stats';
-import { Button, HeaderButton } from '@/components/ui/Button';
+import { useShareSheet } from '@/components/ShareSheet';
+import { Button } from '@/components/ui/Button';
 import { CardList } from '@/components/ui/CardList';
 import { Badge, EmptyState, toast } from '@/components/ui/feedback';
 import { Chips, PickerSheet } from '@/components/ui/form';
+import { Initials } from '@/components/ui/kit';
 import { Card, ListCard, ListRow, Screen, SectionTitle } from '@/components/ui/layout';
 import { Txt } from '@/components/ui/Txt';
 import { setSetting, useFirst, useQuery, useSetting } from '@/db';
@@ -54,6 +55,31 @@ function BalanceBadge({ balance }: { balance: number }) {
   if (balance > 0) return <Badge tone="danger" label={t('weOwe')} />;
   if (balance < 0) return <Badge tone="warning" label={t('workerOwes')} />;
   return <Badge tone="success" label={t('settled')} />;
+}
+
+/** Earned · Advances · Paid in one white card over the hero, split by thin lines. */
+function Totals({ items }: { items: { label: string; value: string }[] }) {
+  const c = useColors();
+  return (
+    <Card padding={space.lg}>
+      <View style={{ flexDirection: 'row' }}>
+        {items.map((it, i) => (
+          <View
+            key={it.label}
+            accessible
+            accessibilityLabel={`${it.label} ${it.value}`}
+            style={{ flex: 1, minWidth: 0, gap: 2, paddingLeft: i ? space.md : 0, borderLeftWidth: i ? 1 : 0, borderLeftColor: c.divider }}>
+            <Txt variant="caption" weight="semibold" color="textMuted" numberOfLines={1}>
+              {it.label}
+            </Txt>
+            <Txt variant="bodyLg" weight="bold" numeric numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>
+              {it.value}
+            </Txt>
+          </View>
+        ))}
+      </View>
+    </Card>
+  );
 }
 
 export default function WorkerDetail() {
@@ -142,7 +168,6 @@ export default function WorkerDetail() {
   }
 
   const b = bal.balance_cents;
-  const toneText = b > 0 ? 'danger' : b < 0 ? 'warning' : 'success';
   const hasUnassigned = entries.some((e) => !e.project_id || !e.project_name);
   const showChips = historyProjects.length > 1 || (historyProjects.length >= 1 && hasUnassigned);
   const onCurrent = !!pid && wp.some((p) => p.project_id === pid);
@@ -264,17 +289,8 @@ export default function WorkerDetail() {
 
   return (
     <>
-      <Stack.Screen
-        options={{
-          title: worker.name,
-          headerRight: () => (
-            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-              <ShareHeaderButton onPress={share.open} />
-              <HeaderButton icon={Pencil} label={t('editWorker')} onPress={() => router.push(`/worker/form?id=${worker.id}`)} />
-            </View>
-          ),
-        }}
-      />
+      {/* the hero draws the back button, Share and Edit */}
+      <Stack.Screen options={{ title: worker.name, headerShown: false }} />
       <Screen scroll={false}>
         <CardList
           sections={[{ key: 'history', rows: search.filtered }]}
@@ -290,55 +306,93 @@ export default function WorkerDetail() {
             )
           }
           footer={
-            <View style={{ gap: space.sm, marginTop: space.md }}>
-              <Button kind="ghost" icon={UserX} label={worker.active ? t('markInactive') : t('markActive')} onPress={toggleActive} full />
-              {onCurrent ? <Button kind="danger" icon={Trash2} label={t('removeFromProject')} onPress={removeFromCurrent} full /> : null}
+            <View style={{ gap: space.md, marginTop: space.md }}>
+              <SectionTitle title={t('manage')} />
+              <ListCard inset>
+                <ListRow
+                  icon={worker.active ? UserX : UserCheck}
+                  iconTone="slate"
+                  title={worker.active ? t('markInactive') : t('markActive')}
+                  accessibilityLabel={worker.active ? t('markInactive') : t('markActive')}
+                  onPress={toggleActive}
+                />
+                {onCurrent ? (
+                  <ListRow icon={Trash2} iconTone="danger" title={t('removeFromProject')} accessibilityLabel={t('removeFromProject')} onPress={removeFromCurrent} />
+                ) : null}
+              </ListCard>
             </View>
           }
           header={
             <View style={{ gap: space.lg }}>
-              {/* a plain card with a coloured edge: the colour marks the state without a heavy tinted block in dark mode */}
-              <Card style={{ borderLeftWidth: 4, borderLeftColor: c[toneText] }}>
-                <Txt eyebrow>{t('balanceAllProjects')}</Txt>
-                <Txt variant="amount" weight="bold" numeric color={toneText} adjustsFontSizeToFit minimumFontScale={0.7} numberOfLines={1}>
-                  {formatLKR(Math.abs(b))}
-                </Txt>
-                {b !== 0 || bal.earned_cents > 0 || bal.paid_cents > 0 || !worker.active ? (
-                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: space.sm }}>
-                    {b !== 0 || bal.earned_cents > 0 || bal.paid_cents > 0 ? <BalanceBadge balance={b} /> : null}
-                    {!worker.active ? <Badge label={t('inactive')} /> : null}
-                  </View>
-                ) : null}
-                {worker.trade || worker.daily_rate_cents ? (
-                  <Txt variant="caption" color="textMuted">
-                    {[worker.trade, worker.daily_rate_cents ? `${t('dailyRate')} ${formatLKR(worker.daily_rate_cents)}` : null].filter(Boolean).join(' · ')}
-                  </Txt>
-                ) : null}
-                {owing.length ? (
-                  <Button
-                    icon={Banknote}
-                    // The card adds up every project, but money is paid per project: with more than one the button says which.
-                    label={quickTarget ? `${t('payAmount', { amount: formatLKR(quickTarget.balance_cents) })}${wp.length > 1 ? ` · ${quickTarget.project_name}` : ''}` : t('payNow')}
-                    onPress={() => (quickTarget ? quickPay(quickTarget.project_id) : setPicking('quickpay'))}
-                    full
+              <Hero
+                back
+                title={t('worker')}
+                actions={
+                  <>
+                    <HeroAction icon={Share2} label={t('share')} onPress={share.open} />
+                    <HeroAction icon={Pencil} label={t('editWorker')} onPress={() => router.push(`/worker/form?id=${worker.id}`)} />
+                  </>
+                }
+                card={
+                  <Totals
+                    items={[
+                      { label: t('earned'), value: formatLKR(bal.earned_cents) },
+                      { label: t('advances'), value: formatLKR(bal.advance_cents) },
+                      { label: t('paid'), value: formatLKR(bal.paid_cents) },
+                    ]}
                   />
-                ) : null}
-                {worker.phone ? <Button kind="ghost" compact icon={Phone} label={formatPhone(worker.phone)} onPress={() => Linking.openURL(`tel:${worker.phone}`).catch((e) => showError(e, 'worker.call', t))} style={{ alignSelf: 'flex-start' }} /> : null}
-              </Card>
-
-              <Tiles>
-                <Stat label={t('earned')} value={formatLKR(bal.earned_cents)} />
-                <Stat label={t('advances')} value={formatLKR(bal.advance_cents)} />
-                <Stat label={t('paid')} value={formatLKR(bal.paid_cents)} />
-              </Tiles>
-
-              <View style={{ gap: space.sm }}>
-                <Button icon={CalendarCheck} label={t('recordWork')} onPress={() => act('work')} full />
-                <View style={{ flexDirection: 'row', gap: space.sm }}>
-                  <Button kind="secondary" icon={HandCoins} label={t('giveAdvance')} onPress={() => act('advance')} style={{ flex: 1 }} />
-                  <Button kind="secondary" icon={Banknote} label={t('payWages')} onPress={() => act('payment')} style={{ flex: 1 }} />
+                }>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.md }}>
+                  <View style={{ width: 64, height: 64, borderRadius: 32, backgroundColor: c.heroWhite, alignItems: 'center', justifyContent: 'center' }}>
+                    <Initials name={worker.name} size={60} tone="primary" />
+                  </View>
+                  <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
+                    <Txt variant="title" weight="bold" color="onHeader" numberOfLines={2} style={{ fontSize: 22, lineHeight: 28 }}>
+                      {worker.name}
+                    </Txt>
+                    {worker.trade || worker.daily_rate_cents ? (
+                      <Txt variant="caption" weight="semibold" color="onHeaderMuted" numberOfLines={2}>
+                        {[worker.trade, worker.daily_rate_cents ? `${t('dailyRate')} ${formatLKR(worker.daily_rate_cents)}` : null].filter(Boolean).join(' · ')}
+                      </Txt>
+                    ) : null}
+                  </View>
                 </View>
-              </View>
+                <HeroAmount label={t('balanceAllProjects')} value={formatLKR(Math.abs(b))} />
+                {b !== 0 || bal.earned_cents > 0 || bal.paid_cents > 0 || !worker.active ? (
+                  <HeroChips>
+                    {b !== 0 || bal.earned_cents > 0 || bal.paid_cents > 0 ? (
+                      <HeroChip label={b > 0 ? t('weOwe') : b < 0 ? t('workerOwes') : t('settled')} tone={b > 0 ? 'danger' : undefined} />
+                    ) : null}
+                    {!worker.active ? <HeroChip label={t('inactive')} /> : null}
+                  </HeroChips>
+                ) : null}
+                <HeroButtons>
+                  {owing.length ? (
+                    <Button
+                      kind="hero"
+                      icon={Banknote}
+                      // The balance adds up every project, but money is paid per project: with more than one the button says which.
+                      label={quickTarget ? `${t('payAmount', { amount: formatLKR(quickTarget.balance_cents) })}${wp.length > 1 ? ` · ${quickTarget.project_name}` : ''}` : t('payNow')}
+                      onPress={() => (quickTarget ? quickPay(quickTarget.project_id) : setPicking('quickpay'))}
+                      full
+                    />
+                  ) : null}
+                  <Button kind={owing.length ? 'heroSoft' : 'hero'} icon={CalendarCheck} label={t('recordWork')} onPress={() => act('work')} full />
+                </HeroButtons>
+              </Hero>
+
+              {worker.phone ? (
+                <Button kind="ghost" compact icon={Phone} label={formatPhone(worker.phone)} onPress={() => Linking.openURL(`tel:${worker.phone}`).catch((e) => showError(e, 'worker.call', t))} style={{ alignSelf: 'flex-start' }} />
+              ) : null}
+
+              <ListCard inset>
+                <ListRow icon={HandCoins} title={t('giveAdvance')} accessibilityLabel={t('giveAdvance')} onPress={() => act('advance')} />
+                <ListRow icon={Banknote} title={t('payWages')} accessibilityLabel={t('payWages')} onPress={() => act('payment')} />
+                {/* the statement prints this history (all of it, for the project chosen below): its own options are one tap away */}
+                {entries.length ? (
+                  <ListRow icon={FileText} title={t('statementPdf')} subtitle={LANG_NAMES[statementLang]} accessibilityLabel={t('statementPdf')} onPress={() => setPdfOpen(true)} />
+                ) : null}
+              </ListCard>
 
               {wp.length ? (
                 <>
@@ -360,11 +414,7 @@ export default function WorkerDetail() {
               ) : null}
 
               {/* the statement prints this history (all of it, for the project chosen below): its own options are one tap away */}
-              <SectionTitle
-                title={t('history')}
-                count={entries.length || undefined}
-                action={entries.length ? <Button kind="ghost" compact icon={FileText} label={t('statementPdf')} onPress={() => setPdfOpen(true)} /> : undefined}
-              />
+              <SectionTitle title={t('history')} count={entries.length || undefined} />
               {search.node}
               {showChips ? (
                 <Chips

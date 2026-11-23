@@ -1,5 +1,7 @@
 import * as Haptics from 'expo-haptics';
-import { Fingerprint, Lock } from 'lucide-react-native';
+import { LinearGradient } from 'expo-linear-gradient';
+import { setStatusBarStyle } from 'expo-status-bar';
+import { Fingerprint } from 'lucide-react-native';
 import { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, AppState, Modal, Pressable, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -10,7 +12,7 @@ import { Txt } from '@/components/ui/Txt';
 import { useT } from '@/i18n';
 import { askBiometric, loadLock, lockNow, RELOCK_AFTER_MS, tryPin, unlock, useLockState } from '@/lib/appLock';
 import { reportError } from '@/lib/errors';
-import { space, touchMin, useColors } from '@/theme';
+import { radius, space, touchMin, useColors, useScheme } from '@/theme';
 
 /** Seconds left until `until`, refreshed every second while there are any. */
 function useSecondsLeft(until: number): number {
@@ -48,10 +50,33 @@ export function AppLock() {
   return <LockScreen />;
 }
 
+/** Faint site grid on the lock's blue half (the hero's grid; the lock lives outside navigation, so not the Hero itself). */
+function LockGrid() {
+  const c = useColors();
+  const lines = Array.from({ length: 30 }, (_, i) => (i + 1) * 28);
+  return (
+    <View pointerEvents="none" style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, opacity: 0.07 }}>
+      {lines.map((x) => (
+        <View key={`v${x}`} style={{ position: 'absolute', top: 0, bottom: 0, left: x, width: 1, backgroundColor: c.heroWhite }} />
+      ))}
+      {lines.map((y) => (
+        <View key={`h${y}`} style={{ position: 'absolute', left: 0, right: 0, top: y, height: 1, backgroundColor: c.heroWhite }} />
+      ))}
+    </View>
+  );
+}
+
 function LockScreen() {
   const t = useT();
   const c = useColors();
+  const scheme = useScheme();
   const insets = useSafeAreaInsets();
+
+  // white status-bar icons over the blue while locked
+  useEffect(() => {
+    setStatusBarStyle('light');
+    return () => setStatusBarStyle(scheme === 'dark' ? 'light' : 'dark');
+  }, [scheme]);
   const lock = useLockState();
   const [pin, setPin] = useState('');
   const [shake, setShake] = useState(0);
@@ -106,49 +131,55 @@ function LockScreen() {
 
   return (
     <Modal visible transparent={false} animationType="none" statusBarTranslucent navigationBarTranslucent onRequestClose={() => undefined}>
-      <View
-        testID="app-lock"
-        style={{
-          flex: 1,
-          backgroundColor: c.bg,
-          paddingTop: insets.top + space.xxl,
-          paddingBottom: Math.max(insets.bottom, space.lg) + space.lg,
-          paddingHorizontal: space.lg,
-          alignItems: 'center',
-          justifyContent: 'space-between',
-        }}>
-        <View style={{ alignItems: 'center', gap: space.md }}>
-          <BrandMark size={56} />
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.sm }}>
-            <Lock size={18} color={c.textMuted} strokeWidth={2} />
-            <Txt variant="title" weight="semibold">
-              {t('appLocked')}
-            </Txt>
+      <View testID="app-lock" style={{ flex: 1, backgroundColor: c.header }}>
+        {/* Blueprint lock: the blue half with the mark, then a white rounded panel holding the keys */}
+        <LinearGradient colors={[c.header, c.headerEnd]} start={{ x: 0.1, y: 1 }} end={{ x: 1, y: 0 }} style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }} />
+        <LockGrid />
+        <View style={{ flex: 1, minHeight: 220, paddingTop: insets.top + space.xl, paddingHorizontal: space.lg, paddingBottom: space.xl, alignItems: 'center', justifyContent: 'center', gap: space.md }}>
+          <View style={{ width: 80, height: 80, borderRadius: radius.lg + 2, backgroundColor: c.heroWhite, alignItems: 'center', justifyContent: 'center' }}>
+            <BrandMark size={52} scheme="light" />
           </View>
-          <Txt color={wrong || waiting ? 'danger' : 'textMuted'} weight={wrong || waiting ? 'semibold' : 'regular'} center accessibilityLiveRegion="polite" numeric={waiting}>
+          <Txt variant="caption" weight="bold" color="onHeaderMuted" style={{ letterSpacing: 1.6 }}>
+            BLUEMOON SITE
+          </Txt>
+          <Txt variant="heading" weight="bold" color="onHeader" center>
+            {t('appLocked')}
+          </Txt>
+          <Txt color="onHeader" weight={wrong || waiting ? 'bold' : 'regular'} center accessibilityLiveRegion="polite" numeric={waiting}>
             {message}
           </Txt>
-          <View style={{ paddingVertical: space.md, minHeight: 44, justifyContent: 'center' }}>
-            {checking ? <ActivityIndicator color={c.primary} /> : <PinDots count={pin.length} slots={lock.pinLength} shake={shake} error={wrong} />}
+          <View style={{ paddingTop: space.sm, minHeight: 36, justifyContent: 'center' }}>
+            {checking ? <ActivityIndicator color={c.onHeader} /> : <PinDots count={pin.length} slots={lock.pinLength} shake={shake} error={wrong} onBlue />}
           </View>
         </View>
 
-        <PinPad
-          value={pin}
-          onChange={(v) => void onChange(v)}
-          maxLength={lock.pinLength ?? 6}
-          disabled={waiting || checking}
-          extra={lock.bio ? { icon: Fingerprint, label: t('useFingerprint'), onPress: () => void fingerprint() } : undefined}
-        />
-
-        <Pressable
-          accessibilityRole="button"
-          onPress={() => Alert.alert(t('forgotPinTitle'), t('forgotPinBody'))}
-          style={({ pressed }) => ({ minHeight: touchMin, justifyContent: 'center', paddingHorizontal: space.lg, borderRadius: 8, backgroundColor: pressed ? c.muted : 'transparent' })}>
-          <Txt weight="semibold" color="primary">
-            {t('forgotPin')}
-          </Txt>
-        </Pressable>
+        <View
+          style={{
+            backgroundColor: c.bg,
+            borderTopLeftRadius: radius.xl + 4,
+            borderTopRightRadius: radius.xl + 4,
+            paddingTop: space.xl,
+            paddingHorizontal: space.lg,
+            paddingBottom: Math.max(insets.bottom, space.lg) + space.md,
+            gap: space.md,
+            alignItems: 'center',
+          }}>
+          <PinPad
+            value={pin}
+            onChange={(v) => void onChange(v)}
+            maxLength={lock.pinLength ?? 6}
+            disabled={waiting || checking}
+            extra={lock.bio ? { icon: Fingerprint, label: t('useFingerprint'), onPress: () => void fingerprint() } : undefined}
+          />
+          <Pressable
+            accessibilityRole="button"
+            onPress={() => Alert.alert(t('forgotPinTitle'), t('forgotPinBody'))}
+            style={({ pressed }) => ({ minHeight: touchMin, justifyContent: 'center', paddingHorizontal: space.lg, borderRadius: radius.md, backgroundColor: pressed ? c.primarySoft : 'transparent' })}>
+            <Txt weight="bold" color="primary">
+              {t('forgotPin')}
+            </Txt>
+          </Pressable>
+        </View>
       </View>
     </Modal>
   );

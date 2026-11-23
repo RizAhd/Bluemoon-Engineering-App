@@ -1,5 +1,5 @@
 import { router, Stack, useLocalSearchParams } from 'expo-router';
-import { Building2, HardHat, Phone, Trash2, UserRound, Wrench } from 'lucide-react-native';
+import { Building2, Check, HardHat, Phone, Trash2, UserRound, Wrench } from 'lucide-react-native';
 import { useState } from 'react';
 import { Alert } from 'react-native';
 
@@ -164,7 +164,7 @@ function Inner({ projectId, workerId }: { projectId: string; workerId?: string }
   return (
     <>
       <Stack.Screen options={{ title: t('addWorkerToProject') }} />
-      <Screen footer={<Button label={t('save')} onPress={onSave} full />} gap={20}>
+      <Screen footer={<Button icon={Check} label={t('save')} onPress={onSave} full />} gap={20}>
         {project ? (
           <Txt variant="caption" color="textMuted">
             {`${t('project')}: ${project.name}`}

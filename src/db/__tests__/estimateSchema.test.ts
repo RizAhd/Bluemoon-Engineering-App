@@ -77,7 +77,8 @@ describe('migration 5 on an empty database', () => {
 
   it('DATA_TABLES lists the new tables after projects, parents before children', () => {
     const order = [...DATA_TABLES] as string[];
-    expect(order.slice(0, 4)).toEqual(['projects', 'estimates', 'estimate_items', 'estimate_payments']);
+    // later tables (project_receipts, migration 7) may sit between them; the estimate tables keep their order
+    expect(order.filter((t) => t === 'projects' || t.startsWith('estimate'))).toEqual(['projects', 'estimates', 'estimate_items', 'estimate_payments']);
     expect(order.indexOf('estimates')).toBeLessThan(order.indexOf('estimate_items'));
     expect(order.indexOf('estimates')).toBeLessThan(order.indexOf('estimate_payments'));
     expect(order.indexOf('projects')).toBeLessThan(order.indexOf('estimates'));
@@ -310,7 +311,8 @@ describe('v_estimate_total', () => {
 describe('upgrading a version-4 database (migration 5)', () => {
   const stamp = '2026-10-10T04:00:00.000Z';
   const base = (id: string) => ({ id, created_at: stamp, updated_at: stamp, version: 1, device_id: 'dev' });
-  const V4_TABLES = [...DATA_TABLES.filter((t) => !t.startsWith('estimate')), 'audit_log', 'settings'] as const;
+  // the tables a version-4 phone had: not the estimate tables (migration 5) nor client payments (migration 7)
+  const V4_TABLES = [...DATA_TABLES.filter((t) => !t.startsWith('estimate') && t !== 'project_receipts'), 'audit_log', 'settings'] as const;
   const ORDER: Record<string, string> = { audit_log: 'seq', settings: 'key' };
   const VIEWS = ['v_project_cost', 'v_worker_balance', 'v_tool_status', 'v_project_worker_balance'] as const;
 

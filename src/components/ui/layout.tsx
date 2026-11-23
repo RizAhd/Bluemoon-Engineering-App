@@ -14,7 +14,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { hairline, radius, sizes, space, touch, useColors, useLayout, type Palette } from '@/theme';
+import { hairline, radius, sizes, space, touch, useColors, useElevation, useLayout, useScheme, type Palette } from '@/theme';
 
 import { FocusChainProvider } from './focusChain';
 import { Initials, initialsOf } from './kit';
@@ -194,15 +194,19 @@ export interface CardProps {
   gap?: number;
 }
 
-export function Card({ children, style, tone, onPress, accessibilityLabel, padding = space.lg, gap = space.md }: CardProps) {
+export function Card({ children, style, tone, onPress, accessibilityLabel, padding = space.lg + 2, gap = space.md }: CardProps) {
   const c = useColors();
+  const lift = useElevation('card');
+  const dark = useScheme() === 'dark';
+  // Blueprint cards: white, 20 radius, a soft wide shadow and no edge in light; a 1 dp edge in dark, where shadows do not read.
   const base: ViewStyle = {
     backgroundColor: tone ? c[tone] : c.card,
     borderRadius: radius.lg,
-    borderWidth: hairline,
-    borderColor: tone ? 'transparent' : c.border,
+    borderWidth: dark && !tone ? hairline : 0,
+    borderColor: c.border,
     padding,
     gap,
+    ...(tone ? null : lift),
   };
   if (onPress)
     return (
@@ -226,18 +230,21 @@ export function Divider({ strong, inset = 0, style }: { strong?: boolean; inset?
 
 // ---------------------------------------------------------------- titles
 
-/** bodyLg 17/600 section heading with an optional right action (compact ghost Button or IconButton 44). */
+/** Section heading 18/800 with an optional count chip and a right action (compact ghost Button or IconButton 44). */
 export function SectionTitle({ title, action, first, count }: { title: string; action?: ReactNode; first?: boolean; count?: number }) {
+  const c = useColors();
   return (
     <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: space.sm, marginTop: first ? 0 : space.sm, minHeight: 32 }}>
-      <View style={{ flex: 1, flexDirection: 'row', alignItems: 'baseline', gap: space.sm }}>
-        <Txt variant="bodyLg" weight="semibold" accessibilityRole="header" style={{ flexShrink: 1 }}>
+      <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: space.sm }}>
+        <Txt variant="title" weight="bold" accessibilityRole="header" style={{ flexShrink: 1 }}>
           {title}
         </Txt>
         {count != null ? (
-          <Txt variant="bodyLg" weight="semibold" color="textMuted" numeric>
-            {count}
-          </Txt>
+          <View style={{ minWidth: 24, height: 24, paddingHorizontal: 7, borderRadius: radius.sm, backgroundColor: c.surface2, alignItems: 'center', justifyContent: 'center' }}>
+            <Txt variant="caption" weight="semibold" color="textMuted" numeric>
+              {count}
+            </Txt>
+          </View>
         ) : null}
       </View>
       {action}
@@ -278,7 +285,9 @@ function slotColors(c: Palette, tone: keyof Palette | undefined) {
       return { bg: c.successSoft, fg: c.success };
     case 'danger':
       return { bg: c.dangerSoft, fg: c.danger };
+    // Blueprint: an icon slot is soft blue with a blue icon unless the row asks for another tone.
     case undefined:
+      return { bg: c.primarySoft, fg: c.primary };
     case 'slate':
     case 'text':
     case 'textMuted':
@@ -368,8 +377,8 @@ export function ListRow({
       android_ripple={tappable ? { color: c.muted } : undefined}
       style={({ pressed }) => [
         {
-          minHeight: touch,
-          paddingVertical: space.md,
+          minHeight: touch + 8,
+          paddingVertical: space.md + 2,
           paddingHorizontal: space.lg,
           backgroundColor: pressed && tappable ? c.muted : selected ? c.primarySoft : c.card,
         },
@@ -381,11 +390,11 @@ export function ListRow({
           <Initials name={avatar} size={sizes.iconSlot} />
         ) : Icon ? (
           <View style={{ width: sizes.iconSlot, height: sizes.iconSlot, borderRadius: radius.md, backgroundColor: slot.bg, alignItems: 'center', justifyContent: 'center' }}>
-            <Icon size={20} color={slot.fg} strokeWidth={2} />
+            <Icon size={21} color={slot.fg} strokeWidth={1.9} />
           </View>
         ) : null}
         <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
-          <Txt weight="semibold" numberOfLines={2} color={muted || disabled ? 'textMuted' : 'text'}>
+          <Txt variant="bodyLg" weight="semibold" numberOfLines={2} color={muted || disabled ? 'textMuted' : 'text'}>
             {title}
           </Txt>
           {subtitle ? (
@@ -407,7 +416,7 @@ export function ListRow({
             </View>
           ) : value ? (
             // A big amount never pushes the title out: it keeps at most about half the row and shrinks (to 70 %) before it would be cut.
-            <Txt weight="semibold" numeric color={valueTone} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7} style={{ flexShrink: 0, maxWidth: '55%' }}>
+            <Txt variant="bodyLg" weight="bold" numeric color={valueTone} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7} style={{ flexShrink: 0, maxWidth: '55%' }}>
               {value}
             </Txt>
           ) : selected ? (
@@ -433,19 +442,24 @@ export interface ListCardProps {
   style?: StyleProp<ViewStyle>;
 }
 
-/** Groups list rows in one rounded card with 1 dp dividers inset to the text start. */
+/** Groups list rows in one rounded card (20 radius, soft shadow) with 1 dp dividers inset to the text start. */
 export function ListCard({ children, inset, style }: ListCardProps) {
   const c = useColors();
+  const lift = useElevation('card');
+  const dark = useScheme() === 'dark';
   const items = (Array.isArray(children) ? children.flat() : [children]).filter(Boolean);
-  const left = inset === true ? 68 : inset === false ? -1 : typeof inset === 'number' ? inset : space.lg;
+  const left = inset === true ? 72 : inset === false ? -1 : typeof inset === 'number' ? inset : space.lg;
   return (
-    <View style={[{ borderRadius: radius.lg, borderWidth: hairline, borderColor: c.border, overflow: 'hidden', backgroundColor: c.card }, style]}>
-      {items.map((child, i) => (
-        <View key={i}>
-          {i > 0 && left >= 0 ? <View style={{ height: hairline, backgroundColor: c.border, marginLeft: left }} /> : null}
-          {child}
-        </View>
-      ))}
+    // the shadow sits on the outer box: the inner one clips the rows to the rounded corners
+    <View style={[{ borderRadius: radius.lg, backgroundColor: c.card }, lift, style]}>
+      <View style={{ borderRadius: radius.lg, borderWidth: dark ? hairline : 0, borderColor: c.border, overflow: 'hidden', backgroundColor: c.card }}>
+        {items.map((child, i) => (
+          <View key={i}>
+            {i > 0 && left >= 0 ? <View style={{ height: hairline, backgroundColor: c.divider, marginLeft: left, marginRight: space.lg }} /> : null}
+            {child}
+          </View>
+        ))}
+      </View>
     </View>
   );
 }

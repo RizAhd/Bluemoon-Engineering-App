@@ -207,13 +207,15 @@ describe('the bar on a 360 dp phone', () => {
     seedDemo();
   });
 
-  it('the chips are one sideways-scrolling row that starts with Filter & sort, at the screen edges', async () => {
+  it('Filter & sort sits beside the search box; the period chips are one sideways-scrolling row at the screen edges', async () => {
     setSetting('lang', 'si');
     clearExpenseChoices();
     await renderScreen(<ExpensesScreen />);
     const si = makeTr('si');
-    const button = screen.getByLabelText(si('filterSort'));
-    let row = button.parent;
+    // Blueprint: the square Filter & sort button is on the search box's row, not in the scrolling row
+    expect(screen.getByLabelText(si('filterSort'))).toBeTruthy();
+    expect(screen.getByLabelText(si('search'))).toBeTruthy();
+    let row = screen.getByLabelText(si('allTime')).parent;
     while (row && !(row.props.horizontal === true)) row = row.parent;
     expect(row).toBeTruthy();
     expect(row!.props.showsHorizontalScrollIndicator).toBe(false);

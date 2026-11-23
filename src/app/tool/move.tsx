@@ -1,12 +1,17 @@
+import * as Haptics from 'expo-haptics';
 import { Stack, useLocalSearchParams } from 'expo-router';
-import { ArrowDownToLine, ArrowUpFromLine, Building2, Calendar, ClipboardCheck, Hammer, Ruler, Trash2, User } from 'lucide-react-native';
+import { ArrowDownToLine, ArrowUpFromLine, Building2, Calendar, ClipboardCheck, Hammer, Plus, Ruler, Trash2, User } from 'lucide-react-native';
 import { useMemo, useState } from 'react';
+import { Pressable, ScrollView, View } from 'react-native';
 
 import { PhotoStrip } from '@/components/PhotoStrip';
+import { QtyStepper } from '@/components/QtyStepper';
 import { Button, IconButton } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/feedback';
 import { DateField, Field, SelectField } from '@/components/ui/form';
-import { ListCard, ListRow, Screen } from '@/components/ui/layout';
+import { Initials } from '@/components/ui/kit';
+import { Card, ListCard, ListRow, Screen } from '@/components/ui/layout';
+import { Txt } from '@/components/ui/Txt';
 import { all, useFirst, useQuery } from '@/db';
 import { deleteRecord, moveTool, ValidationError } from '@/db/repo';
 import type { ToolHolder, ToolMovement, ToolStock, Worker } from '@/db/types';
@@ -16,6 +21,7 @@ import { useT } from '@/i18n';
 import { formatDay, today } from '@/lib/dates';
 import { formatQty, parseQty } from '@/lib/estimate';
 import { isSinglePiece, qtyText } from '@/lib/toolStock';
+import { hairline, radius, space, useColors } from '@/theme';
 
 type Kind = 'issue' | 'return';
 type Params = { id?: string; toolId?: string; kind?: Kind; projectId?: string };
@@ -46,7 +52,7 @@ function Existing({ move }: { move: ToolMovement }) {
         options={{
           title: t(isIssue ? 'issue' : 'return'),
           headerRight: () => (
-            <IconButton icon={Trash2} label={t('delete')} size={44} tone="danger" pressedBg="headerDeep" onPress={() => form.confirmDelete(() => deleteRecord('tool_movements', move.id))} />
+            <IconButton icon={Trash2} label={t('delete')} size={44} tone="danger" shape="boxed" onPress={() => form.confirmDelete(() => deleteRecord('tool_movements', move.id))} />
           ),
         }}
       />
@@ -188,6 +194,17 @@ function Inner({ params }: { params: Params }) {
           allowNone={kind === 'return'}
           placeholder={t('chooseProject')}
         />
+        {workerItems.length ? (
+          <GivenTo
+            items={workerItems}
+            value={workerId}
+            onPick={(id) => {
+              setWorkerId(id);
+              form.clearError('taken_by');
+            }}
+            someoneElse={kind === 'issue' && !!workerId ? t('otherPersonName') : undefined}
+          />
+        ) : null}
         <SelectField
           label={t('takenBy')}
           items={workerItems}
@@ -220,16 +237,15 @@ function Inner({ params }: { params: Params }) {
         ) : null}
         {/* only for a tool with several pieces or a material: a single piece reads as it always did */}
         {status && !isSinglePiece(status) ? (
-          <Field
+          <QtyStepper
             label={t('howMany')}
-            icon={Ruler}
             value={qty}
-            onChangeText={(s) => {
+            onChange={(s) => {
               setQty(s);
               form.clearError('qty');
             }}
-            keyboardType={status.is_material ? 'decimal-pad' : 'number-pad'}
-            hint={t(kind === 'issue' ? 'inStoreCount' : 'outCount', { n: qtyText(kind === 'issue' ? status.in_store_milli : status.out_milli, status.unit) })}
+            decimal={!!status.is_material}
+            aside={t(kind === 'issue' ? 'inStoreCount' : 'outCount', { n: qtyText(kind === 'issue' ? status.in_store_milli : status.out_milli, status.unit) })}
             error={form.err('qty')}
           />
         ) : null}
@@ -240,5 +256,81 @@ function Inner({ params }: { params: Params }) {
         <Field label={t('note')} optional placeholder={t(kind === 'return' ? 'phToolMoveNote' : 'phToolIssueNote')} value={note} onChangeText={setNote} multiline />
       </Screen>
     </>
+  );
+}
+
+// ---------------------------------------------------------------- "Taken by" quick pick
+
+/** How many people the avatar row offers before the full list (the Taken by field under it) takes over. */
+const QUICK_PICK = 8;
+
+/**
+ * Blueprint "Given to": the project's people as avatars in one row, the chosen one ringed in blue. A tap picks, a
+ * second tap clears. Everyone (and anyone left out of the row) stays in the Taken by list below.
+ */
+function GivenTo({
+  items,
+  value,
+  onPick,
+  someoneElse,
+}: {
+  items: { id: string; title: string; subtitle?: string }[];
+  value: string | null;
+  onPick: (id: string | null) => void;
+  /** Label of the "someone not on the list" button; shown only while a worker is picked. */
+  someoneElse?: string;
+}) {
+  const c = useColors();
+  const chosenFirst = value && items.findIndex((i) => i.id === value) >= QUICK_PICK ? [items.find((i) => i.id === value)!, ...items] : items;
+  const shown = chosenFirst.slice(0, QUICK_PICK);
+  return (
+    <Card padding={space.md} gap={space.md}>
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: space.sm, paddingHorizontal: space.xs }}>
+        {shown.map((w) => {
+          const on = w.id === value;
+          return (
+            <Pressable
+              key={w.id}
+              accessibilityRole="radio"
+              accessibilityState={{ checked: on }}
+              accessibilityLabel={w.subtitle ? `${w.title}, ${w.subtitle}` : w.title}
+              onPress={() => {
+                Haptics.selectionAsync().catch(() => {});
+                onPick(on ? null : w.id);
+              }}
+              style={{ width: 68, alignItems: 'center', gap: 6, paddingVertical: space.xs }}>
+              <View style={{ padding: 2, borderRadius: 32, borderWidth: 2, borderColor: on ? c.primary : 'transparent' }}>
+                <Initials name={w.title} size={52} />
+              </View>
+              <Txt variant="caption" weight={on ? 'bold' : 'semibold'} color={on ? 'primary' : 'text'} numberOfLines={1} center>
+                {w.title.split(/\s+/)[0]}
+              </Txt>
+            </Pressable>
+          );
+        })}
+      </ScrollView>
+      {someoneElse ? (
+        <Pressable
+          accessibilityRole="button"
+          onPress={() => onPick(null)}
+          style={({ pressed }) => ({
+            minHeight: 48,
+            flexDirection: 'row',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: space.sm,
+            borderRadius: radius.md,
+            borderWidth: hairline,
+            borderStyle: 'dashed',
+            borderColor: c.borderStrong,
+            backgroundColor: pressed ? c.muted : 'transparent',
+          })}>
+          <Plus size={16} color={c.textMuted} strokeWidth={2.2} />
+          <Txt weight="semibold" color="textMuted" numberOfLines={1}>
+            {someoneElse}
+          </Txt>
+        </Pressable>
+      ) : null}
+    </Card>
   );
 }
