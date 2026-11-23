@@ -769,5 +769,6 @@ export const si: Dict = {
   manage: 'කළමනාකරණය',
   help: 'උදව්',
   back: 'ආපසු',
+  loading: 'පූරණය වෙමින්…',
   toolsCount: 'උපකරණ {n}',
 };

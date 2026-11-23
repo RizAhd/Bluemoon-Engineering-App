@@ -83,7 +83,7 @@ export default function EstimatesScreen() {
   }
 
   return (
-    <Screen scroll={false}>
+    <Screen scroll={false} skeleton="plain">
       <CardList
         // one card per estimate, as in the design (a section of one row each)
         sections={visible.map((e) => ({ key: e.id, rows: [e] }))}

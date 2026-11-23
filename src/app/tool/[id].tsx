@@ -102,7 +102,7 @@ export default function ToolDetail() {
   return (
     <>
       <Stack.Screen options={{ title, headerShown: false }} />
-      <Screen scroll={false}>
+      <Screen scroll={false} skeleton="hero">
         <CardList
           sections={[{ key: 'moves', rows: search.filtered }]}
           keyOf={moveKey}

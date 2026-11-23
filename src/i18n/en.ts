@@ -783,6 +783,7 @@ export const en = {
   manage: 'Manage',
   help: 'Help',
   back: 'Back',
+  loading: 'Loading…',
   toolsCount: '{n} tools',
 } as const;
 

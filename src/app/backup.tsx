@@ -252,7 +252,7 @@ export default function BackupScreen() {
   return (
     <>
     <Stack.Screen options={{ headerShown: false }} />
-    <Screen hairlineTop={false} footer={<Button icon={CloudUpload} label={progress ?? t('backupNow')} loading={busy === 'full'} disabled={!!busy && busy !== 'full'} onPress={() => void fullBackup()} full />}>
+    <Screen hairlineTop={false} skeleton="hero" footer={<Button icon={CloudUpload} label={progress ?? t('backupNow')} loading={busy === 'full'} disabled={!!busy && busy !== 'full'} onPress={() => void fullBackup()} full />}>
       {/* Daily automatic backup: the hero says how safe the records are (icon + words), with Run now under it */}
       <Hero
         back

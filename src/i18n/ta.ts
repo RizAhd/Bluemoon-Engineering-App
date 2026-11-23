@@ -769,5 +769,6 @@ export const ta: Dict = {
   manage: 'நிர்வகி',
   help: 'உதவி',
   back: 'பின்செல்',
+  loading: 'ஏற்றுகிறது…',
   toolsCount: '{n} கருவிகள்',
 };

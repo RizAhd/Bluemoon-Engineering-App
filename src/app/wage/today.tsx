@@ -516,7 +516,7 @@ export default function TodaysWorkScreen() {
       {/* the hero draws its own back button and share */}
       <Stack.Screen options={{ title: t('todaysWork'), headerShown: false }} />
       {/* On a short window (landscape, split screen) the totals and Save scroll with the sheet instead of covering it. */}
-      <Screen scroll={false} footer={short ? undefined : footer}>
+      <Screen scroll={false} footer={short ? undefined : footer} skeleton="hero">
         <FlatList
           ref={list}
           onScrollToIndexFailed={() => {}}

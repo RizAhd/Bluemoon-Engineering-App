@@ -291,7 +291,7 @@ export default function WorkerDetail() {
     <>
       {/* the hero draws the back button, Share and Edit */}
       <Stack.Screen options={{ title: worker.name, headerShown: false }} />
-      <Screen scroll={false}>
+      <Screen scroll={false} skeleton="hero">
         <CardList
           sections={[{ key: 'history', rows: search.filtered }]}
           keyOf={entryKey}

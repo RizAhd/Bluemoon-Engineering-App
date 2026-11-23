@@ -80,7 +80,7 @@ export default function NotesScreen() {
       {/* With no note yet there is nothing to share. */}
       <Stack.Screen options={{ title: t('siteNotes'), headerRight: notes.length ? () => <ShareHeaderButton onPress={share.open} /> : undefined }} />
       {/* On a short window (landscape, split screen) the New note button scrolls with the notes instead of covering them. */}
-      <Screen scroll={false} footer={short ? undefined : newButton}>
+      <Screen scroll={false} footer={short ? undefined : newButton} skeleton="plain">
         <FlatList
           data={search.filtered}
           keyExtractor={noteKey}

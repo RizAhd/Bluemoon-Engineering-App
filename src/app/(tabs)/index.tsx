@@ -214,7 +214,7 @@ export default function TodayScreen() {
 
   return (
     <View style={{ flex: 1 }}>
-      <Screen hairlineTop={false}>
+      <Screen hairlineTop={false} skeleton="hero">
         <Hero brand title={t(greetingKey())} subtitle={subtitle} actions={heroActions} project card={card}>
           <HeroAmount label={t('totalCost')} value={formatLKR(totals.spent)} />
           <HeroChips>

@@ -111,7 +111,7 @@ export default function MoreScreen() {
   return (
     <>
       <Stack.Screen options={{ headerShown: false }} />
-      <Screen hairlineTop={false} paddingBottom={space.xxl}>
+      <Screen hairlineTop={false} paddingBottom={space.xxl} skeleton="hero">
         <Hero
           back
           title={t('settingsAndMore')}

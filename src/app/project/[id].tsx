@@ -207,7 +207,7 @@ export default function ProjectDetail() {
     <>
       {/* the blue hero carries the back button and the actions */}
       <Stack.Screen options={{ title: pr.name, headerShown: false }} />
-      <Screen>
+      <Screen skeleton="hero">
         <Hero
           back
           title={t('project')}

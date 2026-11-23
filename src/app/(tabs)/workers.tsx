@@ -256,7 +256,7 @@ export default function WorkersScreen() {
 
   return (
     <View style={{ flex: 1, backgroundColor: c.bg }}>
-      <Screen hairlineTop={false} scroll={false}>
+      <Screen hairlineTop={false} scroll={false} skeleton="hero">
         <CardList
           keyOf={workerKey}
           renderRow={renderRow}

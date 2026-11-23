@@ -162,7 +162,7 @@ Drive sign-in only works for an app registered in the owner's Google Cloud proje
 **Do not edit `.github/workflows/android-apk.yml`** unless the owner asks; it is the only working build route.
 
 1. Commit and push to `main`.
-2. Push a tag: `git tag apk-17 && git push origin apk-17` (next free number; `git tag | grep apk`).
+2. Push a tag: `git tag apk-18 && git push origin apk-18` (next free number; `git tag | grep apk`).
 3. GitHub Actions builds a release APK (≈15 min). It uploads the artifact **and** pushes the result to the
    `ci-result` branch: `status.txt` (job result, commit, run URL) and `Bluemoon-Site-<date>-<commit>.apk`.
 4. Fetch without opening GitHub:
@@ -301,6 +301,14 @@ behaviour unchanged.
 - `src/components/ui/SplitAmount.tsx`: "Rs" small, figure large, as two texts. A nested Text cuts the digits off on Android.
 - Left out of the design: donut charts are shown as bars, there are no Overview/Money/Team/Tools tabs on the project page,
   and tool condition stays a text field.
+
+### apk-18 (24 Nov 2026): loading skeletons and transitions
+
+- Heavy screens pass `skeleton="hero"` or `"plain"` to `Screen` (`src/components/ui/layout.tsx`). While the screen slides in
+  (it waits for `transitionEnd`, at most 420 ms) or a tab opens for the first time (160 ms), `ScreenSkeleton` draws a pulsing
+  outline of the page. Then the page fades in over 220 ms. Building the page after the slide, not during it, keeps the slide smooth.
+  Jest skips the wait (`setScreenDeferForTests`).
+- The splash (native and animated) is the hero blue `#1E4CDC` with a white loader, so splash, lock screen and Today run with no change of colour.
 
 ## 12. Open items
 

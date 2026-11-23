@@ -161,7 +161,7 @@ export default function ToolsScreen() {
 
   return (
     <View style={{ flex: 1, backgroundColor: c.bg }}>
-      <Screen hairlineTop={false} scroll={false}>
+      <Screen hairlineTop={false} scroll={false} skeleton="hero">
         <CardList
           sections={rows.length ? sections : []}
           keyOf={toolKey}

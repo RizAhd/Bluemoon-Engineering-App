@@ -12,12 +12,15 @@ import {
   type StyleProp,
   type ViewStyle,
 } from 'react-native';
+import { useNavigation } from 'expo-router';
+import Animated, { FadeIn } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { hairline, radius, sizes, space, touch, useColors, useElevation, useLayout, useScheme, type Palette } from '@/theme';
 
 import { FocusChainProvider } from './focusChain';
 import { Initials, initialsOf } from './kit';
+import { ScreenSkeleton } from './ScreenSkeleton';
 import { Txt } from './Txt';
 
 // ---------------------------------------------------------------- Screen
@@ -39,6 +42,47 @@ export interface ScreenProps {
   contentStyle?: StyleProp<ViewStyle>;
   /** Vertical gap between children. Default 16. */
   gap?: number;
+  /**
+   * Heavy screens: draw this skeleton while the screen slides in (or a tab opens the first time), then fade the
+   * page in. The slide stays smooth because the page is built after it, not during it.
+   */
+  skeleton?: 'hero' | 'plain';
+}
+
+/** Jest renders every screen at once; the app waits for the slide-in. */
+let deferScreens = process.env.NODE_ENV !== 'test';
+/** Tests of the skeleton itself turn the wait on. */
+export function setScreenDeferForTests(on: boolean) {
+  deferScreens = on;
+}
+
+/** Longest wait for the slide-in to end: the stack push takes about 300 ms, a tab switch about 150 ms. */
+export const SCREEN_READY_MS = { stack: 420, tab: 160 } as const;
+
+/** False until the screen's opening animation has finished (or a short time has passed). */
+function useScreenReady(wanted: boolean): boolean {
+  const navigation = useNavigation();
+  const [ready, setReady] = useState(() => !wanted || !deferScreens);
+  useEffect(() => {
+    if (ready) return;
+    let done = false;
+    const go = () => {
+      if (done) return;
+      done = true;
+      setReady(true);
+    };
+    const tab = (navigation.getState?.() as { type?: string } | undefined)?.type === 'tab';
+    // a stack screen says when its slide has ended; a tab gets one short beat for its fade
+    const off = tab ? undefined : (navigation.addListener as (e: 'transitionEnd', cb: () => void) => (() => void) | undefined)?.('transitionEnd', go);
+    const id = setTimeout(go, tab ? SCREEN_READY_MS.tab : SCREEN_READY_MS.stack);
+    return () => {
+      done = true;
+      clearTimeout(id);
+      off?.();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  return ready;
 }
 
 /**
@@ -47,8 +91,11 @@ export interface ScreenProps {
  * the content, so it scrolls with it instead of covering half the list. A `scroll={false}` screen places
  * `footer` itself when `useLayout().short` (see StickyFooter).
  */
-export function Screen({ children, scroll = true, footer, padTop = true, hairlineTop = true, paddingBottom, scrollProps, contentStyle, gap = space.lg }: ScreenProps) {
+export function Screen({ children, scroll = true, footer, padTop = true, hairlineTop = true, paddingBottom, scrollProps, contentStyle, gap = space.lg, skeleton }: ScreenProps) {
   const c = useColors();
+  const ready = useScreenReady(!!skeleton);
+  // only a screen that really waited fades in; the others appear as before
+  const [waited] = useState(!ready);
   const insets = useSafeAreaInsets();
   const { gutter, column, short } = useLayout();
   const box = useRef<ComponentRef<typeof View>>(null);
@@ -86,13 +133,16 @@ export function Screen({ children, scroll = true, footer, padTop = true, hairlin
   ) : (
     <View style={{ flex: 1 }}>{children}</View>
   );
+  if (!ready && skeleton) return <ScreenSkeleton variant={skeleton} />;
   return (
     <FocusChainProvider reveal={() => revealFocused(scroller.current, offset.current)}>
-      <View ref={box} collapsable={false} style={{ flex: 1, backgroundColor: c.bg, paddingBottom: keyboard }}>
-        {hairlineTop ? <View style={{ height: hairline, backgroundColor: c.border }} /> : null}
-        {body}
-        {footer && !inlineFooter ? <StickyFooter keyboardOpen={keyboard > 0}>{footer}</StickyFooter> : null}
-      </View>
+      <Animated.View entering={waited ? FadeIn.duration(220) : undefined} style={{ flex: 1, backgroundColor: c.bg }}>
+        <View ref={box} collapsable={false} style={{ flex: 1, backgroundColor: c.bg, paddingBottom: keyboard }}>
+          {hairlineTop ? <View style={{ height: hairline, backgroundColor: c.border }} /> : null}
+          {body}
+          {footer && !inlineFooter ? <StickyFooter keyboardOpen={keyboard > 0}>{footer}</StickyFooter> : null}
+        </View>
+      </Animated.View>
     </FocusChainProvider>
   );
 }

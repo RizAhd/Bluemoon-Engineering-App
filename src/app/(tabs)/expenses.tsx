@@ -249,7 +249,7 @@ export default function ExpensesScreen() {
 
   return (
     <View style={{ flex: 1, backgroundColor: c.bg }}>
-      <Screen hairlineTop={false} scroll={false}>
+      <Screen hairlineTop={false} scroll={false} skeleton="hero">
         {unfiltered.n === 0 ? (
           <CardList
             sections={[]}

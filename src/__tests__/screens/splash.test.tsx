@@ -10,11 +10,10 @@ import * as SplashScreen from 'expo-splash-screen';
 import { AccessibilityInfo, StyleSheet, useColorScheme } from 'react-native';
 
 import RootLayout from '@/app/_layout';
-import { AnimatedSplash, SPLASH_BG, SPLASH_LOGO, SPLASH_TIMING } from '@/components/AnimatedSplash';
+import { AnimatedSplash, SPLASH_BG, SPLASH_LOADER, SPLASH_LOGO, SPLASH_TIMING } from '@/components/AnimatedSplash';
 import { closeDb, setSetting } from '@/db';
 import { mockAlert, resetDb } from '@/test-utils';
 import { act, fireEvent, hasLabel, renderScreen, screen, takeConsole, visibleText } from '@/test-utils/screenKit';
-import { palette } from '@/theme';
 
 const appJson = require('../../../app.json') as { expo: { plugins: unknown[] } };
 
@@ -49,7 +48,7 @@ afterEach(() => {
 // ---------------------------------------------------------------- the overlay on its own
 
 describe('AnimatedSplash', () => {
-  it('draws the native splash logo at its native size, and a slim loader under it, on the brand navy', async () => {
+  it('draws the native splash logo at its native size, and a slim loader under it, on the brand blue', async () => {
     await renderScreen(<AnimatedSplash ready={false} onDone={() => undefined} />);
     const root = screen.getByTestId('animated-splash');
     expect(flat(root.props.style)).toMatchObject({ position: 'absolute', backgroundColor: SPLASH_BG.dark });
@@ -58,17 +57,17 @@ describe('AnimatedSplash', () => {
     const logo = screen.getByLabelText('Bluemoon Engineering (Pvt) Ltd');
     expect(flat(logo.props.style)).toMatchObject(SPLASH_LOGO);
     const track = flat(screen.getByTestId('splash-loader').props.style);
-    expect(track).toMatchObject({ width: 120, height: 3, backgroundColor: palette.dark.primarySoft });
+    expect(track).toMatchObject({ width: 120, height: 3, backgroundColor: SPLASH_LOADER.track });
     expect(screen.queryByTestId('splash-spinner')).toBeNull();
     expect(visibleText()).toBe(''); // pictures only: nothing waits for the fonts
   });
 
-  it('is the same navy whatever the phone or the app scheme, so the native hand-over never flashes', async () => {
+  it('is the same blue whatever the phone or the app scheme, so the native hand-over never flashes', async () => {
     // a light phone with the app set to dark: the case that used to flash white, then dark
     setSetting('theme', 'dark');
     jest.mocked(useColorScheme).mockReturnValue('light');
     await renderScreen(<AnimatedSplash ready={false} onDone={() => undefined} />);
-    expect(flat(screen.getByTestId('animated-splash').props.style).backgroundColor).toBe('#0B1120');
+    expect(flat(screen.getByTestId('animated-splash').props.style).backgroundColor).toBe('#1E4CDC');
     expect(SPLASH_BG.light).toBe(SPLASH_BG.dark);
   });
 

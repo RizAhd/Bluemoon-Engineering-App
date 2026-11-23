@@ -12,16 +12,20 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated';
 
-import { palette, space, useMotion } from '@/theme';
+import { space, useMotion } from '@/theme';
 
 const LOGO = require('../../assets/images/splash-logo-white.png') as number;
 
 /**
  * One brand background in both schemes, the same as the native splash in app.json. The native splash is drawn
  * before the app knows the user's Light / Dark choice, so a scheme-following splash would flash the wrong
- * colour for half the users; a single navy splash fading into the app never does.
+ * colour for half the users. It is the Blueprint hero blue, so it fades straight into the blue lock screen or
+ * the blue header of Today with no change of colour.
  */
-export const SPLASH_BG = { light: '#0B1120', dark: '#0B1120' } as const;
+export const SPLASH_BG = { light: '#1E4CDC', dark: '#1E4CDC' } as const;
+
+/** The loader on the blue: a faint white track with a white bar. */
+export const SPLASH_LOADER = { track: 'rgba(255,255,255,0.28)', bar: '#FFFFFF' } as const;
 
 /** The splash sequence in ms. `minVisible` counts from the overlay's first frame. */
 export const SPLASH_TIMING = { loaderDelay: 300, loaderIn: 300, minVisible: 900, exit: 280, reducedFade: 200, loaderSweep: 700 } as const;
@@ -32,7 +36,6 @@ const TRACK = { width: 120, height: 3, bar: 40 } as const;
 
 const easeOut = Easing.bezier(0.23, 1, 0.32, 1);
 const onScreen = Easing.bezier(0.77, 0, 0.175, 1);
-const brand = palette.dark;
 
 export interface AnimatedSplashProps {
   /** Fonts and database are ready: the overlay may leave once it has been up for `minVisible`. */
@@ -116,10 +119,10 @@ export function AnimatedSplash({ ready, onDone }: AnimatedSplashProps) {
       <Animated.View
         style={[{ position: 'absolute', top: '50%', marginTop: SPLASH_LOGO.height / 2 + space.xl, height: 20, justifyContent: 'center' }, loaderStyle]}>
         {reduced ? (
-          <ActivityIndicator testID="splash-spinner" size="small" color={brand.primary} />
+          <ActivityIndicator testID="splash-spinner" size="small" color={SPLASH_LOADER.bar} />
         ) : (
-          <View testID="splash-loader" style={{ width: TRACK.width, height: TRACK.height, borderRadius: TRACK.height / 2, backgroundColor: brand.primarySoft, overflow: 'hidden' }}>
-            <Animated.View style={[{ width: TRACK.bar, height: TRACK.height, borderRadius: TRACK.height / 2, backgroundColor: brand.primary }, barStyle]} />
+          <View testID="splash-loader" style={{ width: TRACK.width, height: TRACK.height, borderRadius: TRACK.height / 2, backgroundColor: SPLASH_LOADER.track, overflow: 'hidden' }}>
+            <Animated.View style={[{ width: TRACK.bar, height: TRACK.height, borderRadius: TRACK.height / 2, backgroundColor: SPLASH_LOADER.bar }, barStyle]} />
           </View>
         )}
       </Animated.View>

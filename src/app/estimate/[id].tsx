@@ -422,7 +422,7 @@ export default function EstimateHub() {
     <>
       {/* the blue hero carries the number, the client and the total; the native header steps aside */}
       <Stack.Screen options={{ title: est.number, headerShown: false }} />
-      <Screen scroll={false}>
+      <Screen scroll={false} skeleton="hero">
         {/* One virtualised list: the cards above the price lines are its header, the rest of the hub its footer. */}
         <CardList
           sections={[{ key: 'items', rows: items }]}

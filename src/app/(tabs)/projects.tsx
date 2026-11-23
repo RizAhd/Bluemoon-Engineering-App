@@ -128,7 +128,7 @@ export default function ProjectsScreen() {
 
   return (
     <View style={{ flex: 1, backgroundColor: c.bg }}>
-      <Screen hairlineTop={false} scroll={false}>
+      <Screen hairlineTop={false} scroll={false} skeleton="hero">
         {rows.length === 0 ? (
           // The "+" in the tab bar is the screen's primary action here, so the empty state's own is secondary.
           <CardList
