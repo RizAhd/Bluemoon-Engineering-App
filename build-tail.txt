@@ -1,0 +1,400 @@
+> Task :expo-dom-webview:generateReleaseLintModel
+> Task :expo-dom-webview:prepareLintJarForPublish
+> Task :expo-log-box:processReleaseJavaRes
+> Task :expo-log-box:createFullJarRelease
+> Task :expo-log-box:extractProguardFiles
+> Task :expo-log-box:generateReleaseLintModel
+> Task :expo-log-box:prepareLintJarForPublish
+> Task :expo:generateReleaseLintModel
+> Task :expo:prepareLintJarForPublish
+> Task :react-native-community_datetimepicker:processReleaseJavaRes
+> Task :react-native-community_datetimepicker:createFullJarRelease
+> Task :react-native-community_datetimepicker:extractProguardFiles
+> Task :react-native-community_datetimepicker:generateReleaseLintModel
+> Task :react-native-community_datetimepicker:prepareLintJarForPublish
+> Task :react-native-gesture-handler:processReleaseJavaRes
+> Task :react-native-gesture-handler:createFullJarRelease
+> Task :react-native-gesture-handler:extractProguardFiles
+> Task :react-native-reanimated:processReleaseJavaRes
+> Task :react-native-reanimated:createFullJarRelease
+> Task :react-native-reanimated:extractProguardFiles
+> Task :react-native-reanimated:generateReleaseLintModel
+> Task :react-native-reanimated:prepareLintJarForPublish
+> Task :react-native-svg:processReleaseJavaRes NO-SOURCE
+> Task :react-native-svg:createFullJarRelease
+> Task :react-native-svg:extractProguardFiles
+> Task :react-native-svg:generateReleaseLintModel
+> Task :react-native-svg:prepareLintJarForPublish
+> Task :react-native-gesture-handler:generateReleaseLintModel
+> Task :react-native-gesture-handler:prepareLintJarForPublish
+> Task :react-native-google-signin_google-signin:processReleaseJavaRes
+> Task :react-native-google-signin_google-signin:createFullJarRelease
+> Task :react-native-google-signin_google-signin:extractProguardFiles
+> Task :react-native-google-signin_google-signin:generateReleaseLintModel
+> Task :react-native-google-signin_google-signin:prepareLintJarForPublish
+> Task :react-native-masked-view_masked-view:processReleaseJavaRes NO-SOURCE
+> Task :react-native-masked-view_masked-view:createFullJarRelease
+> Task :react-native-masked-view_masked-view:extractProguardFiles
+> Task :react-native-masked-view_masked-view:generateReleaseLintModel
+> Task :react-native-masked-view_masked-view:prepareLintJarForPublish
+> Task :react-native-safe-area-context:processReleaseJavaRes
+> Task :react-native-safe-area-context:createFullJarRelease
+> Task :react-native-safe-area-context:extractProguardFiles
+> Task :react-native-safe-area-context:generateReleaseLintModel
+> Task :react-native-safe-area-context:prepareLintJarForPublish
+> Task :react-native-screens:processReleaseJavaRes
+> Task :react-native-screens:createFullJarRelease
+> Task :react-native-screens:extractProguardFiles
+> Task :react-native-screens:generateReleaseLintModel
+> Task :react-native-screens:prepareLintJarForPublish
+> Task :react-native-community_datetimepicker:checkReleaseAarMetadata
+> Task :react-native-community_datetimepicker:stripReleaseDebugSymbols NO-SOURCE
+> Task :react-native-community_datetimepicker:copyReleaseJniLibsProjectAndLocalJars
+> Task :react-native-community_datetimepicker:extractDeepLinksForAarRelease
+> Task :react-native-community_datetimepicker:extractReleaseAnnotations
+> Task :react-native-community_datetimepicker:mergeReleaseGeneratedProguardFiles
+> Task :react-native-community_datetimepicker:mergeReleaseConsumerProguardFiles
+> Task :react-native-community_datetimepicker:mergeReleaseJavaResource
+> Task :react-native-community_datetimepicker:syncReleaseLibJars
+> Task :react-native-community_datetimepicker:bundleReleaseLocalLintAar
+> Task :react-native-google-signin_google-signin:checkReleaseAarMetadata
+> Task :react-native-google-signin_google-signin:stripReleaseDebugSymbols NO-SOURCE
+> Task :react-native-google-signin_google-signin:copyReleaseJniLibsProjectAndLocalJars
+> Task :react-native-google-signin_google-signin:extractDeepLinksForAarRelease
+> Task :react-native-google-signin_google-signin:extractReleaseAnnotations
+> Task :react-native-google-signin_google-signin:mergeReleaseGeneratedProguardFiles
+> Task :react-native-google-signin_google-signin:mergeReleaseConsumerProguardFiles
+> Task :react-native-google-signin_google-signin:mergeReleaseJavaResource
+> Task :react-native-google-signin_google-signin:syncReleaseLibJars
+> Task :react-native-google-signin_google-signin:bundleReleaseLocalLintAar
+> Task :react-native-gesture-handler:checkReleaseAarMetadata
+> Task :react-native-gesture-handler:stripReleaseDebugSymbols
+> Task :react-native-gesture-handler:copyReleaseJniLibsProjectAndLocalJars
+> Task :react-native-gesture-handler:extractDeepLinksForAarRelease
+> Task :react-native-gesture-handler:extractReleaseAnnotations
+> Task :react-native-gesture-handler:mergeReleaseGeneratedProguardFiles
+> Task :react-native-gesture-handler:mergeReleaseConsumerProguardFiles
+> Task :react-native-gesture-handler:mergeReleaseJavaResource
+> Task :react-native-gesture-handler:syncReleaseLibJars
+> Task :react-native-gesture-handler:bundleReleaseLocalLintAar
+> Task :react-native-reanimated:checkReleaseAarMetadata
+> Task :react-native-reanimated:stripReleaseDebugSymbols
+> Task :react-native-reanimated:copyReleaseJniLibsProjectAndLocalJars
+> Task :react-native-reanimated:extractDeepLinksForAarRelease
+> Task :react-native-reanimated:extractReleaseAnnotations
+> Task :react-native-reanimated:mergeReleaseGeneratedProguardFiles
+> Task :react-native-reanimated:mergeReleaseConsumerProguardFiles
+> Task :react-native-reanimated:mergeReleaseJavaResource
+> Task :react-native-reanimated:syncReleaseLibJars
+> Task :react-native-reanimated:bundleReleaseLocalLintAar
+> Task :react-native-safe-area-context:checkReleaseAarMetadata
+> Task :react-native-safe-area-context:stripReleaseDebugSymbols NO-SOURCE
+> Task :react-native-safe-area-context:copyReleaseJniLibsProjectAndLocalJars
+> Task :react-native-safe-area-context:extractDeepLinksForAarRelease
+> Task :react-native-safe-area-context:extractReleaseAnnotations
+> Task :react-native-safe-area-context:mergeReleaseGeneratedProguardFiles
+> Task :react-native-safe-area-context:mergeReleaseConsumerProguardFiles
+> Task :react-native-safe-area-context:mergeReleaseJavaResource
+> Task :react-native-safe-area-context:syncReleaseLibJars
+> Task :react-native-safe-area-context:bundleReleaseLocalLintAar
+> Task :react-native-screens:checkReleaseAarMetadata
+> Task :react-native-screens:stripReleaseDebugSymbols
+> Task :react-native-screens:copyReleaseJniLibsProjectAndLocalJars
+> Task :react-native-screens:extractDeepLinksForAarRelease
+> Task :react-native-screens:extractReleaseAnnotations
+> Task :react-native-screens:mergeReleaseGeneratedProguardFiles
+> Task :react-native-screens:mergeReleaseConsumerProguardFiles
+> Task :react-native-screens:mergeReleaseJavaResource
+> Task :react-native-screens:syncReleaseLibJars
+> Task :react-native-screens:bundleReleaseLocalLintAar
+> Task :expo:checkReleaseAarMetadata
+> Task :expo:stripReleaseDebugSymbols NO-SOURCE
+> Task :expo:copyReleaseJniLibsProjectAndLocalJars
+> Task :expo:extractDeepLinksForAarRelease
+> Task :expo:extractReleaseAnnotations
+> Task :expo:mergeReleaseGeneratedProguardFiles
+> Task :expo:mergeReleaseConsumerProguardFiles
+> Task :expo:mergeReleaseJavaResource
+> Task :expo:syncReleaseLibJars
+> Task :expo:bundleReleaseLocalLintAar
+> Task :expo-modules-core:checkReleaseAarMetadata
+> Task :expo-modules-core:stripReleaseDebugSymbols
+> Task :expo-modules-core:copyReleaseJniLibsProjectAndLocalJars
+> Task :expo-modules-core:extractDeepLinksForAarRelease
+> Task :expo-modules-core:extractReleaseAnnotations
+> Task :expo-modules-core:mergeReleaseGeneratedProguardFiles
+> Task :expo-modules-core:mergeReleaseConsumerProguardFiles
+> Task :expo-modules-core:mergeReleaseJavaResource
+> Task :expo-modules-core:syncReleaseLibJars
+> Task :expo-modules-core:bundleReleaseLocalLintAar
+> Task :react-native-worklets:checkReleaseAarMetadata
+> Task :react-native-worklets:stripReleaseDebugSymbols
+> Task :react-native-worklets:copyReleaseJniLibsProjectAndLocalJars
+> Task :react-native-worklets:extractDeepLinksForAarRelease
+> Task :react-native-worklets:extractReleaseAnnotations
+> Task :react-native-worklets:mergeReleaseGeneratedProguardFiles
+> Task :react-native-worklets:mergeReleaseConsumerProguardFiles
+> Task :react-native-worklets:mergeReleaseJavaResource
+> Task :react-native-worklets:syncReleaseLibJars
+> Task :react-native-worklets:bundleReleaseLocalLintAar
+> Task :react-native-masked-view_masked-view:checkReleaseAarMetadata
+> Task :react-native-masked-view_masked-view:stripReleaseDebugSymbols NO-SOURCE
+> Task :react-native-masked-view_masked-view:copyReleaseJniLibsProjectAndLocalJars
+> Task :react-native-masked-view_masked-view:extractDeepLinksForAarRelease
+> Task :react-native-masked-view_masked-view:extractReleaseAnnotations
+> Task :react-native-masked-view_masked-view:mergeReleaseGeneratedProguardFiles
+> Task :react-native-masked-view_masked-view:mergeReleaseConsumerProguardFiles
+> Task :react-native-masked-view_masked-view:mergeReleaseJavaResource
+> Task :react-native-masked-view_masked-view:syncReleaseLibJars
+> Task :react-native-masked-view_masked-view:bundleReleaseLocalLintAar
+> Task :react-native-svg:checkReleaseAarMetadata
+> Task :react-native-svg:stripReleaseDebugSymbols NO-SOURCE
+> Task :react-native-svg:copyReleaseJniLibsProjectAndLocalJars
+> Task :react-native-svg:extractDeepLinksForAarRelease
+> Task :react-native-svg:extractReleaseAnnotations
+> Task :react-native-svg:mergeReleaseGeneratedProguardFiles
+> Task :react-native-svg:mergeReleaseConsumerProguardFiles
+> Task :react-native-svg:mergeReleaseJavaResource
+> Task :react-native-svg:syncReleaseLibJars
+> Task :react-native-svg:bundleReleaseLocalLintAar
+> Task :expo-log-box:checkReleaseAarMetadata
+> Task :expo-log-box:stripReleaseDebugSymbols NO-SOURCE
+> Task :expo-log-box:copyReleaseJniLibsProjectAndLocalJars
+> Task :expo-log-box:extractDeepLinksForAarRelease
+> Task :expo-log-box:extractReleaseAnnotations
+> Task :expo-log-box:mergeReleaseGeneratedProguardFiles
+> Task :expo-log-box:mergeReleaseConsumerProguardFiles
+> Task :expo-log-box:mergeReleaseJavaResource
+> Task :expo-log-box:syncReleaseLibJars
+> Task :expo-log-box:bundleReleaseLocalLintAar
+> Task :expo-dom-webview:checkReleaseAarMetadata
+> Task :expo-dom-webview:stripReleaseDebugSymbols NO-SOURCE
+> Task :expo-dom-webview:copyReleaseJniLibsProjectAndLocalJars
+> Task :expo-dom-webview:extractDeepLinksForAarRelease
+> Task :expo-dom-webview:extractReleaseAnnotations
+> Task :expo-dom-webview:mergeReleaseGeneratedProguardFiles
+> Task :expo-dom-webview:mergeReleaseConsumerProguardFiles
+> Task :expo-dom-webview:mergeReleaseJavaResource
+> Task :expo-dom-webview:syncReleaseLibJars
+> Task :expo-dom-webview:bundleReleaseLocalLintAar
+> Task :expo-constants:checkReleaseAarMetadata
+> Task :expo-constants:stripReleaseDebugSymbols NO-SOURCE
+> Task :expo-constants:copyReleaseJniLibsProjectAndLocalJars
+> Task :expo-constants:extractDeepLinksForAarRelease
+> Task :expo-constants:extractReleaseAnnotations
+> Task :expo-constants:mergeReleaseGeneratedProguardFiles
+> Task :expo-constants:mergeReleaseConsumerProguardFiles
+> Task :expo-constants:mergeReleaseJavaResource
+> Task :expo-constants:syncReleaseLibJars
+> Task :expo-constants:bundleReleaseLocalLintAar
+> Task :expo-constants:writeReleaseLintModelMetadata
+> Task :expo-dom-webview:writeReleaseLintModelMetadata
+> Task :expo-log-box:writeReleaseLintModelMetadata
+> Task :expo-modules-core:writeReleaseLintModelMetadata
+> Task :react-native-worklets:writeReleaseLintModelMetadata
+> Task :expo:lintVitalAnalyzeRelease SKIPPED
+> Task :expo:writeReleaseLintModelMetadata
+> Task :expo-constants:lintVitalAnalyzeRelease SKIPPED
+> Task :expo-dom-webview:lintVitalAnalyzeRelease SKIPPED
+> Task :expo-log-box:lintVitalAnalyzeRelease SKIPPED
+> Task :expo-modules-core:lintVitalAnalyzeRelease SKIPPED
+> Task :react-native-community_datetimepicker:lintVitalAnalyzeRelease SKIPPED
+> Task :react-native-community_datetimepicker:writeReleaseLintModelMetadata
+> Task :react-native-reanimated:writeReleaseLintModelMetadata
+> Task :react-native-svg:writeReleaseLintModelMetadata
+> Task :react-native-gesture-handler:lintVitalAnalyzeRelease SKIPPED
+> Task :react-native-gesture-handler:writeReleaseLintModelMetadata
+> Task :react-native-google-signin_google-signin:lintVitalAnalyzeRelease SKIPPED
+> Task :react-native-google-signin_google-signin:writeReleaseLintModelMetadata
+> Task :react-native-masked-view_masked-view:lintVitalAnalyzeRelease SKIPPED
+> Task :react-native-masked-view_masked-view:writeReleaseLintModelMetadata
+> Task :react-native-reanimated:lintVitalAnalyzeRelease SKIPPED
+> Task :react-native-safe-area-context:lintVitalAnalyzeRelease SKIPPED
+> Task :react-native-safe-area-context:writeReleaseLintModelMetadata
+> Task :react-native-screens:lintVitalAnalyzeRelease SKIPPED
+> Task :react-native-screens:writeReleaseLintModelMetadata
+> Task :react-native-svg:lintVitalAnalyzeRelease SKIPPED
+> Task :react-native-worklets:lintVitalAnalyzeRelease SKIPPED
+> Task :expo:generateReleaseLintVitalModel
+> Task :expo-constants:generateReleaseLintVitalModel
+> Task :expo-dom-webview:generateReleaseLintVitalModel
+> Task :expo-log-box:generateReleaseLintVitalModel
+> Task :expo-modules-core:generateReleaseLintVitalModel
+> Task :react-native-community_datetimepicker:generateReleaseLintVitalModel
+> Task :react-native-gesture-handler:generateReleaseLintVitalModel
+> Task :react-native-google-signin_google-signin:generateReleaseLintVitalModel
+> Task :react-native-masked-view_masked-view:generateReleaseLintVitalModel
+> Task :react-native-reanimated:generateReleaseLintVitalModel
+> Task :react-native-safe-area-context:generateReleaseLintVitalModel
+> Task :react-native-screens:generateReleaseLintVitalModel
+> Task :react-native-svg:generateReleaseLintVitalModel
+> Task :react-native-worklets:generateReleaseLintVitalModel
+> Task :expo:bundleReleaseAar
+> Task :expo:mergeReleaseResources
+> Task :expo:verifyReleaseResources
+> Task :expo:assembleRelease
+> Task :expo-constants:bundleReleaseAar
+> Task :expo-constants:mergeReleaseResources
+> Task :expo-constants:verifyReleaseResources
+> Task :expo-constants:assembleRelease
+> Task :expo-dom-webview:bundleReleaseAar
+> Task :expo-dom-webview:mergeReleaseResources
+> Task :expo-dom-webview:verifyReleaseResources
+> Task :expo-dom-webview:assembleRelease
+> Task :expo-log-box:bundleReleaseAar
+> Task :expo-log-box:mergeReleaseResources
+> Task :expo-log-box:verifyReleaseResources
+> Task :expo-log-box:assembleRelease
+> Task :expo-modules-core:bundleReleaseAar
+> Task :expo-modules-core:mergeReleaseResources
+> Task :expo-modules-core:verifyReleaseResources
+> Task :app:checkReleaseDuplicateClasses
+> Task :app:buildKotlinToolingMetadata
+> Task :app:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :app:generateReleaseBuildConfig
+> Task :app:mergeReleaseNativeLibs
+> Task :expo-modules-core:assembleRelease
+> Task :react-native-community_datetimepicker:bundleReleaseAar
+
+> Task :app:createBundleReleaseJsAndAssets
+Using src/app as the root directory for Expo Router.
+React Compiler enabled
+
+> Task :react-native-community_datetimepicker:mergeReleaseResources
+
+> Task :app:createBundleReleaseJsAndAssets
+Starting Metro Bundler
+
+
+> Task :react-native-community_datetimepicker:verifyReleaseResources
+> Task :react-native-community_datetimepicker:assembleRelease
+> Task :react-native-gesture-handler:bundleReleaseAar
+> Task :react-native-gesture-handler:mergeReleaseResources
+> Task :react-native-gesture-handler:verifyReleaseResources
+> Task :react-native-gesture-handler:assembleRelease
+> Task :react-native-google-signin_google-signin:bundleReleaseAar
+> Task :react-native-google-signin_google-signin:mergeReleaseResources
+> Task :react-native-google-signin_google-signin:verifyReleaseResources
+> Task :react-native-google-signin_google-signin:assembleRelease
+> Task :react-native-masked-view_masked-view:bundleReleaseAar
+> Task :react-native-masked-view_masked-view:mergeReleaseResources
+> Task :react-native-masked-view_masked-view:verifyReleaseResources
+> Task :react-native-masked-view_masked-view:assembleRelease
+> Task :react-native-reanimated:bundleReleaseAar
+> Task :react-native-reanimated:mergeReleaseResources
+> Task :react-native-reanimated:verifyReleaseResources
+> Task :react-native-reanimated:assembleRelease
+> Task :react-native-safe-area-context:bundleReleaseAar
+> Task :react-native-safe-area-context:mergeReleaseResources
+> Task :react-native-safe-area-context:verifyReleaseResources
+> Task :react-native-safe-area-context:assembleRelease
+> Task :react-native-screens:bundleReleaseAar
+> Task :react-native-screens:mergeReleaseResources
+> Task :react-native-screens:verifyReleaseResources
+> Task :react-native-screens:assembleRelease
+> Task :react-native-svg:bundleReleaseAar
+> Task :react-native-svg:mergeReleaseResources
+> Task :react-native-svg:verifyReleaseResources
+> Task :react-native-svg:assembleRelease
+> Task :react-native-worklets:bundleReleaseAar
+> Task :react-native-worklets:mergeReleaseResources
+> Task :react-native-worklets:verifyReleaseResources
+> Task :react-native-worklets:assembleRelease
+
+> Task :app:createBundleReleaseJsAndAssets
+ WARN  Attempted to import the module "/home/runner/work/Bluemoon-Engineering-App/Bluemoon-Engineering-App/node_modules/@tamagui/core/dist/esm/theme-update.native.js" which is not listed in the "exports" of "/home/runner/work/Bluemoon-Engineering-App/Bluemoon-Engineering-App/node_modules/@tamagui/core" under the requested subpath "./dist/esm/theme-update.native.js". Falling back to file-based resolution. Consider updating the call site or asking the package maintainer(s) to expose this API.
+ WARN  Attempted to import the module "/home/runner/work/Bluemoon-Engineering-App/Bluemoon-Engineering-App/node_modules/@tamagui/style-grammar/dist/esm/v6ThemeNames.native.js" which is not listed in the "exports" of "/home/runner/work/Bluemoon-Engineering-App/Bluemoon-Engineering-App/node_modules/@tamagui/style-grammar" under the requested subpath "./dist/esm/v6ThemeNames.native.js". Falling back to file-based resolution. Consider updating the call site or asking the package maintainer(s) to expose this API.
+ WARN  Attempted to import the module "/home/runner/work/Bluemoon-Engineering-App/Bluemoon-Engineering-App/node_modules/@tamagui/web/dist/esm/theme-update.native.js" which is not listed in the "exports" of "/home/runner/work/Bluemoon-Engineering-App/Bluemoon-Engineering-App/node_modules/@tamagui/web" under the requested subpath "./dist/esm/theme-update.native.js". Falling back to file-based resolution. Consider updating the call site or asking the package maintainer(s) to expose this API.
+ WARN  Attempted to import the module "/home/runner/work/Bluemoon-Engineering-App/Bluemoon-Engineering-App/node_modules/@tamagui/style-grammar/dist/esm/transitions.native.js" which is not listed in the "exports" of "/home/runner/work/Bluemoon-Engineering-App/Bluemoon-Engineering-App/node_modules/@tamagui/style-grammar" under the requested subpath "./dist/esm/transitions.native.js". Falling back to file-based resolution. Consider updating the call site or asking the package maintainer(s) to expose this API.
+ WARN  Attempted to import the module "/home/runner/work/Bluemoon-Engineering-App/Bluemoon-Engineering-App/node_modules/@tamagui/animation-helpers/dist/esm/transitionResolver.native.js" which is not listed in the "exports" of "/home/runner/work/Bluemoon-Engineering-App/Bluemoon-Engineering-App/node_modules/@tamagui/animation-helpers" under the requested subpath "./dist/esm/transitionResolver.native.js". Falling back to file-based resolution. Consider updating the call site or asking the package maintainer(s) to expose this API.
+ WARN  Attempted to import the module "/home/runner/work/Bluemoon-Engineering-App/Bluemoon-Engineering-App/node_modules/@tamagui/style-grammar/dist/esm/runtime.native.js" which is not listed in the "exports" of "/home/runner/work/Bluemoon-Engineering-App/Bluemoon-Engineering-App/node_modules/@tamagui/style-grammar" under the requested subpath "./dist/esm/runtime.native.js". Falling back to file-based resolution. Consider updating the call site or asking the package maintainer(s) to expose this API.
+ WARN  Attempted to import the module "/home/runner/work/Bluemoon-Engineering-App/Bluemoon-Engineering-App/node_modules/@tamagui/style-grammar/dist/esm/tokenCategories.mjs" which is not listed in the "exports" of "/home/runner/work/Bluemoon-Engineering-App/Bluemoon-Engineering-App/node_modules/@tamagui/style-grammar" under the requested subpath "./dist/esm/tokenCategories.mjs". Falling back to file-based resolution. Consider updating the call site or asking the package maintainer(s) to expose this API.
+ WARN  Attempted to import the module "/home/runner/work/Bluemoon-Engineering-App/Bluemoon-Engineering-App/node_modules/@tamagui/animation-helpers/dist/esm/transitionResolver.native.js" which is not listed in the "exports" of "/home/runner/work/Bluemoon-Engineering-App/Bluemoon-Engineering-App/node_modules/@tamagui/animation-helpers" under the requested subpath "./dist/esm/transitionResolver.native.js". Falling back to file-based resolution. Consider updating the call site or asking the package maintainer(s) to expose this API.
+ WARN  Attempted to import the module "/home/runner/work/Bluemoon-Engineering-App/Bluemoon-Engineering-App/node_modules/@tamagui/animation-helpers/dist/esm/propertyNames.native.js" which is not listed in the "exports" of "/home/runner/work/Bluemoon-Engineering-App/Bluemoon-Engineering-App/node_modules/@tamagui/animation-helpers" under the requested subpath "./dist/esm/propertyNames.native.js". Falling back to file-based resolution. Consider updating the call site or asking the package maintainer(s) to expose this API.
+ WARN  Attempted to import the module "/home/runner/work/Bluemoon-Engineering-App/Bluemoon-Engineering-App/node_modules/@tamagui/style-grammar/dist/esm/runtime.native.js" which is not listed in the "exports" of "/home/runner/work/Bluemoon-Engineering-App/Bluemoon-Engineering-App/node_modules/@tamagui/style-grammar" under the requested subpath "./dist/esm/runtime.native.js". Falling back to file-based resolution. Consider updating the call site or asking the package maintainer(s) to expose this API.
+Android Bundled 60912ms node_modules/expo-router/entry.js (4961 modules)
+Writing bundle output to: /home/runner/work/Bluemoon-Engineering-App/Bluemoon-Engineering-App/android/app/build/generated/assets/react/release/index.android.bundle
+Writing sourcemap output to: /home/runner/work/Bluemoon-Engineering-App/Bluemoon-Engineering-App/android/app/build/intermediates/sourcemaps/react/release/index.android.bundle.packager.map
+Copying 45 asset files
+Done writing bundle output
+Done writing sourcemap output
+
+> Task :app:generateReleaseResValues
+> Task :app:generateReleaseResources
+> Task :app:packageReleaseResources
+> Task :app:processReleaseNavigationResources
+> Task :app:parseReleaseLocalResources
+> Task :app:generateReleaseRFile
+> Task :app:stripReleaseDebugSymbols
+> Task :app:extractReleaseNativeSymbolTables
+
+> Task :app:compileReleaseKotlin
+w: file:///home/runner/work/Bluemoon-Engineering-App/Bluemoon-Engineering-App/android/app/src/main/java/lk/bluemoonengineering/site/MainActivity.kt:40:20 'constructor(activity: ReactActivity, mainComponentName: String, fabricEnabled: Boolean): DefaultReactActivityDelegate' is deprecated. Creating DefaultReactActivityDelegate with flags is deprecated.
+
+> Task :app:javaPreCompileRelease
+> Task :app:mergeReleaseNativeDebugMetadata
+> Task :app:compileReleaseJavaWithJavac
+> Task :app:mapReleaseSourceSetPaths
+> Task :app:compileReleaseNavigationResources
+> Task :app:checkReleaseAarMetadata
+> Task :app:createReleaseCompatibleScreenManifests
+> Task :app:extractDeepLinksRelease
+
+> Task :app:processReleaseMainManifest
+/home/runner/work/Bluemoon-Engineering-App/Bluemoon-Engineering-App/android/app/src/main/AndroidManifest.xml:4:3-88 Warning:
+	uses-permission#android.permission.RECORD_AUDIO was tagged at AndroidManifest.xml:4 to remove other declarations but no other declaration present
+/home/runner/work/Bluemoon-Engineering-App/Bluemoon-Engineering-App/android/app/src/main/AndroidManifest.xml:5:3-95 Warning:
+	uses-permission#android.permission.SYSTEM_ALERT_WINDOW was tagged at AndroidManifest.xml:5 to remove other declarations but no other declaration present
+/home/runner/work/Bluemoon-Engineering-App/Bluemoon-Engineering-App/android/app/src/main/AndroidManifest.xml Warning:
+	provider#expo.modules.filesystem.FileSystemFileProvider@android:authorities was tagged at AndroidManifest.xml:0 to replace other declarations but no other declaration present
+/home/runner/work/Bluemoon-Engineering-App/Bluemoon-Engineering-App/android/app/src/main/AndroidManifest.xml Warning:
+	activity#expo.modules.imagepicker.ExpoCropImageActivity@android:exported was tagged at AndroidManifest.xml:0 to replace other declarations but no other declaration present
+
+> Task :app:expoReleaseOverrideMaxSdkConflicts
+[33m---------- Expo Max Sdk Override Plugin ----------[0m
+[32m>>> No 'android:maxSdkVersion' conflicts found[0m
+[33m--------------------------------------------------[0m
+
+> Task :app:processReleaseManifest
+> Task :app:processReleaseManifestForPackage
+> Task :app:desugarReleaseFileDependencies
+> Task :app:mergeReleaseStartupProfile
+> Task :app:mergeReleaseResources
+> Task :app:mergeExtDexRelease
+> Task :app:mergeReleaseArtProfile
+> Task :app:generateReleaseAssets UP-TO-DATE
+> Task :app:mergeReleaseAssets
+> Task :app:compressReleaseAssets
+> Task :app:extractReleaseVersionControlInfo
+> Task :app:extractProguardFiles
+> Task :app:generateReleaseLintVitalReportModel
+> Task :app:processReleaseResources
+> Task :app:dexBuilderRelease
+> Task :app:lintVitalAnalyzeRelease
+> Task :app:mergeReleaseGlobalSynthetics
+> Task :app:mergeDexRelease
+> Task :app:lintVitalReportRelease
+> Task :app:lintVitalRelease
+> Task :app:processReleaseJavaRes
+> Task :app:compileReleaseArtProfile
+> Task :app:optimizeReleaseResources
+> Task :app:mergeReleaseJavaResource
+> Task :app:collectReleaseDependencies
+> Task :app:sdkReleaseDependencyData
+> Task :app:validateSigningRelease
+> Task :app:writeReleaseAppMetadata
+> Task :app:writeReleaseSigningConfigVersions
+> Task :app:packageRelease
+> Task :app:createReleaseApkListingFileRedirect
+> Task :app:assembleRelease
+
+[Incubating] Problems report is available at: file:///home/runner/work/Bluemoon-Engineering-App/Bluemoon-Engineering-App/android/build/reports/problems/problems-report.html
+
+Deprecated Gradle features were used in this build, making it incompatible with Gradle 10.
+
+You can use '--warning-mode all' to show the individual deprecation warnings and determine if they come from your own scripts or plugins.
+
+For more on this, please refer to https://docs.gradle.org/9.4.1/userguide/command_line_interface.html#sec:command_line_warnings in the Gradle documentation.
+
+BUILD SUCCESSFUL in 15m 47s
+689 actionable tasks: 661 executed, 28 up-to-date
